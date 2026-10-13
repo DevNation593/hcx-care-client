@@ -258,7 +258,7 @@ function SubscriptionPageContent() {
                 </p>
               </div>
               <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Precio por psicólogo</p>
+                <p className="text-sm text-muted-foreground">Precio por profesional</p>
                 <p className="font-semibold">
                   ${((currentPlan!.pricePerSeatMonthly ?? 0) / 100).toLocaleString('en-US')} USD
                   <span className="text-xs text-muted-foreground font-normal"> /mes</span>
@@ -288,7 +288,7 @@ function SubscriptionPageContent() {
         ) : usageData ? (
           <div className="grid md:grid-cols-3 gap-4">
             <UsageGauge
-              label="Psicólogos"
+              label="Profesionales"
               icon={<Users className="h-4 w-4" />}
               current={usageData?.users?.psychologists?.active ?? 0}
               limit={usageData?.users?.psychologists?.limit ?? 0}

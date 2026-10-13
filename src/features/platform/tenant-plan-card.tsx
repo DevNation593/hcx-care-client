@@ -95,7 +95,7 @@ export function TenantPlanCard({ tenantId, tenantType, subscription, usage }: Te
           <h3 id="usage-heading" className="sr-only">Uso</h3>
           <dl className="grid gap-3 sm:grid-cols-3">
             <div>
-              <dt className="font-semibold">Psicólogos en uso</dt>
+              <dt className="font-semibold">Profesionales en uso</dt>
               <dd>{usage.seatsPsychologistsUsed} de {subscription.seatsPsychologistsMax}</dd>
             </div>
             <div>
@@ -126,7 +126,7 @@ export function TenantPlanCard({ tenantId, tenantType, subscription, usage }: Te
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="plan-seats">Cupos de psicólogos</Label>
+              <Label htmlFor="plan-seats">Cupos de profesionales</Label>
               <Input id="plan-seats" type="number" min={1} placeholder="Según el plan" value={seats} onChange={(event) => setSeats(event.target.value)} aria-invalid={!!errors.seatsPsychologistsMax} aria-describedby={errors.seatsPsychologistsMax ? 'plan-seatsPsychologistsMax-error' : undefined} />
               {fieldError('seatsPsychologistsMax')}
             </div>

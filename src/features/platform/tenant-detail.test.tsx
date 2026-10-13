@@ -140,7 +140,7 @@ describe('TenantDetail', () => {
     await ready();
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar plan' }));
     type('Plan', 'CLINIC_PRO');
-    type('Cupos de psicólogos', '10');
+    type('Cupos de profesionales', '10');
     type('Pacientes activos máximos', '300');
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar cambio' }));
     expect(await screen.findByText('Indica el motivo del cambio')).toBeTruthy();
@@ -171,7 +171,7 @@ describe('TenantDetail', () => {
     const error: ApiError = {
       status: 409,
       code: 'PLAN_BELOW_USAGE',
-      message: 'El consultorio usa más cupos de psicólogos de los que permite el nuevo plan.',
+      message: 'El consultorio usa más cupos de profesionales de los que permite el nuevo plan.',
       details: { seatsPsychologistsUsed: 3, seatsPsychologistsMax: 2 },
     };
     vi.mocked(platformApi.changePlan).mockRejectedValue(error);
@@ -179,7 +179,7 @@ describe('TenantDetail', () => {
     await ready();
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar plan' }));
     type('Plan', 'CLINIC_PRO');
-    type('Cupos de psicólogos', '2');
+    type('Cupos de profesionales', '2');
     type('Motivo del cambio', 'Reducción');
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar cambio' }));
     const alert = await screen.findByRole('alert');
@@ -270,7 +270,7 @@ describe('TenantDetail', () => {
     await ready();
     const usage = screen.getByRole('group', { name: 'Uso' });
     const terms = within(usage).getAllByRole('term').map((term) => term.textContent);
-    expect(terms).toEqual(['Psicólogos en uso', 'Pacientes activos', 'Notificaciones del mes']);
+    expect(terms).toEqual(['Profesionales en uso', 'Pacientes activos', 'Notificaciones del mes']);
     const values = within(usage).getAllByRole('definition').map((value) => value.textContent);
     expect(values).toEqual(['3 de 5', '42 de 100', '17']);
   });
