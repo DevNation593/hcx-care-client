@@ -6,14 +6,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { AlertTriangle, Brain, Lock } from 'lucide-react';
+import { AlertTriangle, Lock } from 'lucide-react';
+import { LogoMark } from '@/components/brand/logo';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { authApi, tenantsApi } from '@/lib/api/endpoints';
-import { PASSWORD_MIN_LENGTH, ROUTES } from '@/lib/constants';
+import { APP_NAME, PASSWORD_MIN_LENGTH, ROUTES } from '@/lib/constants';
 import { postLoginRoute } from '@/lib/post-login-route';
 import { useAuthStore } from '@/store/authStore';
 import { isPlatformAdmin } from '@/types/guards';
@@ -94,9 +95,7 @@ export default function ChangePasswordPage() {
       <div className="w-full max-w-md">
         <Card>
           <CardHeader className="text-center">
-            <div className="mx-auto h-12 w-12 rounded-lg bg-primary flex items-center justify-center mb-4">
-              <Brain className="h-7 w-7 text-primary-foreground" />
-            </div>
+            <LogoMark className="mx-auto mb-4 h-12 w-12" title={APP_NAME} />
             <CardTitle>Cambia tu contraseña</CardTitle>
             <CardDescription>
               Tu contraseña es temporal. Elige una nueva para continuar.

@@ -12,7 +12,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Brain, ArrowLeft, Mail, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Mail, CheckCircle2 } from 'lucide-react';
+import { LogoMark } from '@/components/brand/logo';
+import { APP_NAME } from '@/lib/constants';
 
 export default function ForgotPasswordPage() {
   const [submitted, setSubmitted] = useState(false);
@@ -77,9 +79,7 @@ export default function ForgotPasswordPage() {
   return (
     <Card>
       <CardHeader className="text-center">
-        <div className="mx-auto h-12 w-12 rounded-lg bg-primary flex items-center justify-center mb-4">
-          <Brain className="h-7 w-7 text-primary-foreground" />
-        </div>
+        <LogoMark className="mx-auto mb-4 h-12 w-12" title={APP_NAME} />
         <CardTitle>¿Olvidaste tu contraseña?</CardTitle>
         <CardDescription>
           Ingresa tu email y te enviaremos un enlace para restablecer tu contraseña.
