@@ -1,4 +1,4 @@
-# PROYECTO: Psychology Clinic SaaS - Frontend
+# PROYECTO: HCX Care - Frontend
 
 ## 📋 ÍNDICE
 
@@ -697,7 +697,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3001/api/v1
 NEXT_PUBLIC_WS_URL=ws://localhost:3001
 
 # Application
-NEXT_PUBLIC_APP_NAME=Psychology Clinic SaaS
+NEXT_PUBLIC_APP_NAME=HCX Care
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 # Web Push (VAPID keys)
@@ -757,8 +757,8 @@ CMD ["node", "server.js"]
 Build y run:
 
 ```bash
-docker build -t psychology-clinic-web .
-docker run -p 3000:3000 psychology-clinic-web
+docker build -t hcx-care-web .
+docker run -p 3000:3000 hcx-care-web
 ```
 
 ---

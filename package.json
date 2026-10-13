@@ -1,8 +1,8 @@
 {
-  "name": "psychology-clinic-saas",
+  "name": "hcx-care-web",
   "version": "1.0.0",
   "private": true,
-  "description": "Multi-tenant Psychology Clinic SaaS - Frontend",
+  "description": "HCX Care - Frontend",
   "scripts": {
     "dev": "next dev --port 4200",
     "build": "next build",

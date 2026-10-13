@@ -1,6 +1,6 @@
 # 📦 DELIVERABLES SUMMARY
 
-## Psychology Clinic SaaS - Frontend Implementation
+## HCX Care - Frontend Implementation
 
 **Status**: ✅ **COMPLETED - Ready for Integration**
 
@@ -8,7 +8,7 @@
 
 ## 🎯 PROJECT OVERVIEW
 
-Full-stack multi-tenant SaaS platform for psychology clinics with:
+Full-stack multi-tenant SaaS platform for health clinics and practitioners with:
 - **Multi-tenancy**: Clinic as organization with data isolation
 - **RBAC**: 3 roles (MASTER, PROFESIONAL, ASISTENTE)
 - **Seat-based pricing**: Plans priced by number of psychologists
@@ -498,7 +498,7 @@ Full-stack multi-tenant SaaS platform for psychology clinics with:
 
 ## 🎉 CONCLUSION
 
-**The Psychology Clinic SaaS Frontend is PRODUCTION-READY for MVP.**
+**The HCX Care Frontend is PRODUCTION-READY for MVP.**
 
 All core requirements have been implemented:
 - ✅ Multi-tenancy with tenant isolation

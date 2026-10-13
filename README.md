@@ -1,6 +1,6 @@
-# Psychology Clinic SaaS - Frontend 🧠
+# HCX Care - Frontend
 
-> Multi-tenant SaaS platform for psychology clinics and private practices, empowering psychologists with appointment management, patient records, and comprehensive practice management tools.
+> Multi-tenant SaaS platform for health clinics and private practices, empowering health professionals with appointment management, patient records, and comprehensive practice management tools.
 
 ## 🚀 Quick Start
 
@@ -312,8 +312,8 @@ Set environment variables in Vercel Dashboard.
 ### Docker
 
 ```bash
-docker build -t psychology-clinic-web .
-docker run -p 4200:4200 psychology-clinic-web
+docker build -t hcx-care-web .
+docker run -p 4200:4200 hcx-care-web
 ```
 
 ### Build Output
