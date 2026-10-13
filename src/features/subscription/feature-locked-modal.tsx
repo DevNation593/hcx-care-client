@@ -63,7 +63,7 @@ export function FeatureLockedModal({
       case 'actividades':
       case 'tasks':
         return [
-          'Asignar actividades a psicólogos',
+          'Asignar actividades a profesionales',
           'Fechas límite y recordatorios',
           'Seguimiento de progreso',
           'Priorización de pendientes',
@@ -126,7 +126,7 @@ export function FeatureLockedModal({
                     Plan PRO también incluye:
                   </h4>
                   <ul className="space-y-1 text-sm text-gray-600">
-                    <li>• Hasta 15 psicólogos</li>
+                    <li>• Hasta 15 profesionales</li>
                     <li>• 500 pacientes</li>
                     <li>• 50 GB de almacenamiento</li>
                     <li>• Notificaciones web push</li>

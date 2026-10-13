@@ -1,4 +1,4 @@
-# ROUTE MAP - Psychology Clinic SaaS
+# ROUTE MAP - HCX Care
 
 ## Complete Application Routes
 

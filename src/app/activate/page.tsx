@@ -13,7 +13,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Brain, ArrowLeft, Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { LogoMark } from '@/components/brand/logo';
+import { APP_NAME } from '@/lib/constants';
 
 function ActivateAccountForm() {
   const searchParams = useSearchParams();
@@ -95,9 +97,7 @@ function ActivateAccountForm() {
   return (
     <Card>
       <CardHeader className="text-center">
-        <div className="mx-auto h-12 w-12 rounded-lg bg-primary flex items-center justify-center mb-4">
-          <Brain className="h-7 w-7 text-primary-foreground" />
-        </div>
+        <LogoMark className="mx-auto mb-4 h-12 w-12" title={APP_NAME} />
         <CardTitle>Activar cuenta</CardTitle>
         <CardDescription>Establece tu contrasena para acceder.</CardDescription>
       </CardHeader>

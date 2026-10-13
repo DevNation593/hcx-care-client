@@ -316,7 +316,7 @@ export default function ProfilePage() {
                   <Input
                     id="professionalTitle"
                     {...register('professionalTitle')}
-                    placeholder="Ej: Psicólogo Clínico"
+                    placeholder="Ej: Médico general"
                   />
                 </div>
                 <div>
