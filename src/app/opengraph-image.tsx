@@ -16,7 +16,15 @@ export default function OpengraphImage() {
           background: 'linear-gradient(135deg, #1d4ed8 0%, #312e81 100%)',
         }}
       >
-        <div style={{ fontSize: 36, opacity: 0.85 }}>{site.brand.name}</div>
+        <div style={{ display: 'flex', alignItems: 'center', fontSize: 36 }}>
+          {/* The brand mark of components/brand/logo.tsx, inverted to stand on the gradient. */}
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="64" height="64" rx="14" fill="#ffffff" />
+            <path d="M18 16V48M46 16V48" stroke="#1d4ed8" strokeWidth="6" />
+            <path d="M18 32H26L30 23L35 42L39 32H46" stroke="#1d4ed8" strokeWidth="4" />
+          </svg>
+          <div style={{ marginLeft: 20 }}>{site.brand.name}</div>
+        </div>
         <div style={{ fontSize: 72, fontWeight: 700, marginTop: 24, lineHeight: 1.1 }}>{site.brand.tagline}</div>
         <div style={{ fontSize: 30, marginTop: 32, opacity: 0.9 }}>Agenda · Pacientes · Notas clínicas · Facturación</div>
       </div>

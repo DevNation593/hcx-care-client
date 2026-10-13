@@ -14,8 +14,9 @@ import { Team } from './team';
 beforeEach(() => act(() => resetConsent()));
 
 describe('Hero', () => {
-  it('shows the headline with the demo and WhatsApp calls to action', () => {
-    render(<Hero hero={site.hero} contact={{ whatsappNumber: '593991234567', email: '', responseTime: 'En 24 horas.' }} />);
+  it('shows the brand, the headline and the demo and WhatsApp calls to action', () => {
+    render(<Hero brand="HCX Care" hero={site.hero} contact={{ whatsappNumber: '593991234567', email: '', responseTime: 'En 24 horas.' }} />);
+    expect(screen.getByText('HCX Care')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: site.hero.title })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Solicitar demo' })).toHaveAttribute('href', '/contacto');
     expect(screen.getByRole('link', { name: 'Escribir por WhatsApp' }).getAttribute('href')).toContain('wa.me/593991234567');
@@ -23,7 +24,7 @@ describe('Hero', () => {
   });
 
   it('omits WhatsApp without a number', () => {
-    render(<Hero hero={site.hero} contact={{ whatsappNumber: '', email: '', responseTime: '' }} />);
+    render(<Hero brand="HCX Care" hero={site.hero} contact={{ whatsappNumber: '', email: '', responseTime: '' }} />);
     expect(screen.queryByRole('link', { name: 'Escribir por WhatsApp' })).not.toBeInTheDocument();
   });
 });

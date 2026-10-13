@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, ChevronLeft, ChevronRight, CreditCard, LayoutDashboard, ShieldCheck } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, CreditCard, LayoutDashboard } from 'lucide-react';
+import { LogoMark } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { ROUTES } from '@/lib/constants';
 import { cn } from '@/lib/utils';
@@ -32,9 +33,7 @@ export function PlatformSidebar() {
       <div className="h-16 flex items-center justify-between px-4 border-b">
         {!sidebarCollapsed && (
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <ShieldCheck className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <LogoMark />
             <p className="font-semibold text-sm">Panel de control</p>
           </div>
         )}

@@ -1,4 +1,4 @@
-# 💳 SUBSCRIPTION MODEL - Psychology Clinic SaaS
+# 💳 SUBSCRIPTION MODEL - HCX Care
 
 > **Product Strategy Document**  
 > **Version**: 1.0  
@@ -1562,7 +1562,7 @@ Payment fails during auto-billing
    │  ───────────────────────────────────────    │
    │                                             │
    │  ¿Necesitas ayuda? Contáctanos              │
-   │  soporte@psiclinic.com                      │
+   │  soporte@example.com                        │
    │                                             │
    └─────────────────────────────────────────────┘
    ```

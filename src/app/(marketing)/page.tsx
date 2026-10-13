@@ -19,7 +19,7 @@ export default function HomePage() {
   const localBusiness = localBusinessLd();
   return (
     <>
-      <Hero hero={site.hero} contact={site.contact} />
+      <Hero brand={site.brand.name} hero={site.hero} contact={site.contact} />
       <HowItWorks steps={site.howItWorks} />
       <p className="mx-auto -mt-8 max-w-6xl px-4 text-sm">
         <Link href="/como-funciona" className="text-primary underline">Ver el recorrido completo</Link>

@@ -14,7 +14,6 @@ import {
   Calendar,
   CalendarDays,
   Users,
-  Brain,
   Building2,
   ChevronDown,
   ChevronLeft,
@@ -32,6 +31,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { LogoMark } from '@/components/brand/logo';
 
 interface NavItem {
   name: string;
@@ -182,9 +182,7 @@ export function Sidebar() {
       <div className="h-16 flex items-center justify-between px-4 border-b">
         {!sidebarCollapsed && (
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <Brain className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <LogoMark />
             <div>
               <p className="font-semibold text-sm">{tenant?.name || 'Clínica'}</p>
             </div>

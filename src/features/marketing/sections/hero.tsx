@@ -2,11 +2,12 @@ import Link from 'next/link';
 import { hasWhatsappNumber, type ContactInfo, type SiteContent } from '@/content/site';
 import { whatsappUrl } from '../demo-request';
 
-export function Hero({ hero, contact }: { hero: SiteContent['hero']; contact: ContactInfo }) {
+export function Hero({ brand, hero, contact }: { brand: string; hero: SiteContent['hero']; contact: ContactInfo }) {
   return (
     <section className="bg-gradient-to-b from-blue-50 to-background">
       {/* Compact vertical padding keeps both CTAs above the fold on small phones. */}
       <div className="mx-auto max-w-6xl px-4 py-12 text-center md:py-24">
+        <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-primary">{brand}</p>
         <h1 className="mx-auto max-w-3xl text-3xl font-bold tracking-tight md:text-5xl">{hero.title}</h1>
         <p className="mx-auto mt-4 max-w-2xl text-base text-muted-foreground md:text-lg">{hero.subtitle}</p>
         <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
