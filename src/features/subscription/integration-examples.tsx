@@ -42,7 +42,7 @@ export function InviteUserButton() {
     <>
       <Button onClick={handleClick} className="gap-2">
         <UserPlus className="h-4 w-4" />
-        Invitar Psicólogo
+        Invitar Profesional
         {canInvite && remaining <= 3 && (
           <span className="ml-1 text-xs opacity-70">({remaining} restantes)</span>
         )}

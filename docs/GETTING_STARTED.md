@@ -1,6 +1,6 @@
-# 🚀 GETTING STARTED - Psychology Clinic SaaS
+# 🚀 GETTING STARTED - HCX Care
 
-This guide will help you set up and run the Psychology Clinic SaaS frontend for the first time.
+This guide will help you set up and run the HCX Care frontend for the first time.
 
 ## 📋 Prerequisites Checklist
 

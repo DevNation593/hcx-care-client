@@ -542,7 +542,7 @@ function ClinicalHistoryTab({ patientId }: { patientId: string }) {
                       <span>
                         {note.psychologist
                           ? `Dr. ${note.psychologist.firstName} ${note.psychologist.lastName}`
-                          : 'Psicólogo'}
+                          : 'Profesional'}
                       </span>
                       <span>{formatRelativeDate(note.createdAt)}</span>
                     </div>
@@ -587,7 +587,7 @@ function ClinicalHistoryTab({ patientId }: { patientId: string }) {
           <DialogHeader>
             <DialogTitle>Nueva Nota Clínica</DialogTitle>
             <DialogDescription>
-              Las notas clínicas son confidenciales y solo son visibles para psicólogos.
+              Las notas clínicas son confidenciales y solo son visibles para profesionales.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -636,7 +636,7 @@ function ClinicalHistoryTab({ patientId }: { patientId: string }) {
             <DialogDescription>
               {viewNote?.psychologist
                 ? `Dr. ${viewNote.psychologist.firstName} ${viewNote.psychologist.lastName}`
-                : 'Psicólogo'}{' '}
+                : 'Profesional'}{' '}
               — {viewNote && formatDate(viewNote.createdAt)}
             </DialogDescription>
           </DialogHeader>

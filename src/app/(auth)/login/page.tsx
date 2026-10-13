@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Brain } from 'lucide-react';
+import { Logo } from '@/components/brand/logo';
 import Link from 'next/link';
 
 export default function LoginPage() {
@@ -30,9 +30,7 @@ export default function LoginPage() {
     <Card>
       <CardHeader className="space-y-1 text-center">
         <div className="flex justify-center mb-4">
-          <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
-            <Brain className="h-6 w-6 text-primary-foreground" />
-          </div>
+          <Logo className="text-xl" markClassName="h-10 w-10" />
         </div>
         <CardTitle className="text-2xl">Bienvenido</CardTitle>
         <CardDescription>
