@@ -9,6 +9,8 @@ const hooks = vi.hoisted(() => ({
   session: null as unknown,
   presentConsent: vi.fn(),
   signConsent: vi.fn(),
+  refuseConsent: vi.fn(),
+  revokeConsent: vi.fn(),
   complete: vi.fn(),
   cancel: vi.fn(),
   noShow: vi.fn(),
@@ -21,8 +23,8 @@ vi.mock('@/hooks/useTreatmentSessions', () => ({
     saveForm: mutation(vi.fn()),
     presentConsent: mutation(hooks.presentConsent),
     signConsent: mutation(hooks.signConsent),
-    refuseConsent: mutation(vi.fn()),
-    revokeConsent: mutation(vi.fn()),
+    refuseConsent: mutation(hooks.refuseConsent),
+    revokeConsent: mutation(hooks.revokeConsent),
     uploadMedia: mutation(vi.fn()),
     start: mutation(vi.fn()),
     complete: mutation(hooks.complete),
@@ -144,6 +146,76 @@ describe('SessionWorkflow', () => {
     expect(heading()).toHaveTextContent('Procedimiento');
     expect(heading()).toHaveFocus();
     expect(screen.getByText('Paso actual: Procedimiento')).toBeInTheDocument();
+  });
+
+  it('returns the focus to the consent and announces the refusal, although the step stays', async () => {
+    hooks.refuseConsent.mockImplementation(async () => {
+      hooks.session = session({
+        status: 'CONSENT_REFUSED',
+        consentDocuments: [
+          { ...document, status: 'REFUSED', refusedAt: '2026-10-15T15:05:00.000Z' },
+        ] as TreatmentSessionDetail['consentDocuments'],
+        allowedCommands: [],
+      });
+    });
+    const { rerender } = render(<SessionWorkflow id="session-1" />);
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'Mostrar consentimiento al paciente' })),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Rechazar' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Prefiere pensarlo' } });
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Rechazar consentimiento' })),
+    );
+    rerender(<SessionWorkflow id="session-1" />);
+
+    expect(hooks.refuseConsent).toHaveBeenCalledWith({ documentId: 'doc-1', reason: 'Prefiere pensarlo' });
+    expect(heading()).toHaveTextContent('Consentimiento');
+    expect(stepButton(/^Consentimiento/)).toHaveTextContent('Detenido');
+    expect(heading()).toHaveFocus();
+    expect(
+      screen.getByText('Consentimiento rechazado. Paso actual: Consentimiento'),
+    ).toBeInTheDocument();
+  });
+
+  it('returns the focus to the consent and announces the revocation', async () => {
+    const signed = { ...document, status: 'SIGNED', signedAt: '2026-10-15T15:10:00.000Z' };
+    hooks.session = session({
+      status: 'CONSENTED',
+      consentDocumentId: 'doc-1',
+      consentDocuments: [signed] as TreatmentSessionDetail['consentDocuments'],
+      requirements: { start: [], complete: [] },
+      allowedCommands: ['REVOKE_CONSENT', 'START', 'CANCEL', 'NO_SHOW'],
+    });
+    hooks.revokeConsent.mockImplementation(async () => {
+      hooks.session = session({
+        status: 'CONSENT_REVOKED',
+        consentDocumentId: 'doc-1',
+        consentDocuments: [
+          { ...signed, status: 'REVOKED', revokedAt: '2026-10-15T15:20:00.000Z' },
+        ] as TreatmentSessionDetail['consentDocuments'],
+        allowedCommands: [],
+      });
+    });
+    const { rerender } = render(<SessionWorkflow id="session-1" />);
+    // The procedure is current; the professional goes back to the consent to revoke it.
+    fireEvent.click(stepButton(/^Consentimiento/));
+    fireEvent.click(screen.getByRole('button', { name: 'Revocar consentimiento' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Cambió de opinión' } });
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Revocar consentimiento' })),
+    );
+    rerender(<SessionWorkflow id="session-1" />);
+
+    expect(hooks.revokeConsent).toHaveBeenCalledWith({ documentId: 'doc-1', reason: 'Cambió de opinión' });
+    expect(heading()).toHaveTextContent('Consentimiento');
+    expect(heading()).toHaveFocus();
+    expect(
+      screen.getByText('Consentimiento revocado. Paso actual: Consentimiento'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Paso actual: Procedimiento')).not.toBeInTheDocument();
   });
 
   it('leaves the focus alone when the user picks a step', () => {

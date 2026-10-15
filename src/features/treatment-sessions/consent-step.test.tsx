@@ -274,6 +274,28 @@ describe('ConsentStep', () => {
     });
   });
 
+  it('keeps the relationship of a representative within 100 characters', async () => {
+    await present();
+    fillAndDraw();
+    fireEvent.change(screen.getByLabelText('Firma como'), { target: { value: 'REPRESENTATIVE' } });
+    fireEvent.change(screen.getByLabelText(/Nombre de quien firma/), { target: { value: 'Luis Pérez' } });
+    const relationship = screen.getByLabelText(/Relación con el paciente/);
+    expect(relationship).toHaveAttribute('maxLength', '100');
+    const sign = screen.getByRole('button', { name: 'Firmar' });
+
+    // Required for a representative.
+    expect(sign).toBeDisabled();
+
+    fireEvent.change(relationship, { target: { value: 'a'.repeat(101) } });
+    expect(screen.getByText('La relación admite hasta 100 caracteres.')).toBeInTheDocument();
+    expect(relationship).toHaveAttribute('aria-invalid', 'true');
+    expect(sign).toBeDisabled();
+
+    fireEvent.change(relationship, { target: { value: 'a'.repeat(100) } });
+    expect(screen.queryByText(/La relación admite/)).not.toBeInTheDocument();
+    expect(sign).toBeEnabled();
+  });
+
   it('asks for a reason to refuse', async () => {
     await present();
     await click('Rechazar');

@@ -78,10 +78,13 @@ export function formatSignedAt(iso: string, timeZone?: string): string {
   return format(deviceZone());
 }
 
+/** What the server stored when the consent step finished an action. */
+export type ConsentOutcome = 'signed' | 'refused' | 'revoked';
+
 export interface ConsentStepProps {
   session: TreatmentSessionDetail;
   /** Called once a signature, refusal or revocation is stored and the session moved on. */
-  onDone?: () => void;
+  onDone?: (outcome: ConsentOutcome) => void;
 }
 
 /** Shows the consent to the patient, collects the signature or the refusal, and shows the result. */
@@ -146,7 +149,7 @@ export function ConsentStep({ session, onDone }: ConsentStepProps) {
           canRevoke={session.allowedCommands.includes('REVOKE_CONSENT')}
           onRevoke={async (reason) => {
             await commands.revokeConsent.mutateAsync({ documentId: signedDocument.id, reason });
-            onDone?.();
+            onDone?.('revoked');
           }}
         />
       )}
@@ -161,13 +164,13 @@ export function ConsentStep({ session, onDone }: ConsentStepProps) {
               input,
             });
             setSigned({ document, signer });
-            onDone?.();
+            onDone?.('signed');
           }}
           signing={commands.signConsent.isPending}
           onRefuse={async (reason) => {
             await commands.refuseConsent.mutateAsync({ documentId: reading.id, reason });
             setPresented(null);
-            onDone?.();
+            onDone?.('refused');
           }}
         />
       )}

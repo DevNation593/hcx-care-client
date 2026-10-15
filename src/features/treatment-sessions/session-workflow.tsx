@@ -15,9 +15,10 @@ import {
   MISSING_REQUIREMENT_LABELS,
   SESSION_STATUS_LABELS,
   type TreatmentSessionDetail,
+  type TreatmentSessionStatus,
 } from '@/types/treatments';
 import { CloseSummaryStep } from './close-summary-step';
-import { ConsentStep } from './consent-step';
+import { ConsentStep, type ConsentOutcome } from './consent-step';
 import { FormStep } from './form-step';
 import { SESSION_STATUS_VARIANTS } from './patient-treatments-tab';
 import { PhotosStep } from './photos-step';
@@ -40,6 +41,8 @@ export function SessionWorkflow({ id }: { id: string }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const shownStep = useRef<SessionStepId | null>(null);
   const chosenByUser = useRef(false);
+  // The status a refusal or revocation left behind, until the refetched session reports the new one.
+  const awaitingStatusFrom = useRef<TreatmentSessionStatus | null>(null);
   const [announcement, setAnnouncement] = useState('');
 
   const steps = session ? buildSessionSteps(session) : [];
@@ -57,6 +60,8 @@ export function SessionWorkflow({ id }: { id: string }) {
     const previous = shownStep.current;
     shownStep.current = activeId;
     if (previous === null || previous === activeId) return;
+    // A refusal or revocation is announced with its status once the server reports it.
+    if (awaitingStatusFrom.current) return;
     if (chosenByUser.current) {
       chosenByUser.current = false;
       return;
@@ -65,12 +70,29 @@ export function SessionWorkflow({ id }: { id: string }) {
     setAnnouncement(`Paso actual: ${activeLabel}`);
   }, [activeId, activeLabel]);
 
+  // A refusal or revocation may leave the same step on screen (now blocked) while the button that
+  // triggered it is gone: once the new status arrives, the focus returns to the step and the
+  // status is announced, whether or not the step changed.
+  const status = session?.status;
+  useEffect(() => {
+    const from = awaitingStatusFrom.current;
+    if (!from || !status || status === from) return;
+    awaitingStatusFrom.current = null;
+    headingRef.current?.focus();
+    setAnnouncement(`${SESSION_STATUS_LABELS[status]}. Paso actual: ${activeLabel}`);
+  }, [status, activeLabel]);
+
   const choose = (id: SessionStepId) => {
     if (id === activeId) return;
+    awaitingStatusFrom.current = null;
     chosenByUser.current = true;
     setSelected(id);
   };
   const followSession = () => setSelected(null);
+  const consentDone = (outcome: ConsentOutcome) => {
+    if (outcome !== 'signed' && status) awaitingStatusFrom.current = status;
+    followSession();
+  };
   // A closed, cancelled or absent session ends at the summary; the focus follows like any new step.
   const showClose = () => setSelected('close');
 
@@ -169,7 +191,7 @@ export function SessionWorkflow({ id }: { id: string }) {
           {active.id === 'form' && (
             <FormStep key={session.formRecordId ?? 'new'} session={session} onSaved={followSession} />
           )}
-          {active.id === 'consent' && <ConsentStep session={session} onDone={followSession} />}
+          {active.id === 'consent' && <ConsentStep session={session} onDone={consentDone} />}
           {active.id === 'before' && <PhotosStep session={session} phase="BEFORE" />}
           {active.id === 'procedure' && <ProcedureStep session={session} onDone={showClose} />}
           {active.id === 'after' && <PhotosStep session={session} phase="AFTER" />}
