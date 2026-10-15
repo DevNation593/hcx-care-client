@@ -98,6 +98,16 @@ describe('SignaturePad', () => {
     expect(pad()).toHaveAttribute('aria-describedby', 'signature-error');
     expect(pad()).toHaveClass('border-destructive');
   });
+
+  it('spans the width at full width without changing the 3:1 drawing surface', () => {
+    renderPad({ fullWidth: true });
+
+    expect(pad()).toHaveAttribute('width', '600');
+    expect(pad()).toHaveAttribute('height', '200');
+    expect(pad()).toHaveClass('w-full', 'aspect-[3/1]', 'h-auto');
+    // No fixed height or width cap that would stretch the stored image.
+    expect(pad().className).not.toMatch(/\bh-\[|max-w-/);
+  });
 });
 
 describe('isSignatureImage', () => {

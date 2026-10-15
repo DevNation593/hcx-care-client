@@ -1,10 +1,22 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, STORAGE_KEYS } from '@/lib/constants';
 import { ApiError } from '@/types';
+import { MISSING_REQUIREMENT_LABELS, type MissingRequirement } from '@/types/treatments';
 
 // ==========================================
 // API CLIENT CONFIGURATION
 // ==========================================
+
+/** The text of a Blob; FileReader where Blob.text is missing (older engines, jsdom). */
+function blobText(blob: Blob): Promise<string> {
+  if (typeof blob.text === 'function') return blob.text();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
+}
 
 class ApiClient {
   private client: AxiosInstance;
@@ -40,6 +52,7 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
+        await this.readBlobErrorBody(error);
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
         const requestUrl = originalRequest?.url || '';
         const isAuthEndpoint =
@@ -129,6 +142,21 @@ class ApiClient {
     return accessToken;
   }
 
+  /**
+   * A request that expects a file (responseType 'blob') receives its error body as a Blob too:
+   * it is read as JSON so the error keeps the API's code and message.
+   */
+  private async readBlobErrorBody(error: AxiosError): Promise<void> {
+    const response = error.response;
+    if (!response || typeof Blob === 'undefined' || !(response.data instanceof Blob)) return;
+    try {
+      response.data = JSON.parse(await blobText(response.data));
+    } catch {
+      // Not JSON: the error keeps its status and the generic message.
+      response.data = null;
+    }
+  }
+
   private getErrorCode(error: AxiosError): string | undefined {
     const body: unknown = error.response?.data;
     return body && typeof body === 'object' && 'code' in body && typeof body.code === 'string'
@@ -153,6 +181,19 @@ class ApiClient {
       if (typeof data.field === 'string') normalized.field = data.field;
       if (data.details && typeof data.details === 'object' && !Array.isArray(data.details)) {
         normalized.details = data.details as Record<string, unknown>;
+      }
+      // A blocked start or completion of a treatment session lists what is still missing.
+      if (Array.isArray(data.missing)) {
+        normalized.missing = data.missing.filter(
+          (item): item is MissingRequirement =>
+            typeof item === 'string' && Object.hasOwn(MISSING_REQUIREMENT_LABELS, item),
+        );
+      }
+      // A treatment whose requirements are rejected lists the problems as plain texts.
+      if (Array.isArray(data.issues)) {
+        normalized.issues = data.issues
+          .filter((issue): issue is string => typeof issue === 'string')
+          .map((message) => ({ field: '', message }));
       }
       // Validation of clinical records and form definitions lists one issue per field.
       if (Array.isArray(data.details)) {
