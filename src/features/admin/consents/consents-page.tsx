@@ -14,6 +14,7 @@ import {
   useConsentTemplates,
   useCreateConsentTemplate,
   usePublishConsent,
+  useRetireConsentVersion,
   useSaveConsentDraft,
 } from '@/hooks/useConsentTemplates';
 import type { ConsentTemplateSummary } from '@/types/treatments';
@@ -79,6 +80,7 @@ function EditTemplateView({ id, canManage, onBack }: { id: string; canManage: bo
   const templateQuery = useConsentTemplate(id);
   const saveDraft = useSaveConsentDraft(id);
   const publish = usePublishConsent(id);
+  const retire = useRetireConsentVersion();
   const template = templateQuery.data;
 
   return (
@@ -89,7 +91,7 @@ function EditTemplateView({ id, canManage, onBack }: { id: string; canManage: bo
       </div>
       {templateQuery.isError ? (
         <Alert variant="destructive" title="No se pudo cargar la plantilla">
-          <Button variant="outline" size="sm" className="mt-2" onClick={() => templateQuery.refetch()}>
+          <Button variant="outline" size="sm" className="mt-2 min-h-[44px]" onClick={() => templateQuery.refetch()}>
             Reintentar
           </Button>
         </Alert>
@@ -104,6 +106,8 @@ function EditTemplateView({ id, canManage, onBack }: { id: string; canManage: bo
           publishing={publish.isPending}
           onSaveDraft={(draft) => saveDraft.mutate(draft)}
           onPublish={() => publish.mutate(undefined)}
+          onRetire={(versionId) => retire.mutate(versionId)}
+          retiring={retire.isPending}
         />
       )}
     </div>
@@ -147,7 +151,7 @@ export function ConsentsPage({ canManage }: { canManage: boolean }) {
 
       {templatesQuery.isError ? (
         <Alert variant="destructive" title="No se pudieron cargar los consentimientos">
-          <Button variant="outline" size="sm" className="mt-2" onClick={() => templatesQuery.refetch()}>
+          <Button variant="outline" size="sm" className="mt-2 min-h-[44px]" onClick={() => templatesQuery.refetch()}>
             Reintentar
           </Button>
         </Alert>

@@ -15,17 +15,24 @@ import { useConsentTemplates } from '@/hooks/useConsentTemplates';
 import {
   useAddTreatmentVersion,
   useCreateTreatment,
+  useTreatment,
   useTreatments,
   useUpdateTreatment,
 } from '@/hooks/useTreatments';
-import type { TreatmentVersionInput, TreatmentWithCurrent } from '@/types/treatments';
-import { TreatmentVersionForm } from './treatment-version-form';
+import type { TreatmentVersion, TreatmentVersionInput, TreatmentWithCurrent } from '@/types/treatments';
+import { formatDate } from '@/lib/utils';
+import type { ApiError } from '@/types';
+import { TreatmentVersionForm, type ChoicesStatus } from './treatment-version-form';
 
-type Dialogs = null | { mode: 'create' } | { mode: 'version'; treatment: TreatmentWithCurrent };
+type Dialogs =
+  | null
+  | { mode: 'create' }
+  | { mode: 'version'; treatment: TreatmentWithCurrent }
+  | { mode: 'history'; treatment: TreatmentWithCurrent };
 
 const money = new Intl.NumberFormat('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function requirementsSummary({ requirements: r }: TreatmentWithCurrent['current']): string {
+function requirementsSummary({ requirements: r }: Pick<TreatmentVersion, 'requirements'>): string {
   return [
     r.medicalForm.required && 'Ficha',
     r.informedConsent.required &&
@@ -43,6 +50,14 @@ function requirementsSummary({ requirements: r }: TreatmentWithCurrent['current'
 interface FormChoices {
   forms: React.ComponentProps<typeof TreatmentVersionForm>['forms'];
   consentVersions: React.ComponentProps<typeof TreatmentVersionForm>['consentVersions'];
+  formsStatus: ChoicesStatus;
+  consentsStatus: ChoicesStatus;
+  onRetryChoices: () => void;
+}
+
+function choicesStatus(query: { isPending: boolean; isError: boolean; error: unknown }): ChoicesStatus {
+  if (query.isError) return (query.error as ApiError | null)?.status === 403 ? 'forbidden' : 'error';
+  return query.isPending ? 'loading' : 'ready';
 }
 
 function CreateTreatmentDialog({
@@ -157,6 +172,53 @@ function NewVersionDialog({
   );
 }
 
+function HistoryDialog({ treatment, onClose }: { treatment: TreatmentWithCurrent; onClose: () => void }) {
+  const detail = useTreatment(treatment.id);
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="history-title"
+        className="max-h-[90vh] max-w-2xl overflow-y-auto"
+      >
+        <DialogHeader>
+          <DialogTitle id="history-title">Versiones de {treatment.name}</DialogTitle>
+          <DialogDescription>Cada cambio de precio o requisitos es una versión nueva.</DialogDescription>
+        </DialogHeader>
+        {detail.isError ? (
+          <Alert variant="destructive" title="No se pudo cargar el historial">
+            <Button variant="outline" size="sm" className="mt-2 min-h-[44px]" onClick={() => detail.refetch()}>
+              Reintentar
+            </Button>
+          </Alert>
+        ) : !detail.data ? (
+          <Skeleton className="h-24 w-full" />
+        ) : (
+          <ul className="divide-y rounded-md border border-input">
+            {[...detail.data.versions]
+              .sort((a, b) => b.version - a.version)
+              .map((version) => (
+                <li key={version.id} className="space-y-1 p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">v{version.version}</span>
+                    <span className="text-muted-foreground">{formatDate(version.createdAt, 'dd/MM/yyyy')}</span>
+                    {version.version === detail.data.currentVersion && <Badge variant="success">Vigente</Badge>}
+                  </div>
+                  <p className="text-muted-foreground">
+                    {`Precio ${money.format(version.price)} · Impuesto ${version.taxRatePercent}% · ${version.durationMinutes} min`}
+                  </p>
+                  <p>{requirementsSummary(version) || 'Sin requisitos'}</p>
+                </li>
+              ))}
+          </ul>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** The clinic's treatment catalog; price and requirements change through new versions. */
 export function TreatmentsPage({ canManage }: { canManage: boolean }) {
   const treatmentsQuery = useTreatments();
@@ -167,6 +229,12 @@ export function TreatmentsPage({ canManage }: { canManage: boolean }) {
 
   const choices = useMemo<FormChoices>(
     () => ({
+      formsStatus: choicesStatus(formsQuery),
+      consentsStatus: choicesStatus(templatesQuery),
+      onRetryChoices: () => {
+        if (formsQuery.isError) formsQuery.refetch();
+        if (templatesQuery.isError) templatesQuery.refetch();
+      },
       forms: (formsQuery.data ?? [])
         .filter((form) => form.isActive)
         .map((form) => ({
@@ -184,7 +252,7 @@ export function TreatmentsPage({ canManage }: { canManage: boolean }) {
             .map((version) => ({ id: version.id, label: `${template.name} · v${version.version}` })),
         ),
     }),
-    [formsQuery.data, templatesQuery.data],
+    [formsQuery, templatesQuery],
   );
 
   const treatments = treatmentsQuery.data ?? [];
@@ -208,7 +276,7 @@ export function TreatmentsPage({ canManage }: { canManage: boolean }) {
 
       {treatmentsQuery.isError ? (
         <Alert variant="destructive" title="No se pudieron cargar los tratamientos">
-          <Button variant="outline" size="sm" className="mt-2" onClick={() => treatmentsQuery.refetch()}>
+          <Button variant="outline" size="sm" className="mt-2 min-h-[44px]" onClick={() => treatmentsQuery.refetch()}>
             Reintentar
           </Button>
         </Alert>
@@ -248,29 +316,39 @@ export function TreatmentsPage({ canManage }: { canManage: boolean }) {
                       {requirementsSummary(treatment.current) || 'Sin requisitos'}
                     </p>
                   </div>
-                  {canManage && (
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        className="min-h-[44px]"
-                        onClick={() => setDialog({ mode: 'version', treatment })}
-                        aria-label={`Nueva versión de ${treatment.name}`}
-                      >
-                        Nueva versión
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="min-h-[44px]"
-                        disabled={update.isPending}
-                        onClick={() =>
-                          update.mutate({ id: treatment.id, data: { isActive: !treatment.isActive } })
-                        }
-                        aria-label={`${treatment.isActive ? 'Desactivar' : 'Activar'} ${treatment.name}`}
-                      >
-                        {treatment.isActive ? 'Desactivar' : 'Activar'}
-                      </Button>
-                    </div>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="ghost"
+                      className="min-h-[44px]"
+                      onClick={() => setDialog({ mode: 'history', treatment })}
+                      aria-label={`Historial de ${treatment.name}`}
+                    >
+                      Historial
+                    </Button>
+                    {canManage && (
+                      <>
+                        <Button
+                          variant="outline"
+                          className="min-h-[44px]"
+                          onClick={() => setDialog({ mode: 'version', treatment })}
+                          aria-label={`Nueva versión de ${treatment.name}`}
+                        >
+                          Nueva versión
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="min-h-[44px]"
+                          disabled={update.isPending}
+                          onClick={() =>
+                            update.mutate({ id: treatment.id, data: { isActive: !treatment.isActive } })
+                          }
+                          aria-label={`${treatment.isActive ? 'Desactivar' : 'Activar'} ${treatment.name}`}
+                        >
+                          {treatment.isActive ? 'Desactivar' : 'Activar'}
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </li>
@@ -278,6 +356,7 @@ export function TreatmentsPage({ canManage }: { canManage: boolean }) {
         </ul>
       )}
 
+      {dialog?.mode === 'history' && <HistoryDialog treatment={dialog.treatment} onClose={() => setDialog(null)} />}
       {canManage && dialog?.mode === 'create' && (
         <CreateTreatmentDialog choices={choices} onClose={() => setDialog(null)} />
       )}

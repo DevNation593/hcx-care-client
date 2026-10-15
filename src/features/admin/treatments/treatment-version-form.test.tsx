@@ -168,4 +168,90 @@ describe('TreatmentVersionForm', () => {
     setup({ submitting: true });
     expect(screen.getByRole('button', { name: 'Guardar versión' })).toBeDisabled();
   });
+
+  describe('stored references and the lists they come from', () => {
+    const stored = {
+      price: 80,
+      taxRatePercent: 12,
+      durationMinutes: 60,
+      formDefinitionId: 'form-gone',
+      formVersion: 1,
+      consentTemplateVersionId: 'cv-gone',
+      requirements: {
+        medicalForm: { required: true },
+        informedConsent: { required: true, validityDays: null },
+        photos: { minimumBefore: 0, minimumAfter: 0 },
+        clinicalNotes: { requiredForCompletion: false },
+      },
+    } as TreatmentVersion;
+
+    it('clears a stored form and consent the lists no longer offer, and asks to choose again', () => {
+      setup({ initial: stored });
+
+      expect(screen.getAllByText('La versión anterior ya no está disponible; elige otra.')).toHaveLength(2);
+      expect((screen.getByLabelText('Ficha') as HTMLSelectElement).value).toBe('');
+      expect((screen.getByLabelText('Consentimiento') as HTMLSelectElement).value).toBe('');
+
+      save();
+      expect(screen.getByText('Elige la ficha')).toBeInTheDocument();
+      expect(screen.getByText('Elige el consentimiento')).toBeInTheDocument();
+      expect(onSubmit).not.toHaveBeenCalled();
+
+      type('Ficha', 'form-1');
+      expect(screen.getAllByText('La versión anterior ya no está disponible; elige otra.')).toHaveLength(1);
+    });
+
+    it('does not send a stale reference when the requirement is turned off', () => {
+      setup({ initial: stored });
+      fireEvent.click(screen.getByLabelText('Exige ficha'));
+      fireEvent.click(screen.getByLabelText('Exige consentimiento'));
+      save();
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ formDefinitionId: null, formVersion: null, consentTemplateVersionId: null }),
+      );
+    });
+
+    it('does not judge the stored references while the lists load', () => {
+      setup({ initial: stored, formsStatus: 'loading', consentsStatus: 'loading' });
+
+      expect(screen.getByText('Cargando las fichas…')).toBeInTheDocument();
+      expect(screen.getByText('Cargando los consentimientos…')).toBeInTheDocument();
+      expect(screen.queryByText('La versión anterior ya no está disponible; elige otra.')).not.toBeInTheDocument();
+      save();
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ formDefinitionId: 'form-gone', consentTemplateVersionId: 'cv-gone' }),
+      );
+    });
+
+    it('shows an error with a retry when the lists fail to load', () => {
+      const retry = vi.fn();
+      setup({ formsStatus: 'error', consentsStatus: 'error', onRetryChoices: retry });
+
+      expect(screen.getByText('No se pudieron cargar las fichas')).toBeInTheDocument();
+      expect(screen.getByText('No se pudieron cargar los consentimientos')).toBeInTheDocument();
+      expect(screen.getByLabelText('Exige ficha')).toBeDisabled();
+      fireEvent.click(screen.getAllByRole('button', { name: 'Reintentar' })[0]);
+      expect(retry).toHaveBeenCalled();
+    });
+
+    it('tells who has no access to the forms and disables the form requirement', () => {
+      setup({ formsStatus: 'forbidden' });
+
+      expect(
+        screen.getByText(
+          'No tienes acceso al listado de fichas. Pide al titular que configure la ficha de este tratamiento.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText('Exige ficha')).toBeDisabled();
+    });
+
+    it('keeps the stored form when the list is forbidden', () => {
+      setup({ initial: { ...stored, consentTemplateVersionId: 'cv-1' }, formsStatus: 'forbidden' });
+      save();
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ formDefinitionId: 'form-gone', formVersion: 1, consentTemplateVersionId: 'cv-1' }),
+      );
+    });
+  });
 });

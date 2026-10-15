@@ -142,4 +142,52 @@ describe('ConsentTemplateEditor', () => {
     expect(screen.queryByRole('button', { name: 'Publicar' })).not.toBeInTheDocument();
     expect(screen.getByTestId('consent-preview')).toBeInTheDocument();
   });
+
+  describe('retiring a version', () => {
+    const published = template([version({})]);
+
+    it('confirms before retiring a published version', () => {
+      const onRetire = vi.fn();
+      render(<ConsentTemplateEditor template={published} onSaveDraft={onSaveDraft} onPublish={onPublish} onRetire={onRetire} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Retirar v1' }));
+      expect(onRetire).not.toHaveBeenCalled();
+      expect(screen.getByText('Retirar la versión 1')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Retirar' }));
+      expect(onRetire).toHaveBeenCalledWith('v-1');
+      expect(screen.queryByText('Retirar la versión 1')).not.toBeInTheDocument();
+    });
+
+    it('cancels without retiring', () => {
+      const onRetire = vi.fn();
+      render(<ConsentTemplateEditor template={published} onSaveDraft={onSaveDraft} onPublish={onPublish} onRetire={onRetire} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Retirar v1' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      expect(onRetire).not.toHaveBeenCalled();
+    });
+
+    it('offers it only on published versions and not when read only', () => {
+      const versions = [
+        version({ id: 'v-3', version: 3, status: 'DRAFT', publishedAt: null }),
+        version({ id: 'v-2', version: 2, status: 'RETIRED', retiredAt: '2026-04-10T15:00:00.000Z' }),
+        version({}),
+      ];
+      const { unmount } = render(
+        <ConsentTemplateEditor template={template(versions)} onSaveDraft={onSaveDraft} onPublish={onPublish} onRetire={vi.fn()} />,
+      );
+      expect(screen.getAllByRole('button', { name: /^Retirar v/ })).toHaveLength(1);
+      expect(screen.getByRole('button', { name: 'Retirar v1' })).toBeInTheDocument();
+      const retired = screen.getAllByRole('listitem')[1];
+      expect(retired).toHaveTextContent('Retirada');
+      expect(retired).toHaveTextContent('10/04/2026');
+      unmount();
+
+      render(
+        <ConsentTemplateEditor readOnly template={template(versions)} onSaveDraft={onSaveDraft} onPublish={onPublish} onRetire={vi.fn()} />,
+      );
+      expect(screen.queryByRole('button', { name: /^Retirar v/ })).not.toBeInTheDocument();
+    });
+  });
 });

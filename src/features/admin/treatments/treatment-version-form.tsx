@@ -7,6 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { TreatmentVersion, TreatmentVersionInput } from '@/types/treatments';
 
+/** How the lists of forms and consents the selectors need are doing; `forbidden` is a 403. */
+export type ChoicesStatus = 'ready' | 'loading' | 'error' | 'forbidden';
+
 export interface TreatmentVersionFormProps {
   initial?: TreatmentVersion;
   forms: { id: string; name: string; versions: number[] }[];
@@ -16,7 +19,13 @@ export interface TreatmentVersionFormProps {
   submitting?: boolean;
   /** What the API rejected (400 TREATMENT_REQUIREMENTS_INVALID), as plain texts. */
   issues?: string[];
+  formsStatus?: ChoicesStatus;
+  consentsStatus?: ChoicesStatus;
+  /** Asks again for the lists that failed to load. */
+  onRetryChoices?: () => void;
 }
+
+const STALE_NOTE = 'La versión anterior ya no está disponible; elige otra.';
 
 const MAX_PRICE = 999999.99;
 const MAX_VALIDITY_DAYS = 3650;
@@ -41,19 +50,22 @@ function Toggle({
   id,
   label,
   checked,
+  disabled = false,
   onChange,
 }: {
   id: string;
   label: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label htmlFor={id} className="flex min-h-[44px] cursor-pointer items-center gap-3 text-sm font-medium">
+    <label htmlFor={id} className={`flex min-h-[44px] items-center gap-3 text-sm font-medium ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
       <input
         id={id}
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
         className="h-5 w-5 shrink-0 rounded border-input accent-primary"
       />
@@ -70,6 +82,9 @@ export function TreatmentVersionForm({
   onSubmit,
   submitting = false,
   issues = [],
+  formsStatus = 'ready',
+  consentsStatus = 'ready',
+  onRetryChoices,
 }: TreatmentVersionFormProps) {
   const [price, setPrice] = useState(initial ? String(initial.price) : '');
   const [tax, setTax] = useState(initial ? String(initial.taxRatePercent) : '0');
@@ -95,7 +110,23 @@ export function TreatmentVersionForm({
   const validityValue = validityDays.trim() === '' ? null : parseWhole(validityDays);
   const beforeValue = parseWhole(minBefore);
   const afterValue = parseWhole(minAfter);
-  const form = forms.find((candidate) => candidate.id === formId);
+  // A stored form or consent that the lists no longer offer (retired, deactivated) is dropped:
+  // the user chooses again instead of the old reference being sent unseen.
+  const storedForm = forms.find((candidate) => candidate.id === formId);
+  const formStale =
+    formsStatus === 'ready' &&
+    !!initial?.formDefinitionId &&
+    formId === initial.formDefinitionId &&
+    !storedForm?.versions.includes(Number(formVersion));
+  const consentStale =
+    consentsStatus === 'ready' &&
+    !!initial?.consentTemplateVersionId &&
+    consentId === initial.consentTemplateVersionId &&
+    !consentVersions.some((version) => version.id === consentId);
+  const formChoice = formStale ? '' : formId;
+  const formVersionChoice = formStale ? '' : formVersion;
+  const consentChoice = consentStale ? '' : consentId;
+  const form = forms.find((candidate) => candidate.id === formChoice);
 
   const errors: Record<string, string> = {};
   if (priceValue === null || priceValue > MAX_PRICE) {
@@ -106,13 +137,16 @@ export function TreatmentVersionForm({
     errors.duration = 'La duración debe ser de 5 a 1440 minutos';
   }
   if (formRequired) {
-    if (!formId) errors.form = 'Elige la ficha';
-    else if (!formVersion || !form?.versions.includes(Number(formVersion))) {
+    if (!formChoice) errors.form = 'Elige la ficha';
+    else if (
+      !formVersionChoice ||
+      (formsStatus === 'ready' && !form?.versions.includes(Number(formVersionChoice)))
+    ) {
       errors.formVersion = 'Elige la versión de la ficha';
     }
   }
   if (consentRequired) {
-    if (!consentId) errors.consent = 'Elige el consentimiento';
+    if (!consentChoice) errors.consent = 'Elige el consentimiento';
     if (validityDays.trim() !== '' && (validityValue === null || validityValue < 1 || validityValue > MAX_VALIDITY_DAYS)) {
       errors.validity = `La vigencia debe ser de 1 a ${MAX_VALIDITY_DAYS} días`;
     }
@@ -130,9 +164,9 @@ export function TreatmentVersionForm({
       price: priceValue as number,
       taxRatePercent: taxValue as number,
       durationMinutes: durationValue as number,
-      formDefinitionId: formRequired ? formId : null,
-      formVersion: formRequired ? Number(formVersion) : null,
-      consentTemplateVersionId: consentRequired ? consentId : null,
+      formDefinitionId: formRequired ? formChoice : null,
+      formVersion: formRequired ? Number(formVersionChoice) : null,
+      consentTemplateVersionId: consentRequired ? consentChoice : null,
       requirements: {
         medicalForm: { required: formRequired },
         informedConsent: {
@@ -152,6 +186,31 @@ export function TreatmentVersionForm({
       </p>
     ) : null;
   const describedBy = (id: string, message?: string) => (message ? `${id}-error` : undefined);
+
+  const retry = onRetryChoices && (
+    <Button type="button" variant="outline" size="sm" className="mt-2 min-h-[44px]" onClick={onRetryChoices}>
+      Reintentar
+    </Button>
+  );
+  /** What replaces a selector while its list is not available; null when it is. */
+  const choicesNotice = (status: ChoicesStatus, what: string, forbidden?: string) => {
+    if (status === 'loading') return <p className="text-sm text-muted-foreground">Cargando {what}…</p>;
+    if (status === 'error') {
+      return (
+        <Alert variant="destructive" title={`No se pudieron cargar ${what}`}>
+          {retry}
+        </Alert>
+      );
+    }
+    if (status === 'forbidden') return <Alert variant="warning">{forbidden}</Alert>;
+    return null;
+  };
+  const formsNotice = choicesNotice(
+    formsStatus,
+    'las fichas',
+    'No tienes acceso al listado de fichas. Pide al titular que configure la ficha de este tratamiento.',
+  );
+  const consentsNotice = choicesNotice(consentsStatus, 'los consentimientos');
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-6">
@@ -217,15 +276,22 @@ export function TreatmentVersionForm({
       <fieldset className="space-y-3 rounded-md border border-input p-4">
         <legend className="px-1 text-sm font-semibold">Requisitos de la sesión</legend>
 
-        <Toggle id="tv-form-required" label="Exige ficha" checked={formRequired} onChange={setFormRequired} />
-        {formRequired && (
+        <Toggle
+          id="tv-form-required"
+          label="Exige ficha"
+          checked={formRequired}
+          disabled={formsStatus === 'forbidden' || formsStatus === 'error'}
+          onChange={setFormRequired}
+        />
+        {(formsNotice && (formRequired || formsStatus !== 'loading')) ? formsNotice : null}
+        {formRequired && formsStatus === 'ready' && (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="tv-form">Ficha</Label>
               <select
                 id="tv-form"
                 className={SELECT_CLASS}
-                value={formId}
+                value={formChoice}
                 aria-invalid={!!shown.form || undefined}
                 aria-describedby={describedBy('tv-form', shown.form)}
                 onChange={(event) => {
@@ -240,6 +306,7 @@ export function TreatmentVersionForm({
                   </option>
                 ))}
               </select>
+              {formStale && <p className="mt-1 text-sm text-muted-foreground">{STALE_NOTE}</p>}
               {fieldError('tv-form', shown.form)}
             </div>
             <div>
@@ -247,7 +314,7 @@ export function TreatmentVersionForm({
               <select
                 id="tv-form-version"
                 className={SELECT_CLASS}
-                value={formVersion}
+                value={formVersionChoice}
                 disabled={!form}
                 aria-invalid={!!shown.formVersion || undefined}
                 aria-describedby={describedBy('tv-form-version', shown.formVersion)}
@@ -269,16 +336,18 @@ export function TreatmentVersionForm({
           id="tv-consent-required"
           label="Exige consentimiento"
           checked={consentRequired}
+          disabled={consentsStatus === 'error'}
           onChange={setConsentRequired}
         />
-        {consentRequired && (
+        {consentsNotice && (consentRequired || consentsStatus !== 'loading') ? consentsNotice : null}
+        {consentRequired && consentsStatus === 'ready' && (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="tv-consent">Consentimiento</Label>
               <select
                 id="tv-consent"
                 className={SELECT_CLASS}
-                value={consentId}
+                value={consentChoice}
                 aria-invalid={!!shown.consent || undefined}
                 aria-describedby={describedBy('tv-consent', shown.consent)}
                 onChange={(event) => setConsentId(event.target.value)}
@@ -290,6 +359,7 @@ export function TreatmentVersionForm({
                   </option>
                 ))}
               </select>
+              {consentStale && <p className="mt-1 text-sm text-muted-foreground">{STALE_NOTE}</p>}
               {fieldError('tv-consent', shown.consent)}
             </div>
             <div>

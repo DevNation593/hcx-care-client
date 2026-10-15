@@ -8,6 +8,7 @@ const hooks = vi.hoisted(() => ({
   saveDraft: vi.fn(),
   publish: vi.fn(),
   create: vi.fn(),
+  retire: vi.fn(),
 }));
 
 vi.mock('@/hooks/useConsentTemplates', () => ({
@@ -16,6 +17,7 @@ vi.mock('@/hooks/useConsentTemplates', () => ({
   useSaveConsentDraft: () => ({ mutate: hooks.saveDraft, isPending: false }),
   usePublishConsent: () => ({ mutate: hooks.publish, isPending: false }),
   useCreateConsentTemplate: () => ({ mutate: hooks.create, isPending: false }),
+  useRetireConsentVersion: () => ({ mutate: hooks.retire, isPending: false }),
 }));
 
 const summary = {
@@ -88,5 +90,13 @@ describe('ConsentsPage', () => {
       { name: 'Relleno', title: 'Consentimiento', body: 'Yo, {{paciente}}' },
       expect.anything(),
     );
+  });
+
+  it('retires a published version after confirming', () => {
+    render(<ConsentsPage canManage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Toxina' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retirar v1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retirar' }));
+    expect(hooks.retire).toHaveBeenCalledWith('v-1');
   });
 });

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDate } from '@/lib/utils';
 import type { ConsentTemplate, ConsentTemplateVersionStatus } from '@/types/treatments';
@@ -15,6 +16,9 @@ export interface ConsentTemplateEditorProps {
   onPublish(): void;
   saving?: boolean;
   publishing?: boolean;
+  /** Retires a published version (after confirming); it can no longer be chosen for a treatment. */
+  onRetire?(versionId: string): void;
+  retiring?: boolean;
   /** Shows the versions and the preview without the actions that change them. */
   readOnly?: boolean;
 }
@@ -58,6 +62,8 @@ export function ConsentTemplateEditor({
   onPublish,
   saving = false,
   publishing = false,
+  onRetire,
+  retiring = false,
   readOnly = false,
 }: ConsentTemplateEditorProps) {
   const versions = template?.versions ?? [];
@@ -67,6 +73,8 @@ export function ConsentTemplateEditor({
 
   const [title, setTitle] = useState(source?.title ?? '');
   const [body, setBody] = useState(source?.body ?? '');
+  const [retireId, setRetireId] = useState<string | null>(null);
+  const retireVersion = versions.find((version) => version.id === retireId);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const caret = useRef<number | null>(null);
 
@@ -188,15 +196,59 @@ export function ConsentTemplateEditor({
                 <span className="font-medium">v{version.version}</span>
                 <Badge variant={STATUS_VARIANTS[version.status]}>{STATUS_LABELS[version.status]}</Badge>
                 <span className="text-muted-foreground">
-                  {formatDate(version.publishedAt ?? version.createdAt, 'dd/MM/yyyy')}
+                  {version.status === 'RETIRED' && version.retiredAt
+                    ? `Retirada el ${formatDate(version.retiredAt, 'dd/MM/yyyy')}`
+                    : formatDate(version.publishedAt ?? version.createdAt, 'dd/MM/yyyy')}
                 </span>
                 <code className="text-xs text-muted-foreground" title="Huella del texto">
                   {version.checksum.slice(0, 12)}
                 </code>
+                {!readOnly && onRetire && version.status === 'PUBLISHED' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px] sm:ml-auto"
+                    aria-label={`Retirar v${version.version}`}
+                    onClick={() => setRetireId(version.id)}
+                  >
+                    Retirar
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
         </div>
+      )}
+
+      {retireVersion && onRetire && (
+        <Dialog open onOpenChange={(open) => !open && setRetireId(null)}>
+          <DialogContent role="dialog" aria-modal="true" aria-labelledby="retire-title">
+            <DialogHeader>
+              <DialogTitle id="retire-title">Retirar la versión {retireVersion.version}</DialogTitle>
+              <DialogDescription>
+                Ya no se podrá elegir en tratamientos nuevos. Lo que ya la usa conserva su texto.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" className="min-h-[44px]" onClick={() => setRetireId(null)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="min-h-[44px]"
+                loading={retiring}
+                onClick={() => {
+                  onRetire(retireVersion.id);
+                  setRetireId(null);
+                }}
+              >
+                Retirar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
