@@ -25,6 +25,12 @@ import { PhotosStep } from './photos-step';
 import { ProcedureStep } from './procedure-step';
 import { buildSessionSteps, type SessionStep, type SessionStepId } from './session-steps';
 
+// What a refusal or revocation did to the document, when the session's status does not say it.
+const CONSENT_OUTCOME_LABELS: Record<Exclude<ConsentOutcome, 'signed'>, string> = {
+  refused: 'Consentimiento rechazado',
+  revoked: 'Consentimiento revocado',
+};
+
 const STATE_LABELS: Record<SessionStep['state'], string> = {
   done: 'Completado',
   current: 'En curso',
@@ -35,14 +41,19 @@ const STATE_LABELS: Record<SessionStep['state'], string> = {
 
 /** The tablet page of a treatment session: header, stepper and the chosen step. */
 export function SessionWorkflow({ id }: { id: string }) {
-  const { data: session, isPending, isError, error, refetch } = useTreatmentSession(id);
+  const { data: session, dataUpdatedAt, isPending, isError, error, refetch } = useTreatmentSession(id);
   // A step picked to review; otherwise the page follows the current one.
   const [selected, setSelected] = useState<SessionStepId | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const shownStep = useRef<SessionStepId | null>(null);
   const chosenByUser = useRef(false);
-  // The status a refusal or revocation left behind, until the refetched session reports the new one.
-  const awaitingStatusFrom = useRef<TreatmentSessionStatus | null>(null);
+  // A refusal or revocation waiting for the refetched session: what was on screen when it ended.
+  const awaitingOutcome = useRef<{
+    outcome: Exclude<ConsentOutcome, 'signed'>;
+    status: TreatmentSessionStatus;
+    session: TreatmentSessionDetail;
+    updatedAt: number | undefined;
+  } | null>(null);
   const [announcement, setAnnouncement] = useState('');
   // The procedure notes being typed; null until the user types, so the saved ones show meanwhile.
   const [typedNotes, setTypedNotes] = useState<string | null>(null);
@@ -62,8 +73,8 @@ export function SessionWorkflow({ id }: { id: string }) {
     const previous = shownStep.current;
     shownStep.current = activeId;
     if (previous === null || previous === activeId) return;
-    // A refusal or revocation is announced with its status once the server reports it.
-    if (awaitingStatusFrom.current) return;
+    // A refusal or revocation is announced with its outcome once the server reports it.
+    if (awaitingOutcome.current) return;
     if (chosenByUser.current) {
       chosenByUser.current = false;
       return;
@@ -72,27 +83,34 @@ export function SessionWorkflow({ id }: { id: string }) {
     setAnnouncement(`Paso actual: ${activeLabel}`);
   }, [activeId, activeLabel]);
 
-  // A refusal or revocation may leave the same step on screen (now blocked) while the button that
-  // triggered it is gone: once the new status arrives, the focus returns to the step and the
-  // status is announced, whether or not the step changed.
-  const status = session?.status;
+  // A refusal or revocation may leave the same step on screen (now blocked), or even the same
+  // status (a revocation the session's status does not depend on), while the button that
+  // triggered it is gone. As soon as the refetched session arrives, whatever it says, the focus
+  // returns to the step and the outcome is announced; the wait never outlives that answer.
   useEffect(() => {
-    const from = awaitingStatusFrom.current;
-    if (!from || !status || status === from) return;
-    awaitingStatusFrom.current = null;
+    const wait = awaitingOutcome.current;
+    if (!wait || !session) return;
+    if (session === wait.session && dataUpdatedAt === wait.updatedAt) return;
+    awaitingOutcome.current = null;
     headingRef.current?.focus();
-    setAnnouncement(`${SESSION_STATUS_LABELS[status]}. Paso actual: ${activeLabel}`);
-  }, [status, activeLabel]);
+    const outcome =
+      session.status !== wait.status
+        ? SESSION_STATUS_LABELS[session.status]
+        : CONSENT_OUTCOME_LABELS[wait.outcome];
+    setAnnouncement(`${outcome}. Paso actual: ${activeLabel}`);
+  }, [session, dataUpdatedAt, activeLabel]);
 
   const choose = (id: SessionStepId) => {
     if (id === activeId) return;
-    awaitingStatusFrom.current = null;
+    awaitingOutcome.current = null;
     chosenByUser.current = true;
     setSelected(id);
   };
   const followSession = () => setSelected(null);
   const consentDone = (outcome: ConsentOutcome) => {
-    if (outcome !== 'signed' && status) awaitingStatusFrom.current = status;
+    if (outcome !== 'signed' && session) {
+      awaitingOutcome.current = { outcome, status: session.status, session, updatedAt: dataUpdatedAt };
+    }
     followSession();
   };
   // A closed, cancelled or absent session ends at the summary; the focus follows like any new step.

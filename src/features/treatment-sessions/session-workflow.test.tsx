@@ -7,6 +7,7 @@ const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 
 const hooks = vi.hoisted(() => ({
   session: null as unknown,
+  updatedAt: 1,
   presentConsent: vi.fn(),
   signConsent: vi.fn(),
   refuseConsent: vi.fn(),
@@ -18,7 +19,12 @@ const hooks = vi.hoisted(() => ({
 
 const mutation = (mutateAsync: unknown) => ({ mutateAsync, isPending: false });
 vi.mock('@/hooks/useTreatmentSessions', () => ({
-  useTreatmentSession: () => ({ data: hooks.session, isPending: false, isError: false }),
+  useTreatmentSession: () => ({
+    data: hooks.session,
+    dataUpdatedAt: hooks.updatedAt,
+    isPending: false,
+    isError: false,
+  }),
   useSessionCommand: () => ({
     saveForm: mutation(vi.fn()),
     presentConsent: mutation(hooks.presentConsent),
@@ -86,6 +92,7 @@ const session = (overrides: Partial<TreatmentSessionDetail> = {}): TreatmentSess
 beforeEach(() => {
   vi.clearAllMocks();
   hooks.session = session();
+  hooks.updatedAt = 1;
   hooks.presentConsent.mockResolvedValue(document);
   hooks.signConsent.mockImplementation(async () => {
     const signed = { ...document, status: 'SIGNED', signedAt: '2026-10-15T15:10:00.000Z' };
@@ -216,6 +223,89 @@ describe('SessionWorkflow', () => {
       screen.getByText('Consentimiento revocado. Paso actual: Consentimiento'),
     ).toBeInTheDocument();
     expect(screen.queryByText('Paso actual: Procedimiento')).not.toBeInTheDocument();
+  });
+
+  it('announces a revocation that leaves the status alone, and keeps following the session', async () => {
+    const signed = { ...document, status: 'SIGNED', signedAt: '2026-10-15T15:10:00.000Z' };
+    hooks.session = session({
+      status: 'CONSENTED',
+      consentDocumentId: 'doc-1',
+      consentDocuments: [signed] as TreatmentSessionDetail['consentDocuments'],
+      requirements: { start: [], complete: [] },
+      allowedCommands: ['REVOKE_CONSENT', 'START', 'CANCEL', 'NO_SHOW'],
+    });
+    hooks.revokeConsent.mockImplementation(async () => {
+      // The refetched detail: the document is revoked, the session keeps its status.
+      hooks.session = session({
+        status: 'CONSENTED',
+        consentDocumentId: 'doc-1',
+        consentDocuments: [
+          { ...signed, status: 'REVOKED', revokedAt: '2026-10-15T15:20:00.000Z' },
+        ] as TreatmentSessionDetail['consentDocuments'],
+        requirements: { start: [], complete: [] },
+        allowedCommands: ['START', 'CANCEL', 'NO_SHOW'],
+      });
+    });
+    hooks.noShow.mockImplementation(async () => {
+      hooks.session = session({ status: 'NO_SHOW', requirements: { start: [], complete: [] }, allowedCommands: [] });
+    });
+    const { rerender } = render(<SessionWorkflow id="session-1" />);
+    fireEvent.click(stepButton(/^Consentimiento/));
+    fireEvent.click(screen.getByRole('button', { name: 'Revocar consentimiento' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Cambió de opinión' } });
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Revocar consentimiento' })),
+    );
+    rerender(<SessionWorkflow id="session-1" />);
+
+    expect(heading()).toHaveTextContent('Procedimiento');
+    expect(heading()).toHaveFocus();
+    expect(
+      screen.getByText('Consentimiento revocado. Paso actual: Procedimiento'),
+    ).toBeInTheDocument();
+
+    // The wait is over: a later automatic change still moves the focus.
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'No asistió' })));
+    await act(async () =>
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar inasistencia' }),
+      ),
+    );
+    rerender(<SessionWorkflow id="session-1" />);
+
+    expect(heading()).toHaveTextContent('Cierre');
+    expect(heading()).toHaveFocus();
+    expect(screen.getByText('Paso actual: Cierre')).toBeInTheDocument();
+  });
+
+  it('ends the wait on a refetch that returns identical data', async () => {
+    const signed = { ...document, status: 'SIGNED', signedAt: '2026-10-15T15:10:00.000Z' };
+    hooks.session = session({
+      status: 'CONSENTED',
+      consentDocumentId: 'doc-1',
+      consentDocuments: [signed] as TreatmentSessionDetail['consentDocuments'],
+      requirements: { start: [], complete: [] },
+      allowedCommands: ['REVOKE_CONSENT', 'START', 'CANCEL', 'NO_SHOW'],
+    });
+    // The query keeps the same data object (structural sharing); only the fetch time moves.
+    hooks.revokeConsent.mockImplementation(async () => {
+      hooks.updatedAt = 2;
+    });
+    const { rerender } = render(<SessionWorkflow id="session-1" />);
+    fireEvent.click(stepButton(/^Consentimiento/));
+    fireEvent.click(screen.getByRole('button', { name: 'Revocar consentimiento' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Cambió de opinión' } });
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Revocar consentimiento' })),
+    );
+    rerender(<SessionWorkflow id="session-1" />);
+
+    expect(heading()).toHaveFocus();
+    expect(
+      screen.getByText('Consentimiento revocado. Paso actual: Procedimiento'),
+    ).toBeInTheDocument();
   });
 
   it('leaves the focus alone when the user picks a step', () => {
