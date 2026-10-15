@@ -49,7 +49,8 @@ export function useCreateTreatmentSession(patientId: string) {
 }
 
 /**
- * A command of a session. It refreshes the session and the patients' lists of sessions. A 422
+ * A command of a session. It refreshes the session and the patients' lists of sessions, and the
+ * session alone after a 409 (the command no longer applies to it). A 422
  * that blocks a start or a completion keeps its `missing` list on the error and shows no toast:
  * the step shows what is missing.
  */
@@ -78,6 +79,10 @@ function useSessionMutation<TInput, TResult>(
       toast.success(success);
     },
     onError: (error) => {
+      // The session moved on elsewhere: read it again so commands it no longer allows go away.
+      if (error.status === 409) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TREATMENT_SESSION(id) });
+      }
       if (error.missing?.length) return;
       toast.error(error.message);
     },

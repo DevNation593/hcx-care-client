@@ -83,12 +83,14 @@ export type ConsentOutcome = 'signed' | 'refused' | 'revoked';
 
 export interface ConsentStepProps {
   session: TreatmentSessionDetail;
+  /** For someone other than the session's professional: nothing to present or sign. */
+  readOnly?: boolean;
   /** Called once a signature, refusal or revocation is stored and the session moved on. */
   onDone?: (outcome: ConsentOutcome) => void;
 }
 
 /** Shows the consent to the patient, collects the signature or the refusal, and shows the result. */
-export function ConsentStep({ session, onDone }: ConsentStepProps) {
+export function ConsentStep({ session, readOnly = false, onDone }: ConsentStepProps) {
   const commands = useSessionCommand(session.id);
   // The body comes only from presenting: the session detail lists documents without it.
   const [presented, setPresented] = useState<ConsentDocument | null>(null);
@@ -119,7 +121,7 @@ export function ConsentStep({ session, onDone }: ConsentStepProps) {
   const reading =
     !signedDocument && presented && !changedOnServer(presented.id, 'PRESENTED') ? presented : null;
   const canPresent =
-    session.allowedCommands.includes('PRESENT_CONSENT') && !signedDocument && !reading;
+    !readOnly && session.allowedCommands.includes('PRESENT_CONSENT') && !signedDocument && !reading;
   const history = documents.filter(
     (document) => document.id !== signedDocument?.id && document.status !== 'PRESENTED',
   );
@@ -195,7 +197,9 @@ export function ConsentStep({ session, onDone }: ConsentStepProps) {
 
       {!signedDocument && !reading && !canPresent && history.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          El consentimiento se presenta cuando la ficha esté lista.
+          {readOnly
+            ? 'Todavía no hay un consentimiento firmado.'
+            : 'El consentimiento se presenta cuando la ficha esté lista.'}
         </p>
       )}
 

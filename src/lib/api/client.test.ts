@@ -79,6 +79,29 @@ describe('ApiClient error normalization', () => {
     }
   });
 
+  it('reads the JSON error body of a request that expected a file', async () => {
+    interceptor.status = 500;
+    interceptor.responseData = new Blob(
+      [JSON.stringify({
+        statusCode: 500, code: 'CONSENT_PDF_INTEGRITY',
+        message: 'El PDF del consentimiento no coincide con el que se firmó.',
+      })],
+      { type: 'application/json' },
+    );
+    await expect(apiClient.post('/tenants/t/consent-documents/d/pdf', {})).rejects.toMatchObject({
+      status: 500, code: 'CONSENT_PDF_INTEGRITY',
+      message: 'El PDF del consentimiento no coincide con el que se firmó.',
+    });
+  });
+
+  it('keeps the generic message when a file error body is not JSON', async () => {
+    interceptor.status = 500;
+    interceptor.responseData = new Blob(['<html>Bad gateway</html>'], { type: 'text/html' });
+    await expect(apiClient.post('/tenants/t/consent-documents/d/pdf', {})).rejects.toMatchObject({
+      status: 500, message: 'Ocurrió un error',
+    });
+  });
+
   it('keeps the missing requirements of a blocked start', async () => {
     interceptor.status = 422;
     interceptor.responseData = {

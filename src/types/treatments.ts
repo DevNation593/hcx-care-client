@@ -328,6 +328,8 @@ export interface TreatmentSessionDetail extends TreatmentSessionBase {
   procedureNotes: string | null;
   cancellationReason: string | null;
   patient: SessionPatient;
+  /** The professional who owns the session; only they record in it. */
+  professional: { id: string; firstName: string; lastName: string } | null;
   treatment: SessionTreatment;
   policy: TreatmentRequirements;
   /** Null when the treatment asks for no medical form. */

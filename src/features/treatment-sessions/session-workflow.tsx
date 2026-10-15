@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTreatmentSession } from '@/hooks/useTreatmentSessions';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
 import type { ApiError } from '@/types';
 import {
   MISSING_REQUIREMENT_LABELS,
@@ -42,6 +43,7 @@ const STATE_LABELS: Record<SessionStep['state'], string> = {
 /** The tablet page of a treatment session: header, stepper and the chosen step. */
 export function SessionWorkflow({ id }: { id: string }) {
   const { data: session, dataUpdatedAt, isPending, isError, error, refetch } = useTreatmentSession(id);
+  const userId = useAuthStore((state) => state.user?.id);
   // A step picked to review; otherwise the page follows the current one.
   const [selected, setSelected] = useState<SessionStepId | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -138,12 +140,21 @@ export function SessionWorkflow({ id }: { id: string }) {
     );
   }
 
+  // Only the session's professional records in it; anyone else reads it. The API already leaves
+  // them no commands (a MASTER keeps the revocation of the consent).
+  const ownerId = session.professional?.id ?? session.professionalId;
+  const readOnly = Boolean(userId && ownerId) && ownerId !== userId;
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
       <SessionHeader session={session} />
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
+
+      {readOnly && (
+        <Alert variant="default">Solo el profesional de esta atención puede registrar en ella.</Alert>
+      )}
 
       {session.cancellationReason && (
         <Alert variant="warning" title={SESSION_STATUS_LABELS[session.status]}>
@@ -209,19 +220,27 @@ export function SessionWorkflow({ id }: { id: string }) {
             </Alert>
           )}
           {active.id === 'form' && (
-            <FormStep key={session.formRecordId ?? 'new'} session={session} onSaved={followSession} />
+            <FormStep
+              key={session.formRecordId ?? 'new'}
+              session={session}
+              readOnly={readOnly}
+              onSaved={followSession}
+            />
           )}
-          {active.id === 'consent' && <ConsentStep session={session} onDone={consentDone} />}
-          {active.id === 'before' && <PhotosStep session={session} phase="BEFORE" />}
+          {active.id === 'consent' && (
+            <ConsentStep session={session} readOnly={readOnly} onDone={consentDone} />
+          )}
+          {active.id === 'before' && <PhotosStep session={session} phase="BEFORE" readOnly={readOnly} />}
           {active.id === 'procedure' && (
             <ProcedureStep
               session={session}
+              readOnly={readOnly}
               notes={typedNotes ?? session.procedureNotes ?? ''}
               onNotesChange={setTypedNotes}
               onDone={showClose}
             />
           )}
-          {active.id === 'after' && <PhotosStep session={session} phase="AFTER" />}
+          {active.id === 'after' && <PhotosStep session={session} phase="AFTER" readOnly={readOnly} />}
           {active.id === 'close' && <CloseSummaryStep session={session} />}
         </CardContent>
       </Card>

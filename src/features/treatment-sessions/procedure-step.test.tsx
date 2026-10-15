@@ -316,6 +316,16 @@ describe('ProcedureStep cancel and no show', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
+  it('does not say the appointment is cancelled when cancelling a started session', async () => {
+    render(<Step session={inProgress(['COMPLETE', 'CANCEL'])} />);
+    await click('Cancelar atención');
+
+    const dialog = screen.getByRole('dialog', { name: 'Cancelar atención' });
+    expect(dialog).toHaveTextContent('La atención termina y el motivo queda registrado.');
+    // The API completes the appointment of a started session: the patient attended.
+    expect(dialog).not.toHaveTextContent(/cita/i);
+  });
+
   it('keeps the dialog open with the API message when the cancellation fails', async () => {
     hooks.cancel.mockRejectedValue({ status: 409, message: 'La atención ya terminó' });
     render(<Step session={session()} />);

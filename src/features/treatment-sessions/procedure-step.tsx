@@ -31,6 +31,8 @@ const BEFORE_START: TreatmentSessionStatus[] = ['INTAKE_IN_PROGRESS', 'READY_FOR
 
 export interface ProcedureStepProps {
   session: TreatmentSessionDetail;
+  /** For someone other than the session's professional: the status is shown, nothing to do. */
+  readOnly?: boolean;
   /** The notes being typed; kept by the page so they survive moving between steps. */
   notes: string;
   onNotesChange: (notes: string) => void;
@@ -43,7 +45,13 @@ export interface ProcedureStepProps {
  * marking the patient as absent. What can be done comes from `allowedCommands`; what is missing
  * for a start or a close comes from the API's 422.
  */
-export function ProcedureStep({ session, notes, onNotesChange, onDone }: ProcedureStepProps) {
+export function ProcedureStep({
+  session,
+  readOnly = false,
+  notes,
+  onNotesChange,
+  onDone,
+}: ProcedureStepProps) {
   const commands = useSessionCommand(session.id);
   const [failure, setFailure] = useState<ApiError | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -51,7 +59,7 @@ export function ProcedureStep({ session, notes, onNotesChange, onDone }: Procedu
   const [confirming, setConfirming] = useState<'complete' | 'noShow' | null>(null);
 
   const can = (command: SessionCommandName) =>
-    session.allowedCommands.includes(command);
+    !readOnly && session.allowedCommands.includes(command);
   const { status } = session;
   const busy = commands.start.isPending || commands.complete.isPending || commands.noShow.isPending;
 
@@ -71,7 +79,15 @@ export function ProcedureStep({ session, notes, onNotesChange, onDone }: Procedu
     <div className="space-y-6">
       {failure && <CommandFailure error={failure} />}
 
-      {BEFORE_START.includes(status) && (
+      {readOnly && (status === 'IN_PROGRESS' || BEFORE_START.includes(status)) && (
+        <p className="text-sm text-muted-foreground">
+          {status === 'IN_PROGRESS'
+            ? 'El procedimiento está en curso.'
+            : 'El procedimiento aún no se ha iniciado.'}
+        </p>
+      )}
+
+      {!readOnly && BEFORE_START.includes(status) && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             {!can('START')
@@ -93,7 +109,7 @@ export function ProcedureStep({ session, notes, onNotesChange, onDone }: Procedu
         </div>
       )}
 
-      {status === 'IN_PROGRESS' && (
+      {!readOnly && status === 'IN_PROGRESS' && (
         <form
           noValidate
           className="space-y-4"

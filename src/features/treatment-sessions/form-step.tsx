@@ -14,12 +14,14 @@ import type { TreatmentSessionDetail } from '@/types/treatments';
 
 export interface FormStepProps {
   session: TreatmentSessionDetail;
+  /** For someone other than the session's professional: the answers are only shown. */
+  readOnly?: boolean;
   /** Called once the server stored the answers. */
   onSaved?: () => void;
 }
 
 /** The medical form pinned by the treatment, filled from the answers saved so far. */
-export function FormStep({ session, onSaved }: FormStepProps) {
+export function FormStep({ session, readOnly = false, onSaved }: FormStepProps) {
   const { saveForm } = useSessionCommand(session.id);
   const form = session.form;
   const [values, setValues] = useState<FormValues>(() =>
@@ -36,7 +38,7 @@ export function FormStep({ session, onSaved }: FormStepProps) {
     );
   }
 
-  const editable = session.allowedCommands.includes('SAVE_FORM');
+  const editable = !readOnly && session.allowedCommands.includes('SAVE_FORM');
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -60,7 +62,7 @@ export function FormStep({ session, onSaved }: FormStepProps) {
         <h3 className="text-lg font-semibold">{form.name}</h3>
         <p className="text-sm text-muted-foreground">
           Versión {form.formVersion}
-          {!editable && ' · La ficha ya no se puede modificar en esta atención.'}
+          {!editable && !readOnly && ' · La ficha ya no se puede modificar en esta atención.'}
         </p>
       </div>
       <ClinicalModuleForm

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useAuthStore } from '@/store/authStore';
 import type { TreatmentSessionDetail } from '@/types/treatments';
 import { SessionWorkflow } from './session-workflow';
 
@@ -59,6 +60,8 @@ const session = (overrides: Partial<TreatmentSessionDetail> = {}): TreatmentSess
   ({
     id: 'session-1',
     patientId: 'patient-1',
+    professionalId: 'pro',
+    professional: { id: 'pro', firstName: 'Laura', lastName: 'Mora' },
     status: 'READY_FOR_CONSENT',
     startedAt: null,
     formRecordId: null,
@@ -91,6 +94,7 @@ const session = (overrides: Partial<TreatmentSessionDetail> = {}): TreatmentSess
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useAuthStore.setState({ user: { id: 'pro' } as never });
   hooks.session = session();
   hooks.updatedAt = 1;
   hooks.presentConsent.mockResolvedValue(document);
@@ -132,6 +136,7 @@ describe('SessionWorkflow', () => {
     expect(heading()).toHaveTextContent('Consentimiento');
     expect(stepButton(/^Consentimiento/)).toHaveAttribute('aria-current', 'step');
     expect(stepButton(/^Ficha/)).toBeDisabled();
+    expect(screen.queryByText(/Solo el profesional de esta atención/)).not.toBeInTheDocument();
   });
 
   it('moves the focus to the next step and announces it after a signature', async () => {
@@ -450,6 +455,125 @@ describe('SessionWorkflow', () => {
 
       expect(heading()).toHaveTextContent('Cierre');
       expect(heading()).toHaveFocus();
+    });
+  });
+  describe('for someone who is not the professional of the session', () => {
+    const BANNER = 'Solo el profesional de esta atención puede registrar en ella.';
+    const signed = {
+      ...document,
+      status: 'SIGNED',
+      signedAt: '2026-10-15T15:10:00.000Z',
+      signature: { signerName: 'Ana Pérez', signerRole: 'PATIENT', relationship: null },
+    };
+    const formSession = (overrides: Partial<TreatmentSessionDetail> = {}) =>
+      session({
+        policy: {
+          medicalForm: { required: true },
+          informedConsent: { required: true, validityDays: null },
+          photos: { minimumBefore: 1, minimumAfter: 1 },
+          clinicalNotes: { requiredForCompletion: true },
+        },
+        form: {
+          formDefinitionId: 'form-1',
+          formVersion: 2,
+          name: 'Ficha estética',
+          schema: {
+            sections: [
+              {
+                key: 'history',
+                title: 'Antecedentes',
+                fields: [{ key: 'allergies', label: 'Alergias', type: 'text' }],
+              },
+            ],
+          },
+          data: { allergies: 'Ninguna' },
+        } as TreatmentSessionDetail['form'],
+        formRecordId: 'record-1',
+        ...overrides,
+      });
+    // Wording that would tell this user they can act on the session.
+    const ACTION_HINTS =
+      /se habilitan|se podrá iniciar|se presenta cuando|ya no se puede modificar|Todo está listo|Entrega el dispositivo/;
+    const WRITE_BUTTONS =
+      /Guardar ficha|Mostrar consentimiento|Revocar consentimiento|Iniciar procedimiento|Cerrar atención|Cancelar atención|No asistió/;
+
+    const expectReadOnly = (container: HTMLElement) => {
+      expect(screen.queryByRole('button', { name: WRITE_BUTTONS })).not.toBeInTheDocument();
+      expect(container.querySelector('input[type="file"]')).toBeNull();
+      for (const field of [...screen.queryAllByRole('textbox'), ...screen.queryAllByRole('combobox')]) {
+        expect(field).toBeDisabled();
+      }
+      expect(screen.queryByText(ACTION_HINTS)).not.toBeInTheDocument();
+    };
+
+    beforeEach(() => {
+      useAuthStore.setState({ user: { id: 'colleague' } as never });
+    });
+
+    it('says who may record and offers no command before the consent', () => {
+      hooks.session = session({ allowedCommands: [] });
+      const { container } = render(<SessionWorkflow id="session-1" />);
+
+      expect(screen.getByText(BANNER)).toBeInTheDocument();
+      expect(heading()).toHaveTextContent('Consentimiento');
+      expectReadOnly(container);
+    });
+
+    it('shows every step of a started session read-only', () => {
+      hooks.session = formSession({
+        status: 'IN_PROGRESS',
+        startedAt: '2026-10-15T15:20:00.000Z',
+        consentDocumentId: 'doc-1',
+        consentDocuments: [signed] as TreatmentSessionDetail['consentDocuments'],
+        requirements: { start: [], complete: ['CLINICAL_NOTES', 'AFTER_PHOTOS'] },
+        allowedCommands: [],
+      });
+      const { container } = render(<SessionWorkflow id="session-1" />);
+
+      expect(screen.getByText(BANNER)).toBeInTheDocument();
+      for (const step of [/^Ficha/, /^Consentimiento/, /^Fotos antes/, /^Procedimiento/, /^Fotos después/, /^Cierre/]) {
+        fireEvent.click(stepButton(step));
+        expectReadOnly(container);
+      }
+      // What was recorded stays visible.
+      fireEvent.click(stepButton(/^Ficha/));
+      expect(screen.getByLabelText(/Alergias/)).toHaveValue('Ninguna');
+      fireEvent.click(stepButton(/^Consentimiento/));
+      expect(screen.getByRole('button', { name: /Descargar PDF/ })).toBeInTheDocument();
+    });
+
+    it('shows a session waiting for its form read-only', () => {
+      hooks.session = formSession({
+        status: 'INTAKE_IN_PROGRESS',
+        formRecordId: null,
+        form: { ...formSession().form!, data: null },
+        requirements: { start: ['FINALIZED_MEDICAL_FORM', 'SIGNED_APPLICABLE_CONSENT', 'BEFORE_PHOTOS'], complete: [] },
+        allowedCommands: [],
+      });
+      const { container } = render(<SessionWorkflow id="session-1" />);
+
+      expect(heading()).toHaveTextContent('Ficha');
+      for (const step of [/^Ficha/, /^Consentimiento/, /^Fotos antes/, /^Procedimiento/]) {
+        fireEvent.click(stepButton(step));
+        expectReadOnly(container);
+      }
+    });
+
+    it('keeps the revocation a MASTER may still make', () => {
+      hooks.session = session({
+        status: 'CONSENTED',
+        consentDocumentId: 'doc-1',
+        consentDocuments: [signed] as TreatmentSessionDetail['consentDocuments'],
+        requirements: { start: [], complete: [] },
+        allowedCommands: ['REVOKE_CONSENT'],
+      });
+      render(<SessionWorkflow id="session-1" />);
+
+      expect(screen.getByText(BANNER)).toBeInTheDocument();
+      fireEvent.click(stepButton(/^Consentimiento/));
+      expect(screen.getByRole('button', { name: 'Revocar consentimiento' })).toBeEnabled();
+      fireEvent.click(stepButton(/^Procedimiento/));
+      expect(screen.queryByRole('button', { name: /Iniciar procedimiento|Cancelar atención/ })).not.toBeInTheDocument();
     });
   });
 });

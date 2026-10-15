@@ -48,6 +48,8 @@ function disabledReason(session: TreatmentSessionDetail, phase: PhotoPhase): str
 export interface PhotosStepProps {
   session: TreatmentSessionDetail;
   phase: PhotoPhase;
+  /** For someone other than the session's professional: the photos are only listed. */
+  readOnly?: boolean;
 }
 
 /**
@@ -55,7 +57,7 @@ export interface PhotosStepProps {
  * nothing to it until the server confirms and the detail is read again. The images themselves are
  * not fetched here.
  */
-export function PhotosStep({ session, phase }: PhotosStepProps) {
+export function PhotosStep({ session, phase, readOnly = false }: PhotosStepProps) {
   const { uploadMedia } = useSessionCommand(session.id);
   const [error, setError] = useState<string | null>(null);
   const inputId = useId();
@@ -98,29 +100,31 @@ export function PhotosStep({ session, phase }: PhotosStepProps) {
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor={inputId}>Agregar foto de {texts.noun}</Label>
-        <input
-          id={inputId}
-          type="file"
-          accept="image/jpeg,image/png"
-          capture="environment"
-          disabled={!allowed || uploading}
-          aria-describedby={allowed ? undefined : hintId}
-          onChange={handleChange}
-          className="block min-h-11 w-full cursor-pointer text-sm file:mr-4 file:h-11 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-4 file:text-sm file:font-medium file:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:file:cursor-not-allowed"
-        />
-        {!allowed && (
-          <p id={hintId} className="text-sm text-muted-foreground">
-            {disabledReason(session, phase)}
-          </p>
-        )}
-        {uploading && (
-          <p role="status" className="text-sm text-muted-foreground">
-            Guardando la foto…
-          </p>
-        )}
-      </div>
+      {!readOnly && (
+        <div className="space-y-2">
+          <Label htmlFor={inputId}>Agregar foto de {texts.noun}</Label>
+          <input
+            id={inputId}
+            type="file"
+            accept="image/jpeg,image/png"
+            capture="environment"
+            disabled={!allowed || uploading}
+            aria-describedby={allowed ? undefined : hintId}
+            onChange={handleChange}
+            className="block min-h-11 w-full cursor-pointer text-sm file:mr-4 file:h-11 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-4 file:text-sm file:font-medium file:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:file:cursor-not-allowed"
+          />
+          {!allowed && (
+            <p id={hintId} className="text-sm text-muted-foreground">
+              {disabledReason(session, phase)}
+            </p>
+          )}
+          {uploading && (
+            <p role="status" className="text-sm text-muted-foreground">
+              Guardando la foto…
+            </p>
+          )}
+        </div>
+      )}
 
       {error && (
         <Alert variant="destructive" title="No se guardó la foto">

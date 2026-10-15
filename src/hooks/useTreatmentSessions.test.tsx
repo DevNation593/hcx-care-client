@@ -75,6 +75,28 @@ describe('useSessionCommand', () => {
     expect(toast.error).toHaveBeenCalledWith('La atención ya inició');
   });
 
+  it('refreshes the session after a 409 so stale commands go away', async () => {
+    http.post.mockRejectedValue({ message: 'La atención cambió', status: 409, code: 'TREATMENT_SESSION_INVALID_TRANSITION' });
+    const { client, wrapper } = setup();
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-1'), { id: 'session-1' });
+    const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
+
+    await act(async () => { await result.current.start.mutateAsync().catch(() => undefined); });
+
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-1'))?.isInvalidated).toBe(true);
+  });
+
+  it('leaves the session alone after an error that is not a conflict', async () => {
+    http.post.mockRejectedValue({ message: 'Error del servidor', status: 500 });
+    const { client, wrapper } = setup();
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-1'), { id: 'session-1' });
+    const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
+
+    await act(async () => { await result.current.start.mutateAsync().catch(() => undefined); });
+
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-1'))?.isInvalidated).toBe(false);
+  });
+
   it('saves the whole form answers with PUT', async () => {
     const { wrapper } = setup();
     const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
