@@ -95,7 +95,15 @@ describe('buildSessionSteps', () => {
       requirements: { start: [], complete: ['CLINICAL_NOTES'] },
     });
 
-    expect(states(detail)).toMatchObject({ before: 'done', procedure: 'current', after: 'pending' });
+    expect(states(detail)).toMatchObject({
+      before: 'done',
+      procedure: 'current',
+      after: 'pending',
+      close: 'pending',
+    });
+    expect(buildSessionSteps(detail).find((step) => step.id === 'procedure')?.missing).toEqual([
+      'CLINICAL_NOTES',
+    ]);
   });
 
   it('marks everything done or skipped once clinically complete', () => {
@@ -111,17 +119,38 @@ describe('buildSessionSteps', () => {
     expect(states(detail)).toMatchObject({ consent: 'skipped', close: 'done' });
   });
 
+  it('keeps the procedure current while in progress, with the complete-time codes on their steps', () => {
+    const detail = session({
+      status: 'IN_PROGRESS',
+      startedAt: '2026-10-15T15:00:00.000Z',
+      requirements: { start: [], complete: ['CLINICAL_NOTES', 'AFTER_PHOTOS'] },
+    });
+    const steps = buildSessionSteps(detail);
+
+    expect(states(detail)).toEqual({
+      form: 'done',
+      consent: 'done',
+      before: 'done',
+      procedure: 'current',
+      after: 'pending',
+      close: 'pending',
+    });
+    expect(steps.find((step) => step.id === 'procedure')?.missing).toEqual(['CLINICAL_NOTES']);
+    expect(steps.find((step) => step.id === 'after')?.missing).toEqual(['AFTER_PHOTOS']);
+    expect(steps.find((step) => step.id === 'close')?.missing).toEqual([]);
+  });
+
   it('keeps the steps before the start done although a reused consent was revoked later', () => {
     const detail = session({
       status: 'IN_PROGRESS',
       startedAt: '2026-10-15T15:00:00.000Z',
-      requirements: { start: ['SIGNED_APPLICABLE_CONSENT'], complete: ['AFTER_PHOTOS'] },
+      requirements: { start: ['SIGNED_APPLICABLE_CONSENT'], complete: [] },
     });
 
     expect(states(detail)).toMatchObject({
       consent: 'done',
-      procedure: 'done',
-      after: 'current',
+      before: 'done',
+      procedure: 'current',
       close: 'pending',
     });
   });
@@ -132,6 +161,65 @@ describe('buildSessionSteps', () => {
       requirements: { start: ['SIGNED_APPLICABLE_CONSENT', 'BEFORE_PHOTOS'], complete: [] },
     });
 
-    expect(states(detail)).toMatchObject({ form: 'done', consent: 'blocked', before: 'pending' });
+    expect(states(detail)).toMatchObject({
+      form: 'done',
+      consent: 'blocked',
+      before: 'pending',
+      close: 'blocked',
+    });
+  });
+
+  it('blocks the form and the close of a session cancelled during the intake', () => {
+    const detail = session({ status: 'CANCELLED' });
+
+    expect(states(detail)).toEqual({
+      form: 'blocked',
+      consent: 'pending',
+      before: 'pending',
+      procedure: 'pending',
+      after: 'pending',
+      close: 'blocked',
+    });
+  });
+
+  it('blocks the consent and the close of a no-show waiting for consent', () => {
+    const detail = session({
+      status: 'NO_SHOW',
+      requirements: { start: ['SIGNED_APPLICABLE_CONSENT', 'BEFORE_PHOTOS'], complete: [] },
+    });
+
+    expect(states(detail)).toMatchObject({ form: 'done', consent: 'blocked', close: 'blocked' });
+  });
+
+  it('blocks the consent and the close once the consent is revoked', () => {
+    const detail = session({
+      status: 'CONSENT_REVOKED',
+      requirements: { start: ['SIGNED_APPLICABLE_CONSENT'], complete: [] },
+    });
+
+    expect(states(detail)).toMatchObject({
+      form: 'done',
+      consent: 'blocked',
+      before: 'pending',
+      procedure: 'pending',
+      close: 'blocked',
+    });
+  });
+
+  it('blocks the procedure and the close of a session cancelled after its start', () => {
+    const detail = session({
+      status: 'CANCELLED',
+      startedAt: '2026-10-15T15:00:00.000Z',
+      requirements: { start: [], complete: ['CLINICAL_NOTES', 'AFTER_PHOTOS'] },
+    });
+
+    expect(states(detail)).toEqual({
+      form: 'done',
+      consent: 'done',
+      before: 'done',
+      procedure: 'blocked',
+      after: 'pending',
+      close: 'blocked',
+    });
   });
 });

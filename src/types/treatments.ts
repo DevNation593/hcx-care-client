@@ -207,6 +207,13 @@ export interface ConsentDraftInput {
 // CONSENT DOCUMENTS
 // ==========================================
 
+/** Who signed a document, as the session detail and the sign response report it. */
+export interface ConsentDocumentSignature {
+  signerName: string;
+  signerRole: ConsentSignerRole;
+  relationship: string | null;
+}
+
 /** A consent as the session detail lists it: title and checksum, never the body. */
 export interface ConsentDocumentSummary {
   id: string;
@@ -221,6 +228,8 @@ export interface ConsentDocumentSummary {
   revokedAt: string | null;
   pdfChecksum: string | null;
   createdAt: string;
+  /** Null until signed; absent from APIs that predate it. */
+  signature?: ConsentDocumentSignature | null;
 }
 
 /** What the consent routes return; `body` comes only when the document is presented. */
@@ -327,6 +336,8 @@ export interface TreatmentSessionDetail extends TreatmentSessionBase {
   media: SessionMedia[];
   requirements: { start: MissingRequirement[]; complete: MissingRequirement[] };
   allowedCommands: SessionCommandName[];
+  /** IANA zone of the clinic, for showing server times; absent from APIs that predate it. */
+  timezone?: string;
 }
 
 export interface TreatmentSessionInput {

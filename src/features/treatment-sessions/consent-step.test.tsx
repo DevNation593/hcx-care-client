@@ -170,6 +170,36 @@ describe('ConsentStep', () => {
     expect(pad()).toBeInTheDocument();
   });
 
+  it('draws on the true 3:1 surface at full width, without a fixed height', async () => {
+    await present();
+
+    expect(pad()).toHaveAttribute('width', '600');
+    expect(pad()).toHaveAttribute('height', '200');
+    expect(pad()).toHaveClass('w-full', 'aspect-[3/1]');
+    expect(pad()!.className).not.toMatch(/\bh-\[|max-w-/);
+  });
+
+  it('keeps the signer within the limits of the API', async () => {
+    await present();
+    fillAndDraw();
+    const name = screen.getByLabelText(/Nombre de quien firma/);
+
+    fireEvent.change(name, { target: { value: ' A ' } });
+    expect(screen.getByText('El nombre debe tener al menos 2 caracteres.')).toBeInTheDocument();
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Firmar' })).toBeDisabled();
+
+    fireEvent.change(name, { target: { value: 'Al' } });
+    expect(screen.queryByText(/al menos 2 caracteres/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Firmar' })).toBeEnabled();
+
+    expect(name).toHaveAttribute('maxLength', '200');
+    expect(screen.getByLabelText('Identificación')).toHaveAttribute('maxLength', '30');
+    fireEvent.change(screen.getByLabelText('Identificación'), { target: { value: '1'.repeat(31) } });
+    expect(screen.getByText('La identificación admite hasta 30 caracteres.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Firmar' })).toBeDisabled();
+  });
+
   it('signs with the declarations and the drawn PNG, and says "Firmado" once the server answers', async () => {
     await present();
 
@@ -251,6 +281,10 @@ describe('ConsentStep', () => {
     const dialog = screen.getByRole('dialog');
     const confirm = within(dialog).getByRole('button', { name: 'Rechazar consentimiento' });
     expect(confirm).toBeDisabled();
+    expect(within(dialog).getByLabelText(/Motivo/)).toHaveAttribute('maxLength', '1000');
+    fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: ' No ' } });
+    expect(within(dialog).getByText('El motivo debe tener al menos 3 caracteres.')).toBeInTheDocument();
+    expect(confirm).toBeDisabled();
     fireEvent.change(within(dialog).getByLabelText(/Motivo/), {
       target: { value: ' Prefiere pensarlo ' },
     });
@@ -281,12 +315,50 @@ describe('ConsentStep', () => {
     expect(screen.queryByRole('button', { name: 'Mostrar consentimiento al paciente' })).not.toBeInTheDocument();
     expect(screen.getByText('Firmado')).toBeInTheDocument();
     expect(screen.getByText(/abcdef012345/)).toBeInTheDocument();
-    expect(screen.getByText(/2026/)).toBeInTheDocument();
+    // No clinic zone in the answer: the device zone, named.
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(screen.getByText(new RegExp(`2026.*\\(${zone.replace('/', '\\/')}\\)`))).toBeInTheDocument();
 
     await click('Descargar PDF');
     expect(hooks.consentPdf).toHaveBeenCalledWith('doc-1');
     expect(createObjectURL).toHaveBeenCalledWith(pdf);
     expect(follow).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the signer the API reports and the time in the clinic zone', () => {
+    render(
+      <ConsentStep
+        session={session({
+          status: 'CONSENTED',
+          consentDocumentId: 'doc-1',
+          timezone: 'America/Guayaquil',
+          consentDocuments: [
+            signedSummary({
+              signature: { signerName: 'Luis Pérez', signerRole: 'REPRESENTATIVE', relationship: 'Padre' },
+            }),
+          ],
+          allowedCommands: ['REVOKE_CONSENT', 'START'],
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Luis Pérez · Representante legal (Padre)')).toBeInTheDocument();
+    // 15:10 UTC is 10:10 in Guayaquil (UTC-5, no daylight saving).
+    expect(screen.getByText(/15 de octubre de 2026.*10:10.*\(America\/Guayaquil\)/)).toBeInTheDocument();
+  });
+
+  it('shows the signer the sign response returned before the session reloads', async () => {
+    hooks.signConsent.mockResolvedValue({
+      ...presented,
+      ...signedSummary(),
+      body: undefined,
+      signature: { signerName: 'Ana María Pérez', signerRole: 'PATIENT', relationship: null },
+    });
+    await present();
+    fillAndDraw();
+    await click('Firmar');
+
+    expect(screen.getByText('Ana María Pérez · Paciente')).toBeInTheDocument();
   });
 
   it('revokes a signed consent with a reason', async () => {

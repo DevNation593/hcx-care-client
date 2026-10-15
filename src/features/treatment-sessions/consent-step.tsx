@@ -24,6 +24,7 @@ import { downloadBlob, formatDate } from '@/lib/utils';
 import type { ApiError } from '@/types';
 import type {
   ConsentDocument,
+  ConsentDocumentSignature,
   ConsentDocumentStatus,
   ConsentDocumentSummary,
   ConsentSignerRole,
@@ -49,43 +50,50 @@ const FIELD_CLASS = 'h-11';
 const SELECT_CLASS = 'mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-sm';
 // Pixels of tolerance when deciding that the reader reached the end of the text.
 const END_TOLERANCE = 8;
+// The limits of the API's DTOs.
+const SIGNER_NAME = { min: 2, max: 200 };
+const SIGNER_IDENTIFICATION_MAX = 30;
+const RELATIONSHIP_MAX = 100;
+const REASON = { min: 3, max: 1000 };
 
 const errorMessage = (error: unknown, fallback: string) =>
   (error as ApiError | undefined)?.message || fallback;
 
-/**
- * The signature time in the zone of this device, named so that nobody reads it as another one.
- * The API stores the server time and does not send the clinic's zone with the document.
- */
-export function formatSignedAt(iso: string): string {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const text = new Intl.DateTimeFormat('es-EC', {
-    dateStyle: 'long',
-    timeStyle: 'short',
-    timeZone,
-  }).format(new Date(iso));
-  return `${text} (${timeZone})`;
-}
+const deviceZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-interface Signer {
-  name: string;
-  role: ConsentSignerRole;
-  relationship?: string;
+/**
+ * The signature time in the clinic's zone when the API sends it, otherwise in the zone of this
+ * device; the zone is always named so that nobody reads the time as another one.
+ */
+export function formatSignedAt(iso: string, timeZone?: string): string {
+  const format = (zone: string) =>
+    `${new Intl.DateTimeFormat('es-EC', { dateStyle: 'long', timeStyle: 'short', timeZone: zone }).format(new Date(iso))} (${zone})`;
+  if (timeZone) {
+    try {
+      return format(timeZone);
+    } catch {
+      // A zone this browser does not know: the device zone, named, is still correct.
+    }
+  }
+  return format(deviceZone());
 }
 
 export interface ConsentStepProps {
   session: TreatmentSessionDetail;
+  /** Called once a signature, refusal or revocation is stored and the session moved on. */
+  onDone?: () => void;
 }
 
 /** Shows the consent to the patient, collects the signature or the refusal, and shows the result. */
-export function ConsentStep({ session }: ConsentStepProps) {
+export function ConsentStep({ session, onDone }: ConsentStepProps) {
   const commands = useSessionCommand(session.id);
   // The body comes only from presenting: the session detail lists documents without it.
   const [presented, setPresented] = useState<ConsentDocument | null>(null);
-  // What this device signed, kept until the session detail reports it.
-  const [signed, setSigned] = useState<{ document: ConsentDocumentSummary; signer: Signer } | null>(
-    null,
-  );
+  // What the sign response returned, kept until the session detail reports it.
+  const [signed, setSigned] = useState<{
+    document: ConsentDocumentSummary;
+    signer: ConsentDocumentSignature;
+  } | null>(null);
   const [presentError, setPresentError] = useState<string | null>(null);
 
   if (!session.policy.informedConsent.required) {
@@ -128,11 +136,18 @@ export function ConsentStep({ session }: ConsentStepProps) {
         <SignedConsent
           document={signedDocument}
           sessionId={session.id}
-          signer={localSigned?.document.id === signedDocument.id ? localSigned.signer : undefined}
-          canRevoke={session.allowedCommands.includes('REVOKE_CONSENT')}
-          onRevoke={(reason) =>
-            commands.revokeConsent.mutateAsync({ documentId: signedDocument.id, reason })
+          timeZone={session.timezone}
+          signer={
+            signedDocument.signature ??
+            (signed?.document.id === signedDocument.id
+              ? (signed.document.signature ?? signed.signer)
+              : undefined)
           }
+          canRevoke={session.allowedCommands.includes('REVOKE_CONSENT')}
+          onRevoke={async (reason) => {
+            await commands.revokeConsent.mutateAsync({ documentId: signedDocument.id, reason });
+            onDone?.();
+          }}
         />
       )}
 
@@ -146,11 +161,13 @@ export function ConsentStep({ session }: ConsentStepProps) {
               input,
             });
             setSigned({ document, signer });
+            onDone?.();
           }}
           signing={commands.signConsent.isPending}
           onRefuse={async (reason) => {
             await commands.refuseConsent.mutateAsync({ documentId: reading.id, reason });
             setPresented(null);
+            onDone?.();
           }}
         />
       )}
@@ -225,7 +242,7 @@ function ConsentReader({
 }: {
   document: ConsentDocument;
   patient: SessionPatient;
-  onSign: (input: SignConsentInput, signer: Signer) => Promise<void>;
+  onSign: (input: SignConsentInput, signer: ConsentDocumentSignature) => Promise<void>;
   signing: boolean;
   onRefuse: (reason: string) => Promise<void>;
 }) {
@@ -296,7 +313,7 @@ function SignForm({
   onRefuse,
 }: {
   patient: SessionPatient;
-  onSign: (input: SignConsentInput, signer: Signer) => Promise<void>;
+  onSign: (input: SignConsentInput, signer: ConsentDocumentSignature) => Promise<void>;
   signing: boolean;
   onRefuse: () => void;
 }) {
@@ -310,12 +327,33 @@ function SignForm({
   const [error, setError] = useState<string | null>(null);
 
   const isRepresentative = role === 'REPRESENTATIVE';
+  const name = fields.signerName.trim();
+  const identification = fields.signerIdentification.trim();
+  const relation = fields.relationship.trim();
+  // Messages only for what was typed; an empty required field just keeps "Firmar" disabled.
+  const fieldErrors = {
+    signerName:
+      name.length > SIGNER_NAME.max
+        ? `El nombre admite hasta ${SIGNER_NAME.max} caracteres.`
+        : name.length > 0 && name.length < SIGNER_NAME.min
+          ? `El nombre debe tener al menos ${SIGNER_NAME.min} caracteres.`
+          : undefined,
+    signerIdentification:
+      identification.length > SIGNER_IDENTIFICATION_MAX
+        ? `La identificación admite hasta ${SIGNER_IDENTIFICATION_MAX} caracteres.`
+        : undefined,
+    relationship:
+      isRepresentative && relation.length > RELATIONSHIP_MAX
+        ? `La relación admite hasta ${RELATIONSHIP_MAX} caracteres.`
+        : undefined,
+  };
   const ready =
     understood &&
     questionsAnswered &&
     Boolean(signature) &&
-    Boolean(fields.signerName.trim()) &&
-    (!isRepresentative || Boolean(fields.relationship.trim()));
+    name.length >= SIGNER_NAME.min &&
+    (!isRepresentative || relation.length > 0) &&
+    Object.values(fieldErrors).every((message) => !message);
 
   const changeRole = (next: ConsentSignerRole) => {
     setRole(next);
@@ -328,14 +366,11 @@ function SignForm({
     event.preventDefault();
     if (!ready || signing) return;
     setError(null);
-    const signerName = fields.signerName.trim();
-    const signerIdentification = fields.signerIdentification.trim();
-    const relationship = fields.relationship.trim();
     const input: SignConsentInput = {
       signerRole: role,
-      signerName,
-      ...(signerIdentification ? { signerIdentification } : {}),
-      ...(isRepresentative ? { relationship } : {}),
+      signerName: name,
+      ...(identification ? { signerIdentification: identification } : {}),
+      ...(isRepresentative ? { relationship: relation } : {}),
       understood,
       questionsAnswered,
       marketingPhotos,
@@ -343,9 +378,9 @@ function SignForm({
     };
     try {
       await onSign(input, {
-        name: signerName,
-        role,
-        ...(isRepresentative ? { relationship } : {}),
+        signerName: name,
+        signerRole: role,
+        relationship: isRepresentative ? relation : null,
       });
     } catch (failure) {
       // Nothing was signed: the form keeps what was filled so it can be sent again.
@@ -378,9 +413,13 @@ function SignForm({
           <Input
             id="consent-signer-name"
             className={FIELD_CLASS}
-            maxLength={200}
+            maxLength={SIGNER_NAME.max}
             value={fields.signerName}
             onChange={setField('signerName')}
+            error={fieldErrors.signerName}
+            errorId="consent-signer-name-error"
+            aria-invalid={Boolean(fieldErrors.signerName)}
+            aria-describedby={fieldErrors.signerName ? 'consent-signer-name-error' : undefined}
           />
         </div>
         <div>
@@ -388,9 +427,15 @@ function SignForm({
           <Input
             id="consent-signer-identification"
             className={FIELD_CLASS}
-            maxLength={50}
+            maxLength={SIGNER_IDENTIFICATION_MAX}
             value={fields.signerIdentification}
             onChange={setField('signerIdentification')}
+            error={fieldErrors.signerIdentification}
+            errorId="consent-signer-identification-error"
+            aria-invalid={Boolean(fieldErrors.signerIdentification)}
+            aria-describedby={
+              fieldErrors.signerIdentification ? 'consent-signer-identification-error' : undefined
+            }
           />
         </div>
         {isRepresentative && (
@@ -401,9 +446,15 @@ function SignForm({
             <Input
               id="consent-signer-relationship"
               className={FIELD_CLASS}
-              maxLength={100}
+              maxLength={RELATIONSHIP_MAX}
               value={fields.relationship}
               onChange={setField('relationship')}
+              error={fieldErrors.relationship}
+              errorId="consent-signer-relationship-error"
+              aria-invalid={Boolean(fieldErrors.relationship)}
+              aria-describedby={
+                fieldErrors.relationship ? 'consent-signer-relationship-error' : undefined
+              }
             />
           </div>
         )}
@@ -435,16 +486,14 @@ function SignForm({
         <Label htmlFor="consent-signature">
           Firma<span className="text-destructive"> *</span>
         </Label>
-        {/* The pad spans the whole width of the tablet. */}
-        <div className="[&_canvas]:h-[220px] [&_canvas]:max-w-none">
-          <SignaturePad
-            id="consent-signature"
-            label="Firma de quien consiente"
-            value={signature}
-            onChange={setSignature}
-            disabled={signing}
-          />
-        </div>
+        <SignaturePad
+          id="consent-signature"
+          label="Firma de quien consiente"
+          value={signature}
+          onChange={setSignature}
+          disabled={signing}
+          fullWidth
+        />
       </div>
 
       {error && (
@@ -495,13 +544,15 @@ function Declaration({
 function SignedConsent({
   document,
   sessionId,
+  timeZone,
   signer,
   canRevoke,
   onRevoke,
 }: {
   document: ConsentDocumentSummary;
   sessionId: string;
-  signer?: Signer;
+  timeZone?: string;
+  signer?: ConsentDocumentSignature;
   canRevoke: boolean;
   onRevoke: (reason: string) => Promise<unknown>;
 }) {
@@ -539,7 +590,7 @@ function SignedConsent({
           <>
             <dt className="text-muted-foreground">Firmó</dt>
             <dd>
-              {signer.name} · {SIGNER_ROLE_LABELS[signer.role]}
+              {signer.signerName} · {SIGNER_ROLE_LABELS[signer.signerRole]}
               {signer.relationship ? ` (${signer.relationship})` : ''}
             </dd>
           </>
@@ -547,7 +598,7 @@ function SignedConsent({
         {document.signedAt && (
           <>
             <dt className="text-muted-foreground">Fecha y hora</dt>
-            <dd>{formatSignedAt(document.signedAt)}</dd>
+            <dd>{formatSignedAt(document.signedAt, timeZone)}</dd>
           </>
         )}
         <dt className="text-muted-foreground">Huella del texto</dt>
@@ -596,10 +647,18 @@ function ReasonDialog({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const titleId = useId();
+  const length = reason.trim().length;
+  const reasonError =
+    length > 0 && length < REASON.min
+      ? `El motivo debe tener al menos ${REASON.min} caracteres.`
+      : length > REASON.max
+        ? `El motivo admite hasta ${REASON.max} caracteres.`
+        : undefined;
+  const valid = length >= REASON.min && !reasonError;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!reason.trim() || pending) return;
+    if (!valid || pending) return;
     setPending(true);
     setError(null);
     try {
@@ -627,17 +686,24 @@ function ReasonDialog({
             <Textarea
               id="consent-reason"
               rows={3}
-              maxLength={500}
+              maxLength={REASON.max}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
+              aria-invalid={Boolean(reasonError)}
+              aria-describedby={reasonError ? 'consent-reason-error' : undefined}
             />
+            {reasonError && (
+              <p id="consent-reason-error" className="mt-1 text-sm text-destructive">
+                {reasonError}
+              </p>
+            )}
           </div>
           {error && <Alert variant="destructive">{error}</Alert>}
           <DialogFooter className="gap-2">
             <Button type="button" size="lg" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" size="lg" variant="destructive" disabled={!reason.trim()} loading={pending}>
+            <Button type="submit" size="lg" variant="destructive" disabled={!valid} loading={pending}>
               {confirmLabel}
             </Button>
           </DialogFooter>

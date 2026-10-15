@@ -21,13 +21,26 @@ export interface SignaturePadProps {
   label: string;
   disabled?: boolean;
   invalid?: boolean;
+  /**
+   * Spans the width of its container, keeping the 3:1 ratio of the drawing surface so the
+   * stored image is not distorted (a tablet signing a consent).
+   */
+  fullWidth?: boolean;
 }
 
 /**
  * A handwritten signature drawn with the finger, a stylus or the mouse. It has no keyboard
  * equivalent: whoever cannot draw signs on paper and the scanned document is attached instead.
  */
-export function SignaturePad({ id, value, onChange, label, disabled, invalid }: SignaturePadProps) {
+export function SignaturePad({
+  id,
+  value,
+  onChange,
+  label,
+  disabled,
+  invalid,
+  fullWidth,
+}: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   // A signature that was stored before is shown as an image until the person signs again.
@@ -100,7 +113,10 @@ export function SignaturePad({ id, value, onChange, label, disabled, invalid }: 
         <img
           src={stored}
           alt={`${label}: firma registrada`}
-          className="h-[120px] w-full max-w-[480px] rounded-md border border-input bg-white object-contain"
+          className={cn(
+            'w-full rounded-md border border-input bg-white object-contain',
+            fullWidth ? 'aspect-[3/1] h-auto' : 'h-[120px] max-w-[480px]',
+          )}
         />
       ) : (
         <canvas
@@ -119,7 +135,8 @@ export function SignaturePad({ id, value, onChange, label, disabled, invalid }: 
           onPointerUp={end}
           onPointerCancel={end}
           className={cn(
-            'block h-[160px] w-full max-w-[480px] touch-none rounded-md border bg-white',
+            'block w-full touch-none rounded-md border bg-white',
+            fullWidth ? 'aspect-[3/1] h-auto' : 'h-[160px] max-w-[480px]',
             invalid ? 'border-destructive' : 'border-input',
             disabled ? 'cursor-not-allowed opacity-60' : 'cursor-crosshair',
           )}

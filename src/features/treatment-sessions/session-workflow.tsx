@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTreatmentSession } from '@/hooks/useTreatmentSessions';
 import { cn } from '@/lib/utils';
@@ -34,6 +34,40 @@ export function SessionWorkflow({ id }: { id: string }) {
   const { data: session, isPending, isError, error, refetch } = useTreatmentSession(id);
   // A step picked to review; otherwise the page follows the current one.
   const [selected, setSelected] = useState<SessionStepId | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const shownStep = useRef<SessionStepId | null>(null);
+  const chosenByUser = useRef(false);
+  const [announcement, setAnnouncement] = useState('');
+
+  const steps = session ? buildSessionSteps(session) : [];
+  const reachable = steps.filter((step) => step.state !== 'skipped');
+  const current =
+    steps.find((step) => step.state === 'current' || step.state === 'blocked') ?? reachable.at(-1);
+  const active = reachable.find((step) => step.id === selected) ?? current;
+
+  // When the session moves on by itself (a saved form, a signature, a refusal) the focus
+  // follows the new step and its name is announced; a step the user picked keeps the focus.
+  const activeId = active?.id;
+  const activeLabel = active?.label;
+  useEffect(() => {
+    if (!activeId) return;
+    const previous = shownStep.current;
+    shownStep.current = activeId;
+    if (previous === null || previous === activeId) return;
+    if (chosenByUser.current) {
+      chosenByUser.current = false;
+      return;
+    }
+    headingRef.current?.focus();
+    setAnnouncement(`Paso actual: ${activeLabel}`);
+  }, [activeId, activeLabel]);
+
+  const choose = (id: SessionStepId) => {
+    if (id === activeId) return;
+    chosenByUser.current = true;
+    setSelected(id);
+  };
+  const followSession = () => setSelected(null);
 
   if (isPending) {
     return (
@@ -44,7 +78,7 @@ export function SessionWorkflow({ id }: { id: string }) {
       </div>
     );
   }
-  if (isError || !session) {
+  if (isError || !session || !active) {
     return (
       <Alert variant="destructive" title="No se pudo cargar la atención">
         {(error as ApiError | null)?.message}
@@ -57,15 +91,12 @@ export function SessionWorkflow({ id }: { id: string }) {
     );
   }
 
-  const steps = buildSessionSteps(session);
-  const reachable = steps.filter((step) => step.state !== 'skipped');
-  const current =
-    steps.find((step) => step.state === 'current' || step.state === 'blocked') ?? reachable.at(-1)!;
-  const active = reachable.find((step) => step.id === selected) ?? current;
-
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
       <SessionHeader session={session} />
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
 
       {session.cancellationReason && (
         <Alert variant="warning" title={SESSION_STATUS_LABELS[session.status]}>
@@ -80,9 +111,9 @@ export function SessionWorkflow({ id }: { id: string }) {
               <button
                 type="button"
                 disabled={step.state === 'skipped'}
-                aria-current={step.state === 'current' ? 'step' : undefined}
+                aria-current={step.id === current?.id ? 'step' : undefined}
                 aria-pressed={step.id === active.id}
-                onClick={() => setSelected(step.id)}
+                onClick={() => choose(step.id)}
                 className={cn(
                   'flex min-h-14 w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors',
                   step.id === active.id ? 'border-primary bg-primary/5' : 'border-input hover:bg-accent',
@@ -112,7 +143,13 @@ export function SessionWorkflow({ id }: { id: string }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>{active.label}</CardTitle>
+          <h2
+            ref={headingRef}
+            tabIndex={-1}
+            className="text-2xl font-semibold leading-none tracking-tight focus:outline-none"
+          >
+            {active.label}
+          </h2>
         </CardHeader>
         <CardContent className="space-y-6">
           {active.missing.length > 0 && (
@@ -125,9 +162,9 @@ export function SessionWorkflow({ id }: { id: string }) {
             </Alert>
           )}
           {active.id === 'form' && (
-            <FormStep key={session.formRecordId ?? 'new'} session={session} onSaved={() => setSelected(null)} />
+            <FormStep key={session.formRecordId ?? 'new'} session={session} onSaved={followSession} />
           )}
-          {active.id === 'consent' && <ConsentStep session={session} />}
+          {active.id === 'consent' && <ConsentStep session={session} onDone={followSession} />}
           {active.id !== 'form' && active.id !== 'consent' && active.missing.length === 0 && (
             <p className="text-sm text-muted-foreground">{STATE_LABELS[active.state]}</p>
           )}

@@ -28,12 +28,15 @@ const ENDED: TreatmentSessionStatus[] = ['CONSENT_REFUSED', 'CONSENT_REVOKED', '
 /**
  * The steps of a session as the server describes it: each step is satisfied by what the API
  * reports missing, never by what the client believes. The first unsatisfied step is the current
- * one (blocked when the session ended there); the ones after it are pending.
+ * one (blocked when the session ended there); the ones after it are pending. The procedure stays
+ * current from the start until the session is complete; the close is a summary, done only once
+ * the session is clinically complete and blocked when it ended otherwise.
  */
 export function buildSessionSteps(session: TreatmentSessionDetail): SessionStep[] {
   const { policy, requirements, status } = session;
   const started = session.startedAt !== null || status === 'IN_PROGRESS' || status === 'CLINICAL_COMPLETE';
   const completed = status === 'CLINICAL_COMPLETE';
+  const ended = ENDED.includes(status);
   const pick = (codes: MissingRequirement[], code: MissingRequirement) =>
     codes.includes(code) ? [code] : [];
 
@@ -58,25 +61,23 @@ export function buildSessionSteps(session: TreatmentSessionDetail): SessionStep[
       satisfied: started || !requirements.start.includes('BEFORE_PHOTOS'),
       missing: pick(requirements.start, 'BEFORE_PHOTOS'),
     },
-    { id: 'procedure', skipped: false, satisfied: started, missing: [] },
     {
-      id: 'after',
-      skipped: false,
-      satisfied: completed || !requirements.complete.includes('AFTER_PHOTOS'),
-      missing: pick(requirements.complete, 'AFTER_PHOTOS'),
-    },
-    {
-      id: 'close',
+      id: 'procedure',
       skipped: false,
       satisfied: completed,
       missing: pick(requirements.complete, 'CLINICAL_NOTES'),
     },
+    {
+      id: 'after',
+      skipped: false,
+      satisfied: completed,
+      missing: pick(requirements.complete, 'AFTER_PHOTOS'),
+    },
   ];
 
   const currentIndex = definitions.findIndex((step) => !step.skipped && !step.satisfied);
-  const ended = ENDED.includes(status);
 
-  return definitions.map((step, index) => {
+  const steps: SessionStep[] = definitions.map((step, index) => {
     const base = { id: step.id, label: STEP_LABELS[step.id] };
     if (step.skipped) return { ...base, state: 'skipped', missing: [] };
     if (currentIndex === -1 || index < currentIndex) return { ...base, state: 'done', missing: [] };
@@ -85,4 +86,12 @@ export function buildSessionSteps(session: TreatmentSessionDetail): SessionStep[
     }
     return { ...base, state: 'pending', missing: step.missing };
   });
+
+  steps.push({
+    id: 'close',
+    label: STEP_LABELS.close,
+    state: completed ? 'done' : ended ? 'blocked' : 'pending',
+    missing: [],
+  });
+  return steps;
 }
