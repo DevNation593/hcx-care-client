@@ -199,6 +199,7 @@ describe('patient detail clinical tabs', () => {
 
     expect(screen.queryByRole('button', { name: 'Historia Clínica' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Registros clínicos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tratamientos' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Equipo tratante' })).toBeInTheDocument();
   });
 });
@@ -206,6 +207,7 @@ describe('patient detail clinical tabs', () => {
 describe('patient detail withdrawn permissions', () => {
   it.each([
     ['clinical_records.view', 'Registros clínicos'],
+    ['clinical_records.view', 'Tratamientos'],
     ['billing.view', 'Facturas'],
   ])('hides what %s gave access to', (permission, tab) => {
     renderPage();
@@ -299,6 +301,7 @@ describe('patient detail treating-team wiring', () => {
       'Equipo tratante',
       'Historia Clínica',
       'Registros clínicos',
+      'Tratamientos',
       'Archivos',
       'Citas',
       'Actividades',
@@ -333,6 +336,7 @@ describe('patient detail section gating', () => {
   it.each([
     ['Historia Clínica', 'core.clinicalNotes'],
     ['Registros clínicos', 'core.specialties'],
+    ['Tratamientos', 'core.specialties'],
     ['Archivos', 'core.storage'],
     ['Actividades', 'core.tasks'],
     ['Facturas', 'core.billing'],

@@ -19,6 +19,7 @@ import { describeIdentification } from '@/features/patients/patient-identity';
 import { PatientTeamTab } from '@/features/patients/patient-team-tab';
 import { canAccessClinicalNotes, canDeletePatient, isMasterRole, isProfessionalRole } from '@/types/guards';
 import { PatientInvoicesTab } from '@/features/billing/patient-invoices-tab';
+import { PatientTreatmentsTab } from '@/features/treatment-sessions/patient-treatments-tab';
 import { FeatureLockedNotice, isFeatureLockedError } from '@/features/subscription/feature-locked-notice';
 import { formatDate, formatRelativeDate, getInitials, cn } from '@/lib/utils';
 import {
@@ -87,12 +88,13 @@ import {
   Lock,
   Users,
   Receipt,
+  Syringe,
 } from 'lucide-react';
 
 // ==========================================
 // TAB TYPES
 // ==========================================
-type TabId = 'overview' | 'team' | 'clinical' | 'specialties' | 'files' | 'appointments' | 'tasks' | 'session-plan' | 'billing';
+type TabId = 'overview' | 'team' | 'clinical' | 'specialties' | 'treatments' | 'files' | 'appointments' | 'tasks' | 'session-plan' | 'billing';
 
 interface Tab {
   id: TabId;
@@ -105,6 +107,7 @@ const TABS: Tab[] = [
   { id: 'team', label: 'Equipo tratante', icon: Users },
   { id: 'clinical', label: 'Historia Clínica', icon: FileText },
   { id: 'specialties', label: 'Registros clínicos', icon: ClipboardList },
+  { id: 'treatments', label: 'Tratamientos', icon: Syringe },
   { id: 'files', label: 'Archivos', icon: Paperclip },
   { id: 'appointments', label: 'Citas', icon: Calendar },
   { id: 'tasks', label: 'Actividades', icon: ClipboardList },
@@ -117,6 +120,7 @@ const TAB_SECTIONS: Partial<Record<TabId, SectionKey>> = {
   clinical: 'core.clinicalNotes',
   'session-plan': 'core.clinicalNotes',
   specialties: 'core.specialties',
+  treatments: 'core.specialties',
   files: 'core.storage',
   appointments: 'core.calendar',
   tasks: 'core.tasks',
@@ -154,6 +158,7 @@ function PatientDetailPageContent() {
     (tab) =>
       (tab.id !== 'billing' || canSeeInvoices) &&
       (tab.id !== 'specialties' || canSeeClinical) &&
+      (tab.id !== 'treatments' || canSeeClinical) &&
       (tab.id !== 'files' || canSeeClinical) &&
       (TAB_SECTIONS[tab.id] === undefined || isEnabled(TAB_SECTIONS[tab.id]!)),
   );
@@ -261,6 +266,7 @@ function PatientDetailPageContent() {
         {activeTab === 'specialties' && canSeeClinical && (
           <ClinicalRecordsTab patientId={patientId} startAppointmentId={startAppointmentId} />
         )}
+        {activeTab === 'treatments' && canSeeClinical && <PatientTreatmentsTab patientId={patientId} />}
         {activeTab === 'files' && canSeeClinical && <PatientFilesTab patientId={patientId} />}
         {activeTab === 'appointments' && <AppointmentsTab patientId={patientId} />}
         {activeTab === 'tasks' && <TasksTab patientId={patientId} />}
