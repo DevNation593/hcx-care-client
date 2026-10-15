@@ -88,7 +88,7 @@ describe('Sidebar modules and submodules', () => {
     await screen.findByRole('link', { name: 'Equipo' });
 
     expect(linksIn('Agenda')).toEqual(['Calendario', 'Actividades']);
-    expect(linksIn('Clínica')).toEqual(['Módulos clínicos', 'Formularios']);
+    expect(linksIn('Clínica')).toEqual(['Módulos clínicos', 'Formularios', 'Tratamientos', 'Consentimientos']);
     expect(linksIn('Administración')).toEqual([
       'Equipo',
       'Reportes',
@@ -259,6 +259,21 @@ describe('Sidebar administration section', () => {
     permissions.granted = [];
   });
 
+  it('shows treatments and consents to who holds treatments.manage, and to nobody else without it', async () => {
+    useAuthStore.setState({ user: { ...admin, role: UserRole.ASISTENTE } });
+    const { unmount } = renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Tratamientos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Consentimientos' })).not.toBeInTheDocument();
+    unmount();
+
+    permissions.granted = ['treatments.manage'];
+    renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Tratamientos' })).toHaveAttribute('href', '/admin/treatments');
+    expect(screen.getByRole('link', { name: 'Consentimientos' })).toHaveAttribute('href', '/admin/consents');
+    permissions.granted = [];
+  });
+
   // ADMIN is reserved: it is neither the account holder nor a professional.
   it('hides billing from ADMIN', async () => {
     useAuthStore.setState({ user: { ...admin, role: UserRole.ADMIN } });
@@ -275,6 +290,8 @@ describe('Sidebar section visibility', () => {
     ['Actividades', 'core.tasks'],
     ['Módulos clínicos', 'core.specialties'],
     ['Formularios', 'core.specialties'],
+    ['Tratamientos', 'core.specialties'],
+    ['Consentimientos', 'core.specialties'],
     ['Facturación', 'core.billing'],
     ['Equipo', 'core.team'],
     ['Almacenamiento', 'core.storage'],
