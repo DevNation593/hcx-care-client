@@ -77,6 +77,26 @@ import type {
   FormDefinitionUpdate,
   PatientClinicalAlert,
 } from '@/types/clinical';
+import type {
+  ConsentDocument,
+  ConsentDraftInput,
+  ConsentTemplate,
+  ConsentTemplateInput,
+  ConsentTemplateSummary,
+  ConsentTemplateVersion,
+  SessionMedia,
+  SessionMediaPhase,
+  SignConsentInput,
+  TreatmentFilters,
+  TreatmentInput,
+  TreatmentSessionDetail,
+  TreatmentSessionInput,
+  TreatmentSessionSummary,
+  TreatmentUpdate,
+  TreatmentVersionInput,
+  TreatmentWithCurrent,
+  TreatmentWithVersions,
+} from '@/types/treatments';
 
 // ==========================================
 // HELPER: Get tenantId from auth store
@@ -598,6 +618,114 @@ export const encountersApi = {
     apiClient.delete<{ message: string }>(
       API_ENDPOINTS.PATIENT_ENCOUNTER(getTenantId(), patientId, encounterId),
       { data: { reason } },
+    ),
+};
+
+export const treatmentsApi = {
+  list: (filters?: TreatmentFilters) =>
+    apiClient.get<TreatmentWithCurrent[]>(API_ENDPOINTS.TREATMENTS(getTenantId()), {
+      params: filters?.active === undefined ? undefined : { active: filters.active },
+    }),
+  get: (id: string) =>
+    apiClient.get<TreatmentWithVersions>(API_ENDPOINTS.TREATMENT(getTenantId(), id)),
+  create: (data: TreatmentInput) =>
+    apiClient.post<TreatmentWithVersions>(API_ENDPOINTS.TREATMENTS(getTenantId()), data),
+  update: (id: string, data: TreatmentUpdate) =>
+    apiClient.patch<TreatmentWithVersions>(API_ENDPOINTS.TREATMENT(getTenantId(), id), data),
+  // Price and requirements are immutable: a change is a new version, which becomes the current one.
+  addVersion: (id: string, data: TreatmentVersionInput) =>
+    apiClient.post<TreatmentWithVersions>(API_ENDPOINTS.TREATMENT_VERSIONS(getTenantId(), id), data),
+};
+
+export const consentTemplatesApi = {
+  list: () =>
+    apiClient.get<ConsentTemplateSummary[]>(API_ENDPOINTS.CONSENT_TEMPLATES(getTenantId())),
+  get: (id: string) =>
+    apiClient.get<ConsentTemplate>(API_ENDPOINTS.CONSENT_TEMPLATE(getTenantId(), id)),
+  create: (data: ConsentTemplateInput) =>
+    apiClient.post<ConsentTemplate>(API_ENDPOINTS.CONSENT_TEMPLATES(getTenantId()), data),
+  // Replaces the open draft, or starts the next version as a draft.
+  saveDraft: (id: string, data: ConsentDraftInput) =>
+    apiClient.put<ConsentTemplate>(API_ENDPOINTS.CONSENT_TEMPLATE_DRAFT(getTenantId(), id), data),
+  publish: (id: string) =>
+    apiClient.post<ConsentTemplate>(API_ENDPOINTS.CONSENT_TEMPLATE_PUBLISH(getTenantId(), id), {}),
+  retire: (versionId: string) =>
+    apiClient.post<ConsentTemplateVersion>(
+      API_ENDPOINTS.CONSENT_TEMPLATE_VERSION_RETIRE(getTenantId(), versionId),
+      {},
+    ),
+};
+
+export const treatmentSessionsApi = {
+  listForPatient: (patientId: string) =>
+    apiClient.get<TreatmentSessionSummary[]>(
+      API_ENDPOINTS.PATIENT_TREATMENT_SESSIONS(getTenantId(), patientId),
+    ),
+  create: (patientId: string, data: TreatmentSessionInput) =>
+    apiClient.post<TreatmentSessionDetail>(
+      API_ENDPOINTS.PATIENT_TREATMENT_SESSIONS(getTenantId(), patientId),
+      data,
+    ),
+  get: (id: string) =>
+    apiClient.get<TreatmentSessionDetail>(API_ENDPOINTS.TREATMENT_SESSION(getTenantId(), id)),
+  // The whole answers, not a patch.
+  saveForm: (id: string, data: Record<string, unknown>) =>
+    apiClient.put<TreatmentSessionDetail>(
+      API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'form'),
+      { data },
+    ),
+  presentConsent: (id: string) =>
+    apiClient.post<ConsentDocument>(
+      API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'consents'),
+      {},
+    ),
+  signConsent: (documentId: string, input: SignConsentInput) =>
+    apiClient.post<ConsentDocument>(
+      API_ENDPOINTS.CONSENT_DOCUMENT_COMMAND(getTenantId(), documentId, 'sign'),
+      input,
+    ),
+  refuseConsent: (documentId: string, reason: string) =>
+    apiClient.post<ConsentDocument>(
+      API_ENDPOINTS.CONSENT_DOCUMENT_COMMAND(getTenantId(), documentId, 'refuse'),
+      { reason },
+    ),
+  revokeConsent: (documentId: string, reason: string) =>
+    apiClient.post<ConsentDocument>(
+      API_ENDPOINTS.CONSENT_DOCUMENT_COMMAND(getTenantId(), documentId, 'revoke'),
+      { reason },
+    ),
+  // The bytes come through the API, which checks them against the stored checksum and audits the read.
+  consentPdf: (documentId: string) =>
+    apiClient.get<Blob>(API_ENDPOINTS.CONSENT_DOCUMENT_COMMAND(getTenantId(), documentId, 'pdf'), {
+      responseType: 'blob',
+    }),
+  uploadMedia: (sessionId: string, file: File, phase: SessionMediaPhase, description?: string) =>
+    apiClient.upload<SessionMedia>(
+      API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), sessionId, 'media'),
+      file,
+      undefined,
+      // An absent description must not travel as the text "undefined".
+      description ? { phase, description } : { phase },
+    ),
+  start: (id: string) =>
+    apiClient.post<TreatmentSessionDetail>(
+      API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'start'),
+      {},
+    ),
+  complete: (id: string, procedureNotes?: string) =>
+    apiClient.post<TreatmentSessionDetail>(
+      API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'complete'),
+      procedureNotes ? { procedureNotes } : {},
+    ),
+  cancel: (id: string, reason: string) =>
+    apiClient.post<TreatmentSessionDetail>(
+      API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'cancel'),
+      { reason },
+    ),
+  noShow: (id: string) =>
+    apiClient.post<TreatmentSessionDetail>(
+      API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'no-show'),
+      {},
     ),
 };
 

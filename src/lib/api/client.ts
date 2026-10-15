@@ -154,6 +154,10 @@ class ApiClient {
       if (data.details && typeof data.details === 'object' && !Array.isArray(data.details)) {
         normalized.details = data.details as Record<string, unknown>;
       }
+      // A blocked start or completion of a treatment session lists what is still missing.
+      if (Array.isArray(data.missing)) {
+        normalized.missing = data.missing.filter((item): item is string => typeof item === 'string');
+      }
       // Validation of clinical records and form definitions lists one issue per field.
       if (Array.isArray(data.details)) {
         normalized.issues = data.details.filter(

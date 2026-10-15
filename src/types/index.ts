@@ -875,6 +875,8 @@ export interface ApiError {
   code?: string;
   field?: string;
   details?: Record<string, any>;
+  /** Requirement codes a blocked treatment session start or completion is missing. */
+  missing?: string[];
   /** Per-field problems of a rejected clinical record or form definition. */
   issues?: { field: string; message: string }[];
 }

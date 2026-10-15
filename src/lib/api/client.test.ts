@@ -79,6 +79,31 @@ describe('ApiClient error normalization', () => {
     }
   });
 
+  it('keeps the missing requirements of a blocked start', async () => {
+    interceptor.status = 422;
+    interceptor.responseData = {
+      statusCode: 422, code: 'TREATMENT_REQUIREMENTS_MISSING', message: 'Faltan requisitos',
+      missing: ['FINALIZED_MEDICAL_FORM', 'BEFORE_PHOTOS'],
+    };
+    await expect(apiClient.post('/treatment-sessions/s1/start', {})).rejects.toMatchObject({
+      status: 422, code: 'TREATMENT_REQUIREMENTS_MISSING', missing: ['FINALIZED_MEDICAL_FORM', 'BEFORE_PHOTOS'],
+    });
+  });
+
+  it.each([
+    ['a string', 'BEFORE_PHOTOS'],
+    ['an object', { 0: 'BEFORE_PHOTOS' }],
+  ])('drops `missing` when it is %s instead of a list', async (_name, missing) => {
+    interceptor.responseData = { statusCode: 422, message: 'Faltan requisitos', missing };
+    const error = await apiClient.post('/treatment-sessions/s1/start', {}).catch((e) => e);
+    expect(error).not.toHaveProperty('missing');
+  });
+
+  it('keeps only the text entries of `missing`', async () => {
+    interceptor.responseData = { statusCode: 422, message: 'Faltan requisitos', missing: ['AFTER_PHOTOS', 7, null] };
+    await expect(apiClient.post('/treatment-sessions/s1/complete', {})).rejects.toMatchObject({ missing: ['AFTER_PHOTOS'] });
+  });
+
   it('uses the uppercase guard code reported in `error` as the error code', async () => {
     interceptor.responseData = {
       statusCode: 403, error: 'FEATURE_NOT_AVAILABLE', message: 'This feature requires a higher plan.',
