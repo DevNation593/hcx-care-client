@@ -33,7 +33,7 @@ import type {
   TreatmentSessionDetail,
 } from '@/types/treatments';
 
-const DOCUMENT_STATUS_LABELS: Record<ConsentDocumentStatus, string> = {
+export const DOCUMENT_STATUS_LABELS: Record<ConsentDocumentStatus, string> = {
   PRESENTED: 'Presentado',
   SIGNED: 'Firmado',
   REFUSED: 'Rechazado',
@@ -630,7 +630,7 @@ function SignedConsent({
   );
 }
 
-function ReasonDialog({
+export function ReasonDialog({
   title,
   description,
   confirmLabel,

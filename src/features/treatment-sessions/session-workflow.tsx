@@ -16,9 +16,12 @@ import {
   SESSION_STATUS_LABELS,
   type TreatmentSessionDetail,
 } from '@/types/treatments';
+import { CloseSummaryStep } from './close-summary-step';
 import { ConsentStep } from './consent-step';
 import { FormStep } from './form-step';
 import { SESSION_STATUS_VARIANTS } from './patient-treatments-tab';
+import { PhotosStep } from './photos-step';
+import { ProcedureStep } from './procedure-step';
 import { buildSessionSteps, type SessionStep, type SessionStepId } from './session-steps';
 
 const STATE_LABELS: Record<SessionStep['state'], string> = {
@@ -68,6 +71,8 @@ export function SessionWorkflow({ id }: { id: string }) {
     setSelected(id);
   };
   const followSession = () => setSelected(null);
+  // A closed, cancelled or absent session ends at the summary; the focus follows like any new step.
+  const showClose = () => setSelected('close');
 
   if (isPending) {
     return (
@@ -165,9 +170,10 @@ export function SessionWorkflow({ id }: { id: string }) {
             <FormStep key={session.formRecordId ?? 'new'} session={session} onSaved={followSession} />
           )}
           {active.id === 'consent' && <ConsentStep session={session} onDone={followSession} />}
-          {active.id !== 'form' && active.id !== 'consent' && active.missing.length === 0 && (
-            <p className="text-sm text-muted-foreground">{STATE_LABELS[active.state]}</p>
-          )}
+          {active.id === 'before' && <PhotosStep session={session} phase="BEFORE" />}
+          {active.id === 'procedure' && <ProcedureStep session={session} onDone={showClose} />}
+          {active.id === 'after' && <PhotosStep session={session} phase="AFTER" />}
+          {active.id === 'close' && <CloseSummaryStep session={session} />}
         </CardContent>
       </Card>
     </div>

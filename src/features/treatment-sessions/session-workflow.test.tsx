@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TreatmentSessionDetail } from '@/types/treatments';
 import { SessionWorkflow } from './session-workflow';
@@ -9,6 +9,9 @@ const hooks = vi.hoisted(() => ({
   session: null as unknown,
   presentConsent: vi.fn(),
   signConsent: vi.fn(),
+  complete: vi.fn(),
+  cancel: vi.fn(),
+  noShow: vi.fn(),
 }));
 
 const mutation = (mutateAsync: unknown) => ({ mutateAsync, isPending: false });
@@ -20,6 +23,11 @@ vi.mock('@/hooks/useTreatmentSessions', () => ({
     signConsent: mutation(hooks.signConsent),
     refuseConsent: mutation(vi.fn()),
     revokeConsent: mutation(vi.fn()),
+    uploadMedia: mutation(vi.fn()),
+    start: mutation(vi.fn()),
+    complete: mutation(hooks.complete),
+    cancel: mutation(hooks.cancel),
+    noShow: mutation(hooks.noShow),
   }),
 }));
 
@@ -155,5 +163,99 @@ describe('SessionWorkflow', () => {
     expect(stepButton(/Consentimiento/)).toHaveAttribute('aria-current', 'step');
     expect(stepButton(/Consentimiento/)).toHaveTextContent('Detenido');
     expect(stepButton(/Cierre/)).toHaveTextContent('Detenido');
+  });
+  describe('procedure steps', () => {
+    const started = (overrides: Partial<TreatmentSessionDetail> = {}) =>
+      session({
+        status: 'IN_PROGRESS',
+        startedAt: '2026-10-15T15:00:00.000Z',
+        consentDocumentId: 'doc-1',
+        requirements: { start: [], complete: [] },
+        allowedCommands: ['UPLOAD_AFTER', 'UPLOAD_OTHER', 'COMPLETE', 'CANCEL'],
+        ...overrides,
+      });
+
+    it('mounts the photos, the procedure and the summary in their steps', () => {
+      hooks.session = started();
+      render(<SessionWorkflow id="session-1" />);
+
+      expect(heading()).toHaveTextContent('Procedimiento');
+      expect(screen.getByRole('button', { name: 'Cerrar atención' })).toBeInTheDocument();
+
+      fireEvent.click(stepButton(/Fotos antes/));
+      expect(heading()).toHaveTextContent('Fotos antes');
+      expect(screen.getByLabelText(/Agregar foto de antes/)).toBeDisabled();
+
+      fireEvent.click(stepButton(/Fotos después/));
+      expect(screen.getByLabelText(/Agregar foto de después/)).toBeEnabled();
+
+      fireEvent.click(stepButton(/Cierre/));
+      expect(heading()).toHaveTextContent('Cierre');
+      expect(screen.getByText('Notas del procedimiento')).toBeInTheDocument();
+    });
+
+    it('moves the focus to the summary and announces it after closing the session', async () => {
+      hooks.session = started();
+      hooks.complete.mockImplementation(async () => {
+        hooks.session = started({
+          status: 'CLINICAL_COMPLETE',
+          completedAt: '2026-10-15T16:00:00.000Z',
+          allowedCommands: [],
+        });
+      });
+      const { rerender } = render(<SessionWorkflow id="session-1" />);
+
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cerrar atención' })));
+      rerender(<SessionWorkflow id="session-1" />);
+
+      expect(heading()).toHaveTextContent('Cierre');
+      expect(heading()).toHaveFocus();
+      expect(screen.getByText('Paso actual: Cierre')).toBeInTheDocument();
+    });
+
+    it('moves the focus to the summary after cancelling, even when the stepper stays put', async () => {
+      hooks.session = started();
+      hooks.cancel.mockImplementation(async () => {
+        hooks.session = started({
+          status: 'CANCELLED',
+          cancelledAt: '2026-10-15T16:00:00.000Z',
+          cancellationReason: 'Paciente con fiebre',
+          allowedCommands: [],
+        });
+      });
+      const { rerender } = render(<SessionWorkflow id="session-1" />);
+
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancelar atención' })));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Paciente con fiebre' } });
+      await act(async () =>
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar cancelación' })),
+      );
+      rerender(<SessionWorkflow id="session-1" />);
+
+      expect(hooks.cancel).toHaveBeenCalledWith('Paciente con fiebre');
+      expect(heading()).toHaveTextContent('Cierre');
+      expect(heading()).toHaveFocus();
+      expect(screen.getByText('Paso actual: Cierre')).toBeInTheDocument();
+    });
+
+    it('moves the focus to the summary after marking a no show', async () => {
+      hooks.session = session({
+        status: 'CONSENTED',
+        consentDocumentId: 'doc-1',
+        requirements: { start: [], complete: [] },
+        allowedCommands: ['START', 'CANCEL', 'NO_SHOW'],
+      });
+      hooks.noShow.mockImplementation(async () => {
+        hooks.session = session({ status: 'NO_SHOW', requirements: { start: [], complete: [] }, allowedCommands: [] });
+      });
+      const { rerender } = render(<SessionWorkflow id="session-1" />);
+
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'No asistió' })));
+      rerender(<SessionWorkflow id="session-1" />);
+
+      expect(heading()).toHaveTextContent('Cierre');
+      expect(heading()).toHaveFocus();
+    });
   });
 });
