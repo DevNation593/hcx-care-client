@@ -5,8 +5,17 @@ import {
   SESSION_STATUS_LABELS,
   type ConsentDocumentSummary,
   type TreatmentSessionDetail,
+  type TreatmentSessionStatus,
 } from '@/types/treatments';
 import { DOCUMENT_STATUS_LABELS, formatSignedAt } from './consent-step';
+
+// Statuses that end a session without closing it clinically.
+const ENDED_NOTICES: Partial<Record<TreatmentSessionStatus, string>> = {
+  CANCELLED: 'La atención fue cancelada.',
+  NO_SHOW: 'El paciente no asistió.',
+  CONSENT_REFUSED: 'Consentimiento rechazado.',
+  CONSENT_REVOKED: 'Consentimiento revocado.',
+};
 
 function consentState(session: TreatmentSessionDetail): string {
   if (!session.policy.informedConsent.required) return 'No requerido';
@@ -34,10 +43,14 @@ export function CloseSummaryStep({ session }: { session: TreatmentSessionDetail 
 
   return (
     <div className="space-y-4">
-      {session.status !== 'CLINICAL_COMPLETE' && (
-        <Alert variant="default">
-          Este resumen es de solo lectura y se completa al cerrar la atención.
-        </Alert>
+      {ENDED_NOTICES[session.status] ? (
+        <Alert variant="default">{ENDED_NOTICES[session.status]}</Alert>
+      ) : (
+        session.status !== 'CLINICAL_COMPLETE' && (
+          <Alert variant="default">
+            Este resumen es de solo lectura y se completa al cerrar la atención.
+          </Alert>
+        )
       )}
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
         <dt className="text-muted-foreground">Estado</dt>

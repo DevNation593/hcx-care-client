@@ -44,6 +44,8 @@ export function SessionWorkflow({ id }: { id: string }) {
   // The status a refusal or revocation left behind, until the refetched session reports the new one.
   const awaitingStatusFrom = useRef<TreatmentSessionStatus | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  // The procedure notes being typed; null until the user types, so the saved ones show meanwhile.
+  const [typedNotes, setTypedNotes] = useState<string | null>(null);
 
   const steps = session ? buildSessionSteps(session) : [];
   const reachable = steps.filter((step) => step.state !== 'skipped');
@@ -193,7 +195,14 @@ export function SessionWorkflow({ id }: { id: string }) {
           )}
           {active.id === 'consent' && <ConsentStep session={session} onDone={consentDone} />}
           {active.id === 'before' && <PhotosStep session={session} phase="BEFORE" />}
-          {active.id === 'procedure' && <ProcedureStep session={session} onDone={showClose} />}
+          {active.id === 'procedure' && (
+            <ProcedureStep
+              session={session}
+              notes={typedNotes ?? session.procedureNotes ?? ''}
+              onNotesChange={setTypedNotes}
+              onDone={showClose}
+            />
+          )}
           {active.id === 'after' && <PhotosStep session={session} phase="AFTER" />}
           {active.id === 'close' && <CloseSummaryStep session={session} />}
         </CardContent>

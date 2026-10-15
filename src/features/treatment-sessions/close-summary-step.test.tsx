@@ -68,7 +68,35 @@ describe('CloseSummaryStep', () => {
     expect(value('Consentimiento')).toHaveTextContent('Pendiente');
     expect(value('Fotos antes')).toHaveTextContent('0');
     expect(value('Notas del procedimiento')).toHaveTextContent('Sin notas');
-    expect(screen.getByText(/solo lectura/)).toBeInTheDocument();
+    expect(screen.getByText('La atención fue cancelada.')).toBeInTheDocument();
+    expect(screen.queryByText(/se completa al cerrar la atención/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['CANCELLED', 'La atención fue cancelada.'],
+    ['NO_SHOW', 'El paciente no asistió.'],
+    ['CONSENT_REFUSED', 'Consentimiento rechazado.'],
+    ['CONSENT_REVOKED', 'Consentimiento revocado.'],
+  ] as const)('says what happened to a %s session instead of promising a close', (status, text) => {
+    render(<CloseSummaryStep session={session({ status })} />);
+
+    expect(screen.getByText(text)).toBeInTheDocument();
+    expect(screen.queryByText(/se completa al cerrar la atención/)).not.toBeInTheDocument();
+  });
+
+  it.each(['IN_PROGRESS', 'CONSENTED'] as const)(
+    'explains that the summary completes when the %s session is closed',
+    (status) => {
+      render(<CloseSummaryStep session={session({ status, completedAt: null })} />);
+
+      expect(screen.getByText(/solo lectura y se completa al cerrar la atención/)).toBeInTheDocument();
+    },
+  );
+
+  it('shows no pending notice for a closed session', () => {
+    render(<CloseSummaryStep session={session()} />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('says the consent was not required when the treatment asks for none', () => {

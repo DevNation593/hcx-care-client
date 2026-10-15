@@ -1,9 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Play } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useSessionCommand } from '@/hooks/useTreatmentSessions';
@@ -23,6 +31,9 @@ const BEFORE_START: TreatmentSessionStatus[] = ['INTAKE_IN_PROGRESS', 'READY_FOR
 
 export interface ProcedureStepProps {
   session: TreatmentSessionDetail;
+  /** The notes being typed; kept by the page so they survive moving between steps. */
+  notes: string;
+  onNotesChange: (notes: string) => void;
   /** Called once the session was closed, cancelled or marked as a no-show. */
   onDone?: () => void;
 }
@@ -32,11 +43,12 @@ export interface ProcedureStepProps {
  * marking the patient as absent. What can be done comes from `allowedCommands`; what is missing
  * for a start or a close comes from the API's 422.
  */
-export function ProcedureStep({ session, onDone }: ProcedureStepProps) {
+export function ProcedureStep({ session, notes, onNotesChange, onDone }: ProcedureStepProps) {
   const commands = useSessionCommand(session.id);
-  const [notes, setNotes] = useState(session.procedureNotes ?? '');
   const [failure, setFailure] = useState<ApiError | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  // Closing and marking an absence cannot be undone: both ask first.
+  const [confirming, setConfirming] = useState<'complete' | 'noShow' | null>(null);
 
   const can = (command: SessionCommandName) =>
     session.allowedCommands.includes(command);
@@ -62,9 +74,11 @@ export function ProcedureStep({ session, onDone }: ProcedureStepProps) {
       {BEFORE_START.includes(status) && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            {can('START')
-              ? 'Todo está listo. Inicia el procedimiento cuando comiences la atención.'
-              : 'El procedimiento se podrá iniciar cuando termines los pasos anteriores.'}
+            {!can('START')
+              ? 'El procedimiento se podrá iniciar cuando termines los pasos anteriores.'
+              : session.requirements.start.length === 0
+                ? 'Todo está listo. Inicia el procedimiento cuando comiences la atención.'
+                : 'Revisa los pendientes antes de iniciar.'}
           </p>
           <Button
             size="lg"
@@ -86,11 +100,7 @@ export function ProcedureStep({ session, onDone }: ProcedureStepProps) {
           onSubmit={(event) => {
             event.preventDefault();
             if (!can('COMPLETE') || busy) return;
-            // Notes left empty are not sent: the API decides whether they were required.
-            void run(
-              () => commands.complete.mutateAsync(trimmedNotes ? trimmedNotes : undefined),
-              onDone,
-            );
+            setConfirming('complete');
           }}
         >
           <div>
@@ -105,7 +115,7 @@ export function ProcedureStep({ session, onDone }: ProcedureStepProps) {
               rows={8}
               maxLength={PROCEDURE_NOTES_MAX}
               value={notes}
-              onChange={(event) => setNotes(event.target.value)}
+              onChange={(event) => onNotesChange(event.target.value)}
               disabled={commands.complete.isPending}
             />
           </div>
@@ -147,12 +157,38 @@ export function ProcedureStep({ session, onDone }: ProcedureStepProps) {
               variant="outline"
               disabled={busy}
               loading={commands.noShow.isPending}
-              onClick={() => run(() => commands.noShow.mutateAsync(), onDone)}
+              onClick={() => setConfirming('noShow')}
             >
               No asistió
             </Button>
           )}
         </div>
+      )}
+
+      {confirming === 'complete' && (
+        <ConfirmDialog
+          title="Cerrar atención"
+          description="Se registran las notas y la atención queda cerrada. No se puede deshacer."
+          confirmLabel="Confirmar cierre"
+          onConfirm={() => {
+            // Notes left empty are not sent: the API decides whether they were required.
+            void run(
+              () => commands.complete.mutateAsync(trimmedNotes ? trimmedNotes : undefined),
+              onDone,
+            );
+          }}
+          onClose={() => setConfirming(null)}
+        />
+      )}
+
+      {confirming === 'noShow' && (
+        <ConfirmDialog
+          title="Registrar inasistencia"
+          description="El paciente no asistió y la atención termina. No se puede deshacer."
+          confirmLabel="Confirmar inasistencia"
+          onConfirm={() => void run(() => commands.noShow.mutateAsync(), onDone)}
+          onClose={() => setConfirming(null)}
+        />
       )}
 
       {cancelling && (
@@ -168,6 +204,48 @@ export function ProcedureStep({ session, onDone }: ProcedureStepProps) {
         />
       )}
     </div>
+  );
+}
+
+/** Asks before an irreversible action; the step shows how the action went. */
+function ConfirmDialog({
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <DialogHeader>
+          <DialogTitle id={titleId}>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button type="button" size="lg" variant="outline" onClick={onClose}>
+            Volver
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            onClick={() => {
+              onClose();
+              onConfirm();
+            }}
+          >
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

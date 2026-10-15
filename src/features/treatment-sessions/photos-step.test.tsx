@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/store/authStore';
@@ -185,5 +185,63 @@ describe('PhotosStep', () => {
     await pick(input(/Agregar foto de antes/), jpg());
     expect(http.upload).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  describe('the file input', () => {
+    // jsdom lets a file input keep no value, so the reset is observed through the setter.
+    const watchValue = (element: HTMLInputElement) => {
+      const writes: string[] = [];
+      Object.defineProperty(element, 'value', {
+        configurable: true,
+        get: () => '',
+        set: (value: string) => void writes.push(value),
+      });
+      return writes;
+    };
+
+    it('is cleared after an upload so the same photo can be taken again', async () => {
+      http.upload.mockResolvedValue(media());
+      renderStep(session());
+      const field = input(/Agregar foto de antes/);
+      const writes = watchValue(field);
+
+      await pick(field, jpg());
+
+      expect(writes).toEqual(['']);
+    });
+
+    it('is cleared after a failed upload too', async () => {
+      http.upload.mockRejectedValue({ status: 413, message: 'Sin espacio' });
+      renderStep(session());
+      const field = input(/Agregar foto de antes/);
+      const writes = watchValue(field);
+
+      await pick(field, jpg());
+
+      expect(writes).toEqual(['']);
+    });
+
+    it('is disabled while a photo uploads and a second photo chosen meanwhile is ignored', async () => {
+      let finish!: (value: SessionMedia) => void;
+      http.upload.mockReturnValue(new Promise<SessionMedia>((resolve) => (finish = resolve)));
+      renderStep(session());
+      const field = input(/Agregar foto de antes/);
+      const writes = watchValue(field);
+
+      await pick(field, jpg());
+
+      await waitFor(() => expect(field).toBeDisabled());
+      expect(screen.getByText('Guardando la foto…')).toBeInTheDocument();
+      await pick(field, new File(['y'], 'otra.jpg', { type: 'image/jpeg' }));
+      expect(http.upload).toHaveBeenCalledTimes(1);
+      // The ignored choice must not clear the input of the upload in flight.
+      expect(writes).toEqual([]);
+
+      await act(async () => finish(media()));
+
+      await waitFor(() => expect(field).toBeEnabled());
+      expect(writes).toEqual(['']);
+      expect(screen.queryByText('Guardando la foto…')).not.toBeInTheDocument();
+    });
   });
 });

@@ -247,6 +247,28 @@ describe('SessionWorkflow', () => {
         ...overrides,
       });
 
+    it('keeps the notes typed in the procedure when the user visits other steps and comes back', () => {
+      hooks.session = started();
+      render(<SessionWorkflow id="session-1" />);
+
+      fireEvent.change(screen.getByLabelText(/Notas del procedimiento/), {
+        target: { value: 'Aplicación en tres puntos.' },
+      });
+      fireEvent.click(stepButton(/Fotos después/));
+      expect(screen.queryByLabelText(/Notas del procedimiento/)).not.toBeInTheDocument();
+      fireEvent.click(stepButton(/Cierre/));
+      fireEvent.click(stepButton(/Procedimiento/));
+
+      expect(screen.getByLabelText(/Notas del procedimiento/)).toHaveValue('Aplicación en tres puntos.');
+    });
+
+    it('starts the notes from the ones the server already holds', () => {
+      hooks.session = started({ procedureNotes: 'Notas guardadas' });
+      render(<SessionWorkflow id="session-1" />);
+
+      expect(screen.getByLabelText(/Notas del procedimiento/)).toHaveValue('Notas guardadas');
+    });
+
     it('mounts the photos, the procedure and the summary in their steps', () => {
       hooks.session = started();
       render(<SessionWorkflow id="session-1" />);
@@ -278,6 +300,11 @@ describe('SessionWorkflow', () => {
       const { rerender } = render(<SessionWorkflow id="session-1" />);
 
       await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cerrar atención' })));
+      await act(async () =>
+        fireEvent.click(
+          within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar cierre' }),
+        ),
+      );
       rerender(<SessionWorkflow id="session-1" />);
 
       expect(heading()).toHaveTextContent('Cierre');
@@ -324,6 +351,11 @@ describe('SessionWorkflow', () => {
       const { rerender } = render(<SessionWorkflow id="session-1" />);
 
       await act(async () => fireEvent.click(screen.getByRole('button', { name: 'No asistió' })));
+      await act(async () =>
+        fireEvent.click(
+          within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar inasistencia' }),
+        ),
+      );
       rerender(<SessionWorkflow id="session-1" />);
 
       expect(heading()).toHaveTextContent('Cierre');
