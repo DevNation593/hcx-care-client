@@ -69,7 +69,10 @@ function useSessionMutation<TInput, TResult>(
         predicate: ({ queryKey }) =>
           queryKey[0] === 'patients' && queryKey[2] === 'treatment-sessions',
       });
-      // A transition moves the encounter and the appointment of the session.
+      // A transition moves the appointment and may close the encounter of the session.
+      queryClient.invalidateQueries({
+        predicate: ({ queryKey }) => queryKey[0] === 'patients' && queryKey[2] === 'encounters',
+      });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
       onDone?.();
       toast.success(success);
@@ -119,6 +122,8 @@ export function useSessionCommand(id: string) {
       ({ documentId, reason }: { documentId: string; reason: string }) =>
         treatmentSessionsApi.revokeConsent(documentId, reason),
       'Consentimiento revocado',
+      // Other sessions that reused the consent return to READY_FOR_CONSENT.
+      () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TREATMENT_SESSIONS }),
     ),
     uploadMedia: useSessionMutation(
       id,

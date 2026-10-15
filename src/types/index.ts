@@ -1,3 +1,5 @@
+import type { MissingRequirement } from './treatments';
+
 // ==========================================
 // ENUMS
 // ==========================================
@@ -876,8 +878,8 @@ export interface ApiError {
   field?: string;
   details?: Record<string, any>;
   /** Requirement codes a blocked treatment session start or completion is missing. */
-  missing?: string[];
-  /** Per-field problems of a rejected clinical record or form definition. */
+  missing?: MissingRequirement[];
+  /** Per-field problems of a rejected clinical record or form definition; `field` is empty for a plain text problem (treatment requirements). */
   issues?: { field: string; message: string }[];
 }
 

@@ -34,6 +34,8 @@ describe('useSessionCommand', () => {
     const { client, wrapper } = setup();
     client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-1'), { id: 'session-1' });
     client.setQueryData(QUERY_KEYS.PATIENT_TREATMENT_SESSIONS('patient-1'), []);
+    client.setQueryData(QUERY_KEYS.PATIENT_ENCOUNTERS('patient-1'), []);
+    client.setQueryData(QUERY_KEYS.APPOINTMENTS, []);
     const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
 
     await act(async () => { await result.current.start.mutateAsync(); });
@@ -41,6 +43,8 @@ describe('useSessionCommand', () => {
     expect(http.post).toHaveBeenCalledWith('/tenants/tenant-1/treatment-sessions/session-1/start', {});
     expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-1'))?.isInvalidated).toBe(true);
     expect(client.getQueryState(QUERY_KEYS.PATIENT_TREATMENT_SESSIONS('patient-1'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.PATIENT_ENCOUNTERS('patient-1'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.APPOINTMENTS)?.isInvalidated).toBe(true);
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -97,6 +101,28 @@ describe('useSessionCommand', () => {
     expect(http.post).toHaveBeenCalledWith('/tenants/tenant-1/consent-documents/doc-1/sign', signature);
     expect(http.post).toHaveBeenCalledWith('/tenants/tenant-1/consent-documents/doc-1/refuse', { reason: 'Prefiere pensarlo' });
     expect(http.post).toHaveBeenCalledWith('/tenants/tenant-1/consent-documents/doc-1/revoke', { reason: 'Cambió de opinión' });
+  });
+
+  it('revoking a consent also refreshes the other sessions that reused it', async () => {
+    const { client, wrapper } = setup();
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-2'), { id: 'session-2' });
+    const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
+
+    await act(async () => {
+      await result.current.revokeConsent.mutateAsync({ documentId: 'doc-1', reason: 'Cambió de opinión' });
+    });
+
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-2'))?.isInvalidated).toBe(true);
+  });
+
+  it('does not refresh other sessions after a command that cannot affect them', async () => {
+    const { client, wrapper } = setup();
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-2'), { id: 'session-2' });
+    const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
+
+    await act(async () => { await result.current.start.mutateAsync(); });
+
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-2'))?.isInvalidated).toBe(false);
   });
 
   it('uploads a photo as multipart fields file, phase and description', async () => {

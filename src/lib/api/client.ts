@@ -1,6 +1,7 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, STORAGE_KEYS } from '@/lib/constants';
 import { ApiError } from '@/types';
+import { MISSING_REQUIREMENT_LABELS, type MissingRequirement } from '@/types/treatments';
 
 // ==========================================
 // API CLIENT CONFIGURATION
@@ -156,7 +157,16 @@ class ApiClient {
       }
       // A blocked start or completion of a treatment session lists what is still missing.
       if (Array.isArray(data.missing)) {
-        normalized.missing = data.missing.filter((item): item is string => typeof item === 'string');
+        normalized.missing = data.missing.filter(
+          (item): item is MissingRequirement =>
+            typeof item === 'string' && Object.hasOwn(MISSING_REQUIREMENT_LABELS, item),
+        );
+      }
+      // A treatment whose requirements are rejected lists the problems as plain texts.
+      if (Array.isArray(data.issues)) {
+        normalized.issues = data.issues
+          .filter((issue): issue is string => typeof issue === 'string')
+          .map((message) => ({ field: '', message }));
       }
       // Validation of clinical records and form definitions lists one issue per field.
       if (Array.isArray(data.details)) {

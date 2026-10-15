@@ -99,9 +99,32 @@ describe('ApiClient error normalization', () => {
     expect(error).not.toHaveProperty('missing');
   });
 
-  it('keeps only the text entries of `missing`', async () => {
-    interceptor.responseData = { statusCode: 422, message: 'Faltan requisitos', missing: ['AFTER_PHOTOS', 7, null] };
+  it('keeps only known requirement codes in `missing`', async () => {
+    interceptor.responseData = {
+      statusCode: 422, message: 'Faltan requisitos', missing: ['AFTER_PHOTOS', 'constructor', 'SOMETHING_NEW', 7, null],
+    };
     await expect(apiClient.post('/treatment-sessions/s1/complete', {})).rejects.toMatchObject({ missing: ['AFTER_PHOTOS'] });
+  });
+
+  it('maps the plain-text issues of rejected treatment requirements to issue entries', async () => {
+    interceptor.status = 400;
+    interceptor.responseData = {
+      statusCode: 400, code: 'TREATMENT_REQUIREMENTS_INVALID', message: 'Los requisitos del tratamiento no son válidos.',
+      issues: ['photos.minimumBefore debe ser un entero entre 0 y 20', 7, 'consentTemplateVersionId no existe'],
+    };
+    await expect(apiClient.post('/treatments', {})).rejects.toMatchObject({
+      status: 400, code: 'TREATMENT_REQUIREMENTS_INVALID',
+      issues: [
+        { field: '', message: 'photos.minimumBefore debe ser un entero entre 0 y 20' },
+        { field: '', message: 'consentTemplateVersionId no existe' },
+      ],
+    });
+  });
+
+  it('ignores `issues` that is not a list', async () => {
+    interceptor.responseData = { statusCode: 400, message: 'Invalid', issues: 'nope' };
+    const error = await apiClient.post('/treatments', {}).catch((e) => e);
+    expect(error).not.toHaveProperty('issues');
   });
 
   it('uses the uppercase guard code reported in `error` as the error code', async () => {

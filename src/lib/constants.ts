@@ -267,6 +267,7 @@ export const QUERY_KEYS = {
   CONSENT_TEMPLATES: ['consent-templates'],
   CONSENT_TEMPLATE: (id: string) => ['consent-templates', id],
   PATIENT_TREATMENT_SESSIONS: (patientId: string) => ['patients', patientId, 'treatment-sessions'],
+  TREATMENT_SESSIONS: ['treatment-sessions'],
   TREATMENT_SESSION: (id: string) => ['treatment-sessions', id],
   BRANCHES: (tenantId: string) => ['tenant', 'branches', tenantId],
   MEDICATIONS: (tenantId: string) => ['tenant', 'medications', tenantId],
