@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { useSections } from '@/hooks/useSections';
 import { useMyPermissions } from '@/hooks/usePermissions';
-import { canManageUsers, canManageSubscription, isMasterRole, isProfessionalRole } from '@/types/guards';
+import { canManageUsers, canManageSubscription, isMasterRole } from '@/types/guards';
 import {
   LayoutDashboard,
   Calendar,
@@ -30,6 +30,7 @@ import {
   BarChart3,
   Syringe,
   FileSignature,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -87,7 +88,8 @@ export function Sidebar() {
         { name: 'Consentimientos', href: '/admin/consents', icon: FileSignature, show: isEnabled('core.specialties') && can('treatments.manage', isMaster) },
       ],
     },
-    { name: 'Facturación', href: '/admin/billing', icon: FileText, show: isEnabled('core.billing') && can('billing.view', user ? isMasterRole(user.role) || isProfessionalRole(user.role) : false) },
+    { name: 'Caja', href: '/cash', icon: Wallet, show: isEnabled('core.billing') && (can('billing.view', isMaster) || can('cash.manage', isMaster)) },
+    { name: 'Facturación', href: '/admin/billing', icon: FileText, show: isEnabled('core.billing') && can('billing.view', isMaster) },
     {
       name: 'Administración',
       icon: Building2,

@@ -194,10 +194,39 @@ describe('Sidebar billing entry', () => {
     expect(screen.queryByRole('link', { name: 'Facturación' })).not.toBeInTheDocument();
   });
 
-  it.each([UserRole.MASTER, UserRole.PROFESIONAL])('is shown to %s', async (role) => {
-    useAuthStore.setState({ user: { ...admin, role } });
+  it('is shown to the account holder', async () => {
     renderSidebar();
     expect(await screen.findByRole('link', { name: 'Facturación' })).toBeInTheDocument();
+  });
+
+  it('is shown to a professional only when billing.view was given to them', async () => {
+    useAuthStore.setState({ user: { ...admin, role: UserRole.PROFESIONAL } });
+    permissions.granted = ['billing.view'];
+    renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Facturación' })).toBeInTheDocument();
+    permissions.granted = [];
+  });
+});
+
+describe('Sidebar cash entry', () => {
+  it('is shown to an assistant with cash.manage and hidden without any permission', async () => {
+    useAuthStore.setState({ user: { ...admin, role: UserRole.ASISTENTE } });
+    const { unmount } = renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Caja' })).not.toBeInTheDocument();
+    unmount();
+
+    permissions.granted = ['cash.manage'];
+    renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Caja' })).toHaveAttribute('href', '/cash');
+    permissions.granted = [];
+  });
+
+  it('is hidden when the billing section is off', async () => {
+    vi.mocked(tenantModulesApi.list).mockResolvedValue(sectionRows(['core.billing']));
+    renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Equipo' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Caja' })).not.toBeInTheDocument();
   });
 });
 
