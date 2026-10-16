@@ -103,6 +103,39 @@ describe('CashPage', () => {
     expect(hooks.push).toHaveBeenCalledWith('/cash/orders/order-7');
   });
 
+  it('clears the selection when the branch changes', () => {
+    render(<CashPage />);
+
+    fireEvent.click(screen.getByLabelText(/Paz s1/));
+    expect(screen.getByRole('button', { name: 'Cobrar' })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Sucursal'), { target: { value: 'b-2' } });
+
+    expect(screen.getByLabelText(/Paz s1/)).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Cobrar' })).toBeDisabled();
+  });
+
+  it('sends only the ticked sessions that are still listed', async () => {
+    const { rerender } = render(<CashPage />);
+
+    fireEvent.click(screen.getByLabelText(/Paz s1/));
+    fireEvent.click(screen.getByLabelText(/Paz s2/));
+    // Another order consumed s2 and the list refetched.
+    hooks.billable = { data: [billable('s1', true)], isPending: false, isError: false };
+    rerender(<CashPage />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cobrar' })));
+
+    expect(hooks.createOrder).toHaveBeenCalledWith({ branchId: 'b-1', treatmentSessionIds: ['s1'] });
+  });
+
+  it('offers no charging with billing.view alone', () => {
+    hooks.can.mockImplementation((permission: string) => permission !== 'billing.create');
+    render(<CashPage />);
+
+    expect(screen.queryByRole('button', { name: 'Cobrar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByText('Falta documentación')).toBeInTheDocument();
+  });
+
   it('disables charging until a session is ticked', () => {
     render(<CashPage />);
     expect(screen.getByRole('button', { name: 'Cobrar' })).toBeDisabled();

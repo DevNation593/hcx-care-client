@@ -50,7 +50,7 @@ export function CashPage() {
               Órdenes
             </Button>
           </div>
-          {tab === 'billable' ? <BillableSessionsTab branchId={branchId} /> : <OrdersTab branchId={branchId} />}
+          {tab === 'billable' ? <BillableSessionsTab key={branchId} branchId={branchId} /> : <OrdersTab branchId={branchId} />}
         </>
       )}
     </div>
