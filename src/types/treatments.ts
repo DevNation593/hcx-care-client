@@ -12,7 +12,10 @@ export type TreatmentSessionStatus =
   | 'CONSENT_REFUSED'
   | 'CONSENT_REVOKED'
   | 'CANCELLED'
-  | 'NO_SHOW';
+  | 'NO_SHOW'
+  | 'BILLING_PENDING'
+  | 'BILLED'
+  | 'BILLING_FAILED';
 
 /** What a blocked start or completion is missing, as the API reports it in `missing`. */
 export type MissingRequirement =
@@ -52,6 +55,9 @@ export const SESSION_STATUS_LABELS: Record<TreatmentSessionStatus, string> = {
   CONSENT_REVOKED: 'Consentimiento revocado',
   CANCELLED: 'Cancelada',
   NO_SHOW: 'No asistió',
+  BILLING_PENDING: 'En facturación',
+  BILLED: 'Facturada',
+  BILLING_FAILED: 'Facturación fallida',
 };
 
 export const MISSING_REQUIREMENT_LABELS: Record<MissingRequirement, string> = {
@@ -68,6 +74,7 @@ export interface TreatmentRequirements {
   informedConsent: { required: boolean; validityDays: number | null };
   photos: { minimumBefore: number; minimumAfter: number };
   clinicalNotes: { requiredForCompletion: boolean };
+  billingGate: { requireClinicalCompletion: boolean };
 }
 
 // ==========================================

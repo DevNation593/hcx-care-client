@@ -140,6 +140,7 @@ describe('PhotosStep', () => {
           informedConsent: { required: false, validityDays: null },
           photos: { minimumBefore: 0, minimumAfter: 0 },
           clinicalNotes: { requiredForCompletion: false },
+          billingGate: { requireClinicalCompletion: true },
         },
       }),
     );

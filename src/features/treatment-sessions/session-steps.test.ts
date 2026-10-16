@@ -7,6 +7,7 @@ const policy = (overrides: Partial<TreatmentRequirements> = {}): TreatmentRequir
   informedConsent: { required: true, validityDays: null },
   photos: { minimumBefore: 1, minimumAfter: 1 },
   clinicalNotes: { requiredForCompletion: true },
+  billingGate: { requireClinicalCompletion: true },
   ...overrides,
 });
 
