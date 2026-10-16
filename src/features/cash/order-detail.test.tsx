@@ -14,6 +14,8 @@ const hooks = vi.hoisted(() => ({
   updateItem: vi.fn(),
   setProfile: vi.fn(),
   billable: { data: [] as unknown[] },
+  patientProfiles: { data: [] as unknown[], isPending: false },
+  createProfile: vi.fn(),
 }));
 
 vi.mock('@/hooks/usePermissions', () => ({ useMyPermissions: () => ({ can: hooks.can }) }));
@@ -30,12 +32,22 @@ vi.mock('@/hooks/useOrders', () => ({
 }));
 vi.mock('@/hooks/useBillingProfiles', () => ({
   useBillingProfiles: () => ({ data: { items: [] }, isPending: false }),
-  usePatientBillingProfiles: () => ({ data: [], isPending: false }),
-  useCreateBillingProfile: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  usePatientBillingProfiles: () => hooks.patientProfiles,
+  useCreateBillingProfile: () => ({ mutateAsync: hooks.createProfile, isPending: false }),
   useLinkBillingProfile: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 const person = { id: 'p-1', firstName: 'Ana', lastName: 'Paz' };
+
+const linked = {
+  id: 'bp-9',
+  kind: 'PERSON',
+  idType: '05',
+  idNumber: '1710034065',
+  legalName: 'Ana Paz',
+  email: 'ana@example.com',
+  isDefault: true,
+};
 
 const payment = {
   id: 'pay-1',
@@ -92,6 +104,7 @@ beforeEach(() => {
   hooks.can.mockReturnValue(true);
   hooks.eligibility = { data: { eligible: false, missing: ['BILLING_PROFILE'], items: [] } };
   hooks.billable = { data: [] };
+  hooks.patientProfiles = { data: [linked], isPending: false };
   setOrder(makeOrder());
   let n = 0;
   vi.stubGlobal('crypto', { randomUUID: () => `key-${++n}` });
@@ -150,10 +163,64 @@ describe('OrderDetail', () => {
     expect(screen.getByText('Sin pagos registrados.')).toBeInTheDocument();
     expect(screen.getByLabelText(/Monto/)).toHaveValue('46.00');
 
+    // Editing the amount after the lost response keeps the key: the server decides.
+    fireEvent.change(screen.getByLabelText(/Monto/), { target: { value: '20.00' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Registrar pago' })));
+    // After the success the next payment of the same form has a new key.
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Registrar pago' })));
 
     const keys = hooks.recordPayment.mock.calls.map(([input]) => input.idempotencyKey);
-    expect(keys).toEqual(['key-1', 'key-1']);
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[2]).not.toBe(keys[1]);
+  });
+
+  it('shows a reused-key conflict and issues a fresh key', async () => {
+    hooks.recordPayment
+      .mockRejectedValueOnce({ code: 'IDEMPOTENCY_KEY_REUSED', message: 'Clave ya usada' })
+      .mockResolvedValue({});
+    render(<OrderDetail orderId="o-1" />);
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Registrar pago' })));
+    expect(screen.getByText('Clave ya usada')).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Registrar pago' })));
+
+    const keys = hooks.recordPayment.mock.calls.map(([input]) => input.idempotencyKey);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it('sets the billing profile linked to the patient with the order version', async () => {
+    hooks.setProfile.mockResolvedValue({});
+    render(<OrderDetail orderId="o-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Elegir receptor' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Elegir Ana Paz' })));
+
+    expect(hooks.setProfile).toHaveBeenCalledWith({ version: 3, billingProfileId: 'bp-9' });
+  });
+
+  it('selects a newly created profile', async () => {
+    hooks.setProfile.mockResolvedValue({});
+    hooks.createProfile.mockResolvedValue({ ...linked, id: 'bp-new', legalName: 'Luis Mora' });
+    render(<OrderDetail orderId="o-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Elegir receptor' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Nuevo receptor' }));
+    fireEvent.change(screen.getByLabelText(/Identificación/), { target: { value: '1710034065' } });
+    fireEvent.change(screen.getByLabelText(/Nombre o razón social/), { target: { value: 'Luis Mora' } });
+    fireEvent.change(screen.getByLabelText(/Correo/), { target: { value: 'luis@example.com' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Guardar' })));
+
+    expect(hooks.setProfile).toHaveBeenCalledWith({ version: 3, billingProfileId: 'bp-new' });
+  });
+
+  it('shows the version conflict when setting the profile', async () => {
+    hooks.setProfile.mockRejectedValue({ code: 'ORDER_VERSION_CONFLICT', message: 'x' });
+    render(<OrderDetail orderId="o-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Elegir receptor' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Elegir Ana Paz' })));
+
+    expect(screen.getByText('La orden cambió; revisa y vuelve a intentar')).toBeInTheDocument();
   });
 
   it('refunds a payment with a reason when billing.adjust allows it', async () => {

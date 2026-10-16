@@ -25,8 +25,10 @@ function PaymentForm({ order, onConflict }: OrderPaymentsProps) {
   const [amount, setAmount] = useState(order.balance);
   const [reference, setReference] = useState('');
   const [error, setError] = useState<string | null>(null);
-  // The key of the last attempt: a retry of the same payment (a lost response) sends it again.
-  const attempt = useRef<{ signature: string; key: string } | null>(null);
+  // One key per opened form, reused by every submission until one succeeds: if a lost response
+  // had in fact recorded the payment, the server answers a retry with 409 instead of charging twice.
+  const keyRef = useRef<string | null>(null);
+  if (keyRef.current === null) keyRef.current = crypto.randomUUID();
 
   const cents = parseCents(amount);
   const valid = cents !== null && cents > 0;
@@ -39,18 +41,16 @@ function PaymentForm({ order, onConflict }: OrderPaymentsProps) {
       amount: centsToAmount(cents),
       ...(reference.trim() ? { reference: reference.trim() } : {}),
     };
-    const signature = JSON.stringify(data);
-    if (attempt.current?.signature !== signature) {
-      attempt.current = { signature, key: crypto.randomUUID() };
-    }
     setError(null);
     try {
-      await record.mutateAsync({ data, idempotencyKey: attempt.current.key });
-      attempt.current = null;
+      await record.mutateAsync({ data, idempotencyKey: keyRef.current as string });
+      keyRef.current = crypto.randomUUID();
       setReference('');
     } catch (err) {
-      // Nothing was recorded as far as we know: keep the form and the key so a retry is safe.
+      // Keep the form and the key so a retry is safe.
       const apiError = err as ApiError;
+      // The key was used for another body: show why, and let the next attempt be deliberate.
+      if (apiError?.code === 'IDEMPOTENCY_KEY_REUSED') keyRef.current = crypto.randomUUID();
       if (apiError?.code === 'ORDER_VERSION_CONFLICT') onConflict();
       setError(apiError?.message ?? 'No se pudo registrar el pago');
     }
