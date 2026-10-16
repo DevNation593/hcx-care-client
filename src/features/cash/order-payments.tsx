@@ -23,9 +23,17 @@ function PaymentForm({ order, onConflict }: OrderPaymentsProps) {
   const record = useRecordPayment(order.id);
   const [method, setMethod] = useState<PaymentMethod>('CASH');
   const [amount, setAmount] = useState(order.balance);
+  const [amountEdited, setAmountEdited] = useState(false);
+  const [seenBalance, setSeenBalance] = useState(order.balance);
+  // A refetch moves the balance: follow it unless the user typed an amount. The form never remounts.
+  if (seenBalance !== order.balance) {
+    setSeenBalance(order.balance);
+    if (!amountEdited) setAmount(order.balance);
+  }
   const [reference, setReference] = useState('');
   const [error, setError] = useState<string | null>(null);
-  // One key per opened form, reused by every submission until one succeeds: if a lost response
+  // One key per opened form, kept across refetches and re-renders, rotated only after a success
+  // or a 409 IDEMPOTENCY_KEY_REUSED. It is reused by every submission until one succeeds: if a lost response
   // had in fact recorded the payment, the server answers a retry with 409 instead of charging twice.
   const keyRef = useRef<string | null>(null);
   if (keyRef.current === null) keyRef.current = crypto.randomUUID();
@@ -45,6 +53,7 @@ function PaymentForm({ order, onConflict }: OrderPaymentsProps) {
     try {
       await record.mutateAsync({ data, idempotencyKey: keyRef.current as string });
       keyRef.current = crypto.randomUUID();
+      setAmountEdited(false);
       setReference('');
     } catch (err) {
       // Keep the form and the key so a retry is safe.
@@ -81,7 +90,10 @@ function PaymentForm({ order, onConflict }: OrderPaymentsProps) {
           id="pay-amount"
           inputMode="decimal"
           value={amount}
-          onChange={(event) => setAmount(event.target.value)}
+          onChange={(event) => {
+            setAmount(event.target.value);
+            setAmountEdited(true);
+          }}
         />
       </div>
       <div>
@@ -154,7 +166,7 @@ export function OrderPayments({ order, onConflict }: OrderPaymentsProps) {
 
   return (
     <div className="space-y-3">
-      {canPay && <PaymentForm key={`${order.version}-${order.balance}`} order={order} onConflict={onConflict} />}
+      {canPay && <PaymentForm order={order} onConflict={onConflict} />}
       {order.payments.length === 0 ? (
         <p className="text-sm text-muted-foreground">Sin pagos registrados.</p>
       ) : (

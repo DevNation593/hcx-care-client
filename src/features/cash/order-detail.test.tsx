@@ -141,7 +141,7 @@ describe('OrderDetail', () => {
     expect(screen.getByLabelText(/Monto/)).toHaveValue('46.00');
   });
 
-  it('records the payment with the order version and an idempotency key', async () => {
+  it('records the payment with an idempotency key', async () => {
     hooks.recordPayment.mockResolvedValue({});
     render(<OrderDetail orderId="o-1" />);
 
@@ -172,6 +172,32 @@ describe('OrderDetail', () => {
     const keys = hooks.recordPayment.mock.calls.map(([input]) => input.idempotencyKey);
     expect(keys[0]).toBe(keys[1]);
     expect(keys[2]).not.toBe(keys[1]);
+  });
+
+  it('keeps the key when a refetch changes the order and the form stays open', async () => {
+    hooks.recordPayment.mockRejectedValueOnce({ message: 'Sin conexión' }).mockResolvedValue({});
+    const { rerender } = render(<OrderDetail orderId="o-1" />);
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Registrar pago' })));
+    // The lost response had landed: a refetch brings a new version and balance.
+    setOrder(makeOrder({ version: 4, balance: '36.00', paidTotal: '10.00' }));
+    rerender(<OrderDetail orderId="o-1" />);
+    expect(screen.getByLabelText(/Monto/)).toHaveValue('36.00');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Registrar pago' })));
+
+    const keys = hooks.recordPayment.mock.calls.map(([input]) => input.idempotencyKey);
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it('keeps an amount typed by the user when the balance changes', () => {
+    const { rerender } = render(<OrderDetail orderId="o-1" />);
+
+    fireEvent.change(screen.getByLabelText(/Monto/), { target: { value: '5.00' } });
+    setOrder(makeOrder({ version: 4, balance: '36.00' }));
+    rerender(<OrderDetail orderId="o-1" />);
+
+    expect(screen.getByLabelText(/Monto/)).toHaveValue('5.00');
   });
 
   it('shows a reused-key conflict and issues a fresh key', async () => {
