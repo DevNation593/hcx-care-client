@@ -137,6 +137,7 @@ export interface TreatmentVersionInput {
     informedConsent?: Partial<TreatmentRequirements['informedConsent']>;
     photos?: Partial<TreatmentRequirements['photos']>;
     clinicalNotes?: Partial<TreatmentRequirements['clinicalNotes']>;
+    billingGate?: Partial<TreatmentRequirements['billingGate']>;
   };
 }
 

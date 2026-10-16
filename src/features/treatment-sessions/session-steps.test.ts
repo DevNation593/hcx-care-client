@@ -120,6 +120,21 @@ describe('buildSessionSteps', () => {
     expect(states(detail)).toMatchObject({ consent: 'skipped', close: 'done' });
   });
 
+  it.each(['BILLING_PENDING', 'BILLED', 'BILLING_FAILED'] as const)(
+    'keeps %s as clinically complete: no step is current',
+    (status) => {
+      const detail = session({
+        status,
+        startedAt: '2026-10-15T15:00:00.000Z',
+        requirements: { start: [], complete: [] },
+      });
+      const steps = buildSessionSteps(detail);
+
+      expect(steps.some((step) => step.state === 'current' || step.state === 'pending')).toBe(false);
+      expect(states(detail)).toMatchObject({ procedure: 'done', close: 'done' });
+    },
+  );
+
   it('keeps the procedure current while in progress, with the complete-time codes on their steps', () => {
     const detail = session({
       status: 'IN_PROGRESS',

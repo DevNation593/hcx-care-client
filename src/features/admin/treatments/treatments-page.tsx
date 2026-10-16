@@ -42,6 +42,7 @@ function requirementsSummary({ requirements: r }: Pick<TreatmentVersion, 'requir
     r.photos.minimumBefore > 0 && `${r.photos.minimumBefore} foto(s) antes`,
     r.photos.minimumAfter > 0 && `${r.photos.minimumAfter} foto(s) después`,
     r.clinicalNotes.requiredForCompletion && 'Notas para cerrar',
+    r.billingGate?.requireClinicalCompletion !== false && 'Factura tras cierre',
   ]
     .filter(Boolean)
     .join(' · ');
