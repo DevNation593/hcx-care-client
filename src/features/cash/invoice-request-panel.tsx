@@ -22,8 +22,11 @@ export function InvoiceRequestPanel({
   eligibility?: BillingEligibility;
 }) {
   const { view, create } = useInvoicingPermissions();
-  // A prior safe rejection says nothing about the replacement whose response was lost.
-  const [unresolvedAttempt, setUnresolvedAttempt] = useState<{ previousRequestId?: string }>();
+  // GET history cannot identify which client key created a candidate request.
+  const [attemptOutcome, setAttemptOutcome] = useState<'SETTLED' | 'UNCERTAIN' | 'AUTHORIZED'>(
+    'SETTLED',
+  );
+  const unresolvedAttempt = attemptOutcome === 'UNCERTAIN';
   const list = useInvoiceRequests({ orderId: order.id, page: 1, pageSize: 1 }, true, {
     discoverUnresolvedAttempt: !!unresolvedAttempt,
   });
@@ -34,21 +37,21 @@ export function InvoiceRequestPanel({
   const selected = receipt ?? list.data?.items[0];
   const detail = useInvoiceRequest(selected?.id);
   const request = detail.data ?? selected;
-  const currentAttemptDiscovered =
-    !!unresolvedAttempt && !!request && request.id !== unresolvedAttempt.previousRequestId;
+  const authorized = attemptOutcome === 'AUTHORIZED' || request?.status === 'AUTHORIZED';
   useEffect(() => {
-    if (currentAttemptDiscovered) setUnresolvedAttempt(undefined);
-  }, [currentAttemptDiscovered]);
+    if (request?.status === 'AUTHORIZED') setAttemptOutcome('AUTHORIZED');
+  }, [request?.status]);
   const safeFinal =
     !unresolvedAttempt &&
+    !authorized &&
     !!request &&
     !request.requiresReconciliation &&
     (request.status === 'REJECTED' || request.status === 'FAILED');
-  const uncertainRetry = !!unresolvedAttempt && !currentAttemptDiscovered;
+  const uncertainRetry = unresolvedAttempt && !authorized;
   const canStart = !!eligibility?.eligible && order.status === 'PAID';
   const checklist = error?.billingEligibility ?? eligibility;
   async function submit(fresh = false) {
-    if (mutation.isPending) return;
+    if (mutation.isPending || authorized) return;
     if (fresh && !unresolvedAttempt) {
       idempotencyKey.current = undefined;
       setReceipt(undefined);
@@ -56,13 +59,16 @@ export function InvoiceRequestPanel({
     idempotencyKey.current ??= crypto.randomUUID();
     setError(undefined);
     try {
-      setReceipt(await mutation.mutateAsync(idempotencyKey.current));
-      setUnresolvedAttempt(undefined);
+      const accepted = await mutation.mutateAsync(idempotencyKey.current);
+      setReceipt(accepted);
+      setAttemptOutcome((previous) =>
+        previous === 'AUTHORIZED' || accepted.status === 'AUTHORIZED' ? 'AUTHORIZED' : 'SETTLED',
+      );
     } catch (error) {
       const failure = error as ApiError;
       setError(failure);
       if (!failure.status || failure.status >= 500) {
-        setUnresolvedAttempt((attempt) => attempt ?? { previousRequestId: request?.id });
+        setAttemptOutcome((previous) => (previous === 'AUTHORIZED' ? previous : 'UNCERTAIN'));
       }
     }
   }
@@ -91,7 +97,7 @@ export function InvoiceRequestPanel({
         </Alert>
       )}
       {error && <Alert variant="destructive">{error.message}</Alert>}
-      {create && (!request || safeFinal || uncertainRetry) && (
+      {create && !authorized && (!request || safeFinal || uncertainRetry) && (
         <Button
           type="button"
           disabled={mutation.isPending || (!uncertainRetry && !canStart)}

@@ -76,7 +76,7 @@ function mount(ui: React.ReactNode, role = UserRole.MASTER) {
   });
 }
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   state.view = true;
   state.create = true;
   state.known = true;
@@ -258,6 +258,43 @@ describe('InvoiceRequestPanel', () => {
       );
     },
   );
+  it.each(['pending', 'error'])(
+    'retains the UUID when an initially %s history returns an older rejection after the lost POST',
+    async (initial) => {
+      const oldRequest = receipt({ id: 'late-old-rejection', status: 'REJECTED' });
+      let releaseHistory: (value: unknown) => void = () => {};
+      const delayedHistory = new Promise((resolve) => {
+        releaseHistory = resolve;
+      });
+      let firstList = true;
+      vi.mocked(apiClient.get).mockImplementation(async (url) => {
+        if (!url.endsWith('/invoice-requests')) return oldRequest;
+        if (initial === 'error' && firstList) {
+          firstList = false;
+          throw { message: 'Historial no disponible' };
+        }
+        firstList = false;
+        return delayedHistory;
+      });
+      vi.mocked(apiClient.post)
+        .mockRejectedValueOnce({ code: 'NETWORK_ERROR', message: 'Respuesta actual perdida' })
+        .mockResolvedValueOnce(receipt({ id: 'current-attempt' }));
+      mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+      if (initial === 'error') await screen.findByText(/No se pudo actualizar la factura/);
+      fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' }));
+      await screen.findByText('Respuesta actual perdida');
+      await act(async () => {
+        releaseHistory({ items: [oldRequest], total: 1 });
+      });
+      await screen.findByText('Rechazada');
+      fireEvent.click(screen.getByRole('button', { name: /Volver a emitir|Reintentar emisión/ }));
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(2));
+      const calls = vi.mocked(apiClient.post).mock.calls;
+      expect(calls[1][2]?.headers?.['Idempotency-Key']).toBe(
+        calls[0][2]?.headers?.['Idempotency-Key'],
+      );
+    },
+  );
   it('discovers a lost submission on the next five-second poll despite an empty list', async () => {
     vi.useFakeTimers();
     vi.mocked(apiClient.post).mockRejectedValue({
@@ -286,9 +323,9 @@ describe('InvoiceRequestPanel', () => {
     });
     expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(calls);
     expect(screen.getByText('Solicitada')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Reintentar emisión' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reintentar emisión' })).toBeEnabled();
   });
-  it('polls past an old safe final and allows a fresh key only after the replacement is safely final', async () => {
+  it('requires the same-key receipt before accepting a distinct safe-final candidate as recovered', async () => {
     vi.useFakeTimers();
     const previous = receipt({ id: 'previous-request', status: 'REJECTED' });
     let observed = previous;
@@ -297,6 +334,7 @@ describe('InvoiceRequestPanel', () => {
     );
     vi.mocked(apiClient.post)
       .mockRejectedValueOnce({ code: 'NETWORK_ERROR', message: 'Respuesta perdida' })
+      .mockResolvedValueOnce(receipt({ id: 'replacement-request', status: 'FAILED' }))
       .mockResolvedValueOnce(receipt({ id: 'next-request' }));
     mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
     await act(async () => {
@@ -321,19 +359,39 @@ describe('InvoiceRequestPanel', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(screen.getByText('Fallida')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Volver a emitir' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reintentar emisión' })).toBeEnabled();
+    const uncertainCalls = vi.mocked(apiClient.get).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(uncertainCalls);
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'Reintentar emisión' })),
+    );
+    let calls = vi.mocked(apiClient.post).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[1][2]?.headers?.['Idempotency-Key']).toBe(
+      calls[0][2]?.headers?.['Idempotency-Key'],
+    );
     expect(screen.getByRole('button', { name: 'Volver a emitir' })).toBeEnabled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     const finalCalls = vi.mocked(apiClient.get).mock.calls.length;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10000);
     });
     expect(apiClient.get).toHaveBeenCalledTimes(finalCalls);
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Volver a emitir' })));
-    const calls = vi.mocked(apiClient.post).mock.calls;
-    expect(calls).toHaveLength(2);
-    expect(calls[1][2]?.headers?.['Idempotency-Key']).not.toBe(
-      calls[0][2]?.headers?.['Idempotency-Key'],
+    calls = vi.mocked(apiClient.post).mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(calls[2][2]?.headers?.['Idempotency-Key']).not.toBe(
+      calls[1][2]?.headers?.['Idempotency-Key'],
     );
   });
+
   it('does not poll ordinary empty lists without an unresolved submission', async () => {
     vi.useFakeTimers();
     mount(<InvoicesTab branchId="b1" />);
@@ -376,7 +434,46 @@ describe('InvoiceRequestPanel', () => {
     await screen.findByText('Autorizada');
     expect(screen.queryByRole('button', { name: 'Reintentar emisión' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Volver a emitir' })).not.toBeInTheDocument();
+    // A late stale response cannot undo the irreversible authorization observation.
+    latest = receipt({ status: 'REJECTED' });
+    await act(async () => {
+      await client.invalidateQueries();
+    });
+    await screen.findByText('Rechazada');
+    expect(screen.queryByRole('button', { name: 'Reintentar emisión' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Volver a emitir' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Emitir factura' })).not.toBeInTheDocument();
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? latest : { items: [], total: 0 },
+    );
+    await act(async () => {
+      await client.invalidateQueries();
+    });
+    await waitFor(() => expect(screen.queryByText('Rechazada')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Emitir factura' })).not.toBeInTheDocument();
   });
+  it.each([409, 422])(
+    'keeps uncertainty and the key if a subsequent retry returns HTTP %s instead of a receipt',
+    async (status) => {
+      vi.mocked(apiClient.post)
+        .mockRejectedValueOnce({ code: 'NETWORK_ERROR', message: 'Respuesta original perdida' })
+        .mockRejectedValueOnce({ status, message: 'Sin recibo confirmado' })
+        .mockResolvedValueOnce(receipt());
+      mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' }));
+      await screen.findByText('Respuesta original perdida');
+      fireEvent.click(screen.getByRole('button', { name: 'Reintentar emisión' }));
+      await screen.findByText('Sin recibo confirmado');
+      expect(screen.queryByRole('button', { name: 'Volver a emitir' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Reintentar emisión' }));
+      await screen.findByText('Solicitada');
+      const calls = vi.mocked(apiClient.post).mock.calls;
+      expect(calls).toHaveLength(3);
+      const key = calls[0][2]?.headers?.['Idempotency-Key'];
+      expect(calls[1][2]?.headers?.['Idempotency-Key']).toBe(key);
+      expect(calls[2][2]?.headers?.['Idempotency-Key']).toBe(key);
+    },
+  );
   it('renders the runtime normalized 422 checklist inline', async () => {
     vi.mocked(apiClient.post).mockRejectedValue({
       status: 422,
