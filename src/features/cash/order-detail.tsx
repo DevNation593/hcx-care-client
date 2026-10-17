@@ -9,7 +9,7 @@ import { useMyPermissions } from '@/hooks/usePermissions';
 import type { ApiError } from '@/types';
 import { SRI_ID_TYPE_LABELS, type Order, type OrderStatus } from '@/types/cash';
 import { BillingProfilePicker } from './billing-profile-picker';
-import { EligibilityChecklist } from './eligibility-checklist';
+import { InvoiceRequestPanel } from './invoice-request-panel';
 import { formatMoney } from './money';
 import { OrderItems } from './order-items';
 import { OrderPayments } from './order-payments';
@@ -17,7 +17,7 @@ import { OrderPayments } from './order-payments';
 const STATUS_LABELS: Record<OrderStatus, string> = {
   OPEN: 'Abierta',
   PAID: 'Pagada',
-  INVOICED: 'Facturada',
+  INVOICED: 'En facturación',
   CANCELLED: 'Cancelada',
 };
 
@@ -164,11 +164,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
         <OrderPayments order={order} onConflict={onConflict} />
       </Section>
       <Section title="Para emitir">
-        {eligibility ? (
-          <EligibilityChecklist eligibility={eligibility} order={order} />
-        ) : (
-          <p className="text-sm text-muted-foreground">Revisando requisitos…</p>
-        )}
+        <InvoiceRequestPanel key={order.id} order={order} eligibility={eligibility} />
       </Section>
     </div>
   );

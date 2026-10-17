@@ -7,10 +7,13 @@ import { useBranches } from '@/hooks/useBranches';
 import { BillableSessionsTab } from './billable-sessions-tab';
 import { CashRegisterBar } from './cash-register-bar';
 import { OrdersTab } from './orders-tab';
+import { InvoicesTab } from './invoices-tab';
+import { useInvoicingPermissions } from '@/hooks/useInvoicing';
 
-type Tab = 'billable' | 'orders';
+type Tab = 'billable' | 'orders' | 'invoices';
 
 export function CashPage() {
+  const { view } = useInvoicingPermissions();
   const { data: branches = [] } = useBranches();
   const [chosenBranchId, setChosenBranchId] = useState('');
   const [tab, setTab] = useState<Tab>('billable');
@@ -42,15 +45,26 @@ export function CashPage() {
       {branchId && (
         <>
           <CashRegisterBar branchId={branchId} />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant={tab === 'billable' ? 'default' : 'outline'} onClick={() => setTab('billable')}>
               Por cobrar
             </Button>
             <Button variant={tab === 'orders' ? 'default' : 'outline'} onClick={() => setTab('orders')}>
               Órdenes
             </Button>
+            {view && (
+              <Button variant={tab === 'invoices' ? 'default' : 'outline'} onClick={() => setTab('invoices')}>
+                Facturas
+              </Button>
+            )}
           </div>
-          {tab === 'billable' ? <BillableSessionsTab key={branchId} branchId={branchId} /> : <OrdersTab branchId={branchId} />}
+          {tab === 'invoices' && view ? (
+            <InvoicesTab key={branchId} branchId={branchId} />
+          ) : tab === 'billable' ? (
+            <BillableSessionsTab key={branchId} branchId={branchId} />
+          ) : (
+            <OrdersTab branchId={branchId} />
+          )}
         </>
       )}
     </div>
