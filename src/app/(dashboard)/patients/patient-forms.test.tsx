@@ -12,8 +12,6 @@ const mocks = vi.hoisted(() => ({
     email: 'ana@example.com', phone: '555', dateOfBirth: '1990-01-01',
     gender: null, address: 'Centro', emergencyContactName: 'Luis',
     emergencyContactPhone: '123', notes: 'Nota', assignedPsychologistId: 'legacy-1',
-    billingName: 'Luis Vega', billingTaxIdType: 'CEDULA', billingTaxId: '1712345678',
-    billingEmail: 'luis@example.com', billingAddress: null,
   },
 }));
 
@@ -67,65 +65,32 @@ describe('patient demographic forms', () => {
   });
 });
 
-describe('patient billing data', () => {
+describe('patient forms without billing data', () => {
   const fillRequired = () => {
     fireEvent.change(document.getElementById('firstName')!, { target: { value: 'Ana' } });
     fireEvent.change(document.getElementById('lastName')!, { target: { value: 'Vega' } });
   };
 
-  it('creates a patient with a third-party payer, cleaning the number', async () => {
+  it('renders no billing section when creating and submits no billing fields', async () => {
     renderPage(<NewPatientPage />);
-    fillRequired();
-    fireEvent.change(screen.getByLabelText('Nombre o razón social'), { target: { value: 'Seguros Andina' } });
-    fireEvent.change(screen.getByLabelText('Tipo de identificación'), { target: { value: 'RUC' } });
-    fireEvent.change(screen.getByLabelText('Número de identificación'), { target: { value: '1790-000000-001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Crear Paciente' }));
-
-    await waitFor(() => expect(mocks.create).toHaveBeenCalled());
-    expect(mocks.create.mock.calls[0][0]).toMatchObject({
-      billingName: 'Seguros Andina', billingTaxIdType: 'RUC', billingTaxId: '1790000000001',
-    });
-  });
-
-  it('creates a patient with no billing data', async () => {
-    renderPage(<NewPatientPage />);
+    expect(screen.queryByText('Datos de facturación')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nombre o razón social')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Usar los datos del paciente' })).not.toBeInTheDocument();
     fillRequired();
     fireEvent.click(screen.getByRole('button', { name: 'Crear Paciente' }));
     await waitFor(() => expect(mocks.create).toHaveBeenCalled());
-    expect(mocks.create.mock.calls[0][0]).toMatchObject({ billingTaxIdType: '', billingTaxId: '' });
+    const sent = Object.keys(mocks.create.mock.calls[0][0]);
+    expect(sent.filter((key) => key.startsWith('billing'))).toEqual([]);
   });
 
-  it('copies the patient name, e-mail and address into the payer', () => {
-    renderPage(<NewPatientPage />);
-    fillRequired();
-    fireEvent.change(document.getElementById('email')!, { target: { value: 'ana@example.com' } });
-    fireEvent.change(document.getElementById('address')!, { target: { value: 'Centro' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Usar los datos del paciente' }));
-    expect(screen.getByLabelText('Nombre o razón social')).toHaveValue('Ana Vega');
-    expect(screen.getByLabelText('Correo del receptor')).toHaveValue('ana@example.com');
-    expect(screen.getByLabelText('Dirección', { selector: '#patient-billing-address' })).toHaveValue('Centro');
-  });
-
-  it('blocks saving a type without a number', async () => {
-    renderPage(<NewPatientPage />);
-    fillRequired();
-    fireEvent.change(screen.getByLabelText('Tipo de identificación'), { target: { value: 'CEDULA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Crear Paciente' }));
-    expect(await screen.findByText('Escribe el número de identificación.')).toBeInTheDocument();
-    expect(mocks.create).not.toHaveBeenCalled();
-  });
-
-  it('loads stored billing data when editing and can clear it', async () => {
+  it('renders no billing section when editing and submits no billing fields', async () => {
     renderPage(<EditPatientPage />);
-    expect(screen.getByLabelText('Nombre o razón social')).toHaveValue('Luis Vega');
-    expect(screen.getByLabelText('Número de identificación')).toHaveValue('1712345678');
-
-    fireEvent.change(screen.getByLabelText('Tipo de identificación'), { target: { value: '' } });
-    fireEvent.change(screen.getByLabelText('Número de identificación'), { target: { value: '' } });
+    expect(screen.queryByText('Datos de facturación')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nombre o razón social')).not.toBeInTheDocument();
+    fireEvent.change(document.getElementById('firstName')!, { target: { value: 'Anabel' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar Cambios' }));
     await waitFor(() => expect(mocks.update).toHaveBeenCalled());
-    expect(mocks.update.mock.calls[0][0]).toMatchObject({
-      billingName: 'Luis Vega', billingTaxIdType: '', billingTaxId: '',
-    });
+    const sent = Object.keys(mocks.update.mock.calls[0][0]);
+    expect(sent.filter((key) => key.startsWith('billing'))).toEqual([]);
   });
 });

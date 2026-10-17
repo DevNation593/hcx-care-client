@@ -345,16 +345,6 @@ function normalizeTenantSettings(raw: any): TenantSettings {
     legalName: raw.legalName ?? '',
     taxIdentificationType: raw.taxIdentificationType ?? 'RUC',
     taxIdentificationNumber: raw.taxIdentificationNumber ?? '',
-    fakturApiKey: raw.fakturApiKey ?? '',
-    fakturEstablishment: raw.fakturEstablishment ?? '',
-    fakturEmissionPoint: raw.fakturEmissionPoint ?? '',
-    fakturNextSequential: raw.fakturNextSequential ?? 1,
-    fakturBusinessName: raw.fakturBusinessName ?? '',
-    fakturBusinessAddress: raw.fakturBusinessAddress ?? '',
-    fakturSpecialTaxpayer: !!raw.fakturSpecialTaxpayer,
-    fakturAccountingRequired: !!raw.fakturAccountingRequired,
-    fakturWithholdingAgent: !!raw.fakturWithholdingAgent,
-    fakturEnabled: !!raw.fakturEnabled,
     workingHours: normalizeWorkingHours(raw),
     defaultSessionDuration: raw.defaultAppointmentDuration ?? 60,
     reminderRules,
@@ -526,16 +516,6 @@ export const tenantSettingsApi = {
       legalName: settings.legalName,
       taxIdentificationType: settings.taxIdentificationType,
       taxIdentificationNumber: settings.taxIdentificationNumber,
-      fakturApiKey: settings.fakturApiKey,
-      fakturEstablishment: settings.fakturEstablishment,
-      fakturEmissionPoint: settings.fakturEmissionPoint,
-      fakturNextSequential: settings.fakturNextSequential,
-      fakturBusinessName: settings.fakturBusinessName,
-      fakturBusinessAddress: settings.fakturBusinessAddress,
-      fakturSpecialTaxpayer: settings.fakturSpecialTaxpayer,
-      fakturAccountingRequired: settings.fakturAccountingRequired,
-      fakturWithholdingAgent: settings.fakturWithholdingAgent,
-      fakturEnabled: settings.fakturEnabled,
       timezone: settings.timezone,
       locale: settings.locale,
       defaultAppointmentDuration: settings.defaultSessionDuration,
@@ -577,25 +557,12 @@ export const tenantSettingsApi = {
   },
 };
 
-export interface CreateInvoiceInput {
-  patientId: string;
-  subtotal: number;
-  tax?: number;
-  description: string;
-  idempotencyKey?: string;
-  /** Recipient for this invoice; anything omitted comes from the patient record. */
-  customer?: Partial<Record<'name' | 'taxIdType' | 'taxId' | 'email' | 'address', string>>;
-  saveCustomerToPatient?: boolean;
-}
-
 export const billingApi = {
   listInvoices: (params?: { patientId?: string }) =>
     apiClient.get<Invoice[]>(
       API_ENDPOINTS.BILLING_INVOICES(getTenantId()),
       params?.patientId ? { params: { patientId: params.patientId } } : undefined,
     ),
-  createInvoice: (data: CreateInvoiceInput) =>
-    apiClient.post<Invoice>(API_ENDPOINTS.BILLING_INVOICES(getTenantId()), data),
 };
 
 export const specialtyRecordsApi = {
@@ -973,7 +940,6 @@ const patientFields = [
   'maritalStatus', 'occupation', 'nationality', 'bloodType', 'disability',
   'insuranceProvider', 'insurancePolicyNumber',
   'guardianName', 'guardianRelationship', 'guardianIdentification', 'guardianPhone',
-  'billingName', 'billingTaxIdType', 'billingTaxId', 'billingEmail', 'billingAddress',
 ] as const;
 
 function patientPayload(data: Partial<PatientInput>): Partial<PatientInput> {

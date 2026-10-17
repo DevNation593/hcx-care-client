@@ -16,11 +16,6 @@ const storedSettings = {
   legalName: 'Clínica Integral S.A.',
   taxIdentificationType: 'RUC',
   taxIdentificationNumber: '1790012345001',
-  fakturApiKey: '********1234',
-  fakturEstablishment: '001',
-  fakturEmissionPoint: '002',
-  fakturNextSequential: 17,
-  fakturEnabled: true,
   workingHoursStart: '09:00',
   workingHoursEnd: '18:00',
   workingDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'],
@@ -46,29 +41,27 @@ beforeEach(() => {
   http.patch.mockImplementation(async (_url: string, body: unknown) => body);
 });
 
-describe('Faktur connection in the clinic settings', () => {
-  it('asks for the key and numbering of the clinic, not for the URL, path or environment', async () => {
+describe('clinic settings without Faktur', () => {
+  it('shows no Faktur connection fields', async () => {
     renderPage();
 
-    expect(await screen.findByLabelText('API key')).toBeInTheDocument();
-    expect(screen.getByLabelText('Establecimiento')).toHaveValue('001');
-    expect(screen.getByLabelText('Punto de emisión')).toHaveValue('002');
-    expect(screen.queryByLabelText('URL de Faktur')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Ruta de emisión')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Ambiente')).not.toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Clínica Integral S.A.')).toBeInTheDocument();
+    expect(screen.queryByText(/Faktur/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Establecimiento')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Punto de emisión')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Activar facturación electrónica')).not.toBeInTheDocument();
   });
 
-  it('saves without sending a URL, path or environment', async () => {
+  it('saves without sending any faktur field', async () => {
     renderPage();
 
-    fireEvent.change(await screen.findByLabelText('Establecimiento'), { target: { value: '003' } });
+    fireEvent.change(await screen.findByDisplayValue('Clínica Integral S.A.'), { target: { value: 'Clínica Nueva' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar Cambios/ }));
 
     await waitFor(() => expect(http.patch).toHaveBeenCalledTimes(1));
     const body = http.patch.mock.calls[0][1];
-    expect(body).toMatchObject({ fakturApiKey: '********1234', fakturEstablishment: '003' });
-    expect(body).not.toHaveProperty('fakturApiUrl');
-    expect(body).not.toHaveProperty('fakturInvoicePath');
-    expect(body).not.toHaveProperty('fakturEnvironment');
+    expect(body).toMatchObject({ legalName: 'Clínica Nueva' });
+    expect(Object.keys(body).filter((key) => key.startsWith('faktur'))).toEqual([]);
   });
 });

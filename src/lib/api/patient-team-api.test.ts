@@ -124,7 +124,6 @@ describe('response projections', () => {
       id: 'patient-1', tenantId: 'tenant-1', firstName: 'Ana', lastName: 'Paz',
       email: null, phone: null, dateOfBirth: null, gender: null, address: null,
       emergencyContactName: null, emergencyContactPhone: null, notes: null,
-      billingName: null, billingTaxIdType: null, billingTaxId: null, billingEmail: null, billingAddress: null,
       assignedPsychologistId: null, assignedPsychologist: null,
       isActive: true, createdAt: '2026-09-01', updatedAt: '2026-09-01',
     } satisfies Patient;
