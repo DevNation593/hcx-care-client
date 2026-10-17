@@ -135,6 +135,31 @@ export const API_ENDPOINTS = {
   TREATMENT: (tenantId: string, id: string) => `/tenants/${tenantId}/treatments/${id}`,
   TREATMENT_VERSIONS: (tenantId: string, id: string) =>
     `/tenants/${tenantId}/treatments/${id}/versions`,
+  BILLING_PROFILES: (tenantId: string) => `/tenants/${tenantId}/billing-profiles`,
+  BILLING_PROFILE: (tenantId: string, id: string) =>
+    `/tenants/${tenantId}/billing-profiles/${id}`,
+  PATIENT_BILLING_PROFILES: (tenantId: string, patientId: string) =>
+    `/tenants/${tenantId}/patients/${patientId}/billing-profiles`,
+  PATIENT_BILLING_PROFILE: (tenantId: string, patientId: string, profileId: string) =>
+    `/tenants/${tenantId}/patients/${patientId}/billing-profiles/${profileId}`,
+  CASH_REGISTERS: (tenantId: string) => `/tenants/${tenantId}/cash-registers`,
+  CASH_REGISTER_OPEN: (tenantId: string) => `/tenants/${tenantId}/cash-registers/open`,
+  CASH_REGISTER: (tenantId: string, id: string) => `/tenants/${tenantId}/cash-registers/${id}`,
+  CASH_REGISTER_CLOSE: (tenantId: string, id: string) =>
+    `/tenants/${tenantId}/cash-registers/${id}/close`,
+  ORDERS: (tenantId: string) => `/tenants/${tenantId}/orders`,
+  ORDER: (tenantId: string, id: string) => `/tenants/${tenantId}/orders/${id}`,
+  ORDER_ITEMS: (tenantId: string, id: string) => `/tenants/${tenantId}/orders/${id}/items`,
+  ORDER_ITEM: (tenantId: string, id: string, itemId: string) =>
+    `/tenants/${tenantId}/orders/${id}/items/${itemId}`,
+  ORDER_BILLING_PROFILE: (tenantId: string, id: string) =>
+    `/tenants/${tenantId}/orders/${id}/billing-profile`,
+  ORDER_CANCEL: (tenantId: string, id: string) => `/tenants/${tenantId}/orders/${id}/cancel`,
+  ORDER_PAYMENTS: (tenantId: string, id: string) => `/tenants/${tenantId}/orders/${id}/payments`,
+  ORDER_ELIGIBILITY: (tenantId: string, id: string) =>
+    `/tenants/${tenantId}/orders/${id}/billing-eligibility`,
+  PAYMENT_REFUND: (tenantId: string, id: string) => `/tenants/${tenantId}/payments/${id}/refund`,
+  BILLABLE_SESSIONS: (tenantId: string) => `/tenants/${tenantId}/treatment-sessions/billable`,
   CONSENT_TEMPLATES: (tenantId: string) => `/tenants/${tenantId}/consent-templates`,
   CONSENT_TEMPLATE: (tenantId: string, id: string) =>
     `/tenants/${tenantId}/consent-templates/${id}`,
@@ -264,6 +289,12 @@ export const QUERY_KEYS = {
   PATIENT_FILES: (patientId: string) => ['patients', patientId, 'files'],
   TREATMENTS: ['treatments'],
   TREATMENT: (id: string) => ['treatments', id],
+  BILLING_PROFILES: ['billing-profiles'],
+  CASH_REGISTERS: ['cash-registers'],
+  ORDERS: ['orders'],
+  ORDER: (id: string) => ['orders', id],
+  ORDER_ELIGIBILITY: (id: string) => ['orders', id, 'eligibility'],
+  BILLABLE_SESSIONS: ['billable-sessions'],
   CONSENT_TEMPLATES: ['consent-templates'],
   CONSENT_TEMPLATE: (id: string) => ['consent-templates', id],
   PATIENT_TREATMENT_SESSIONS: (patientId: string) => ['patients', patientId, 'treatment-sessions'],

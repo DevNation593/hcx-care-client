@@ -45,6 +45,9 @@ export const SESSION_STATUS_VARIANTS: Record<
   CONSENT_REVOKED: 'destructive',
   CANCELLED: 'secondary',
   NO_SHOW: 'secondary',
+  BILLING_PENDING: 'warning',
+  BILLED: 'success',
+  BILLING_FAILED: 'destructive',
 };
 
 /** The treatment sessions of a patient, and the start of a new one. */

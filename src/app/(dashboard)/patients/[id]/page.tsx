@@ -19,6 +19,7 @@ import { describeIdentification } from '@/features/patients/patient-identity';
 import { PatientTeamTab } from '@/features/patients/patient-team-tab';
 import { canAccessClinicalNotes, canDeletePatient, isMasterRole, isProfessionalRole } from '@/types/guards';
 import { PatientInvoicesTab } from '@/features/billing/patient-invoices-tab';
+import { PatientBillingProfiles } from '@/features/billing/patient-billing-profiles';
 import { PatientTreatmentsTab } from '@/features/treatment-sessions/patient-treatments-tab';
 import { FeatureLockedNotice, isFeatureLockedError } from '@/features/subscription/feature-locked-notice';
 import { formatDate, formatRelativeDate, getInitials, cn } from '@/lib/utils';
@@ -270,7 +271,12 @@ function PatientDetailPageContent() {
         {activeTab === 'files' && canSeeClinical && <PatientFilesTab patientId={patientId} />}
         {activeTab === 'appointments' && <AppointmentsTab patientId={patientId} />}
         {activeTab === 'tasks' && <TasksTab patientId={patientId} />}
-        {activeTab === 'billing' && canSeeInvoices && <PatientInvoicesTab patientId={patientId} />}
+        {activeTab === 'billing' && canSeeInvoices && (
+          <div className="space-y-6">
+            <PatientBillingProfiles patientId={patientId} />
+            <PatientInvoicesTab patientId={patientId} />
+          </div>
+        )}
         {activeTab === 'session-plan' && <SessionPlanTab patientId={patientId} />}
       </div>
 

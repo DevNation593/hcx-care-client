@@ -472,6 +472,7 @@ describe('SessionWorkflow', () => {
           informedConsent: { required: true, validityDays: null },
           photos: { minimumBefore: 1, minimumAfter: 1 },
           clinicalNotes: { requiredForCompletion: true },
+          billingGate: { requireClinicalCompletion: true },
         },
         form: {
           formDefinitionId: 'form-1',

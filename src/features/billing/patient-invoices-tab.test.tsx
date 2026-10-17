@@ -25,7 +25,7 @@ describe('PatientInvoicesTab', () => {
   it('requests only this patient invoices and lists them with their payer and documents', async () => {
     api.listInvoices.mockResolvedValue([
       invoice({ pdfUrl: 'https://files.example.com/a.pdf' }),
-      invoice({ id: 'b', status: 'FAILED', description: 'Paquete', total: 230, errorMessage: 'Faktur no disponible' }),
+      invoice({ id: 'b', status: 'FAILED', description: 'Paquete', total: 230, errorMessage: 'Servicio no disponible' }),
     ]);
     renderTab();
 
@@ -35,7 +35,9 @@ describe('PatientInvoicesTab', () => {
     expect(screen.getByText('$115.00')).toBeInTheDocument();
     expect(screen.getByText('$230.00')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'PDF' })).toHaveAttribute('href', 'https://files.example.com/a.pdf');
-    expect(screen.getByText('Faktur no disponible')).toBeInTheDocument();
+    expect(screen.getByText('Servicio no disponible')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cobrar en caja' })).toHaveAttribute('href', '/cash');
+    expect(screen.queryByRole('button', { name: /Facturar|Emitir/ })).not.toBeInTheDocument();
   });
 
   it('says so when the patient has no invoices and links to billing', async () => {

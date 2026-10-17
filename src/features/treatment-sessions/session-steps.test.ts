@@ -7,6 +7,7 @@ const policy = (overrides: Partial<TreatmentRequirements> = {}): TreatmentRequir
   informedConsent: { required: true, validityDays: null },
   photos: { minimumBefore: 1, minimumAfter: 1 },
   clinicalNotes: { requiredForCompletion: true },
+  billingGate: { requireClinicalCompletion: true },
   ...overrides,
 });
 
@@ -118,6 +119,21 @@ describe('buildSessionSteps', () => {
     expect(steps.every((step) => step.state === 'done' || step.state === 'skipped')).toBe(true);
     expect(states(detail)).toMatchObject({ consent: 'skipped', close: 'done' });
   });
+
+  it.each(['BILLING_PENDING', 'BILLED', 'BILLING_FAILED'] as const)(
+    'keeps %s as clinically complete: no step is current',
+    (status) => {
+      const detail = session({
+        status,
+        startedAt: '2026-10-15T15:00:00.000Z',
+        requirements: { start: [], complete: [] },
+      });
+      const steps = buildSessionSteps(detail);
+
+      expect(steps.some((step) => step.state === 'current' || step.state === 'pending')).toBe(false);
+      expect(states(detail)).toMatchObject({ procedure: 'done', close: 'done' });
+    },
+  );
 
   it('keeps the procedure current while in progress, with the complete-time codes on their steps', () => {
     const detail = session({

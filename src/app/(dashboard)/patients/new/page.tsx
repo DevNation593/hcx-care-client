@@ -13,8 +13,6 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { Gender } from '@/types';
-import { BillingCustomerFields } from '@/features/billing/billing-customer-fields';
-import type { BillingCustomer, TaxIdType } from '@/features/billing/billing-customer';
 import { isMinor } from '@/features/patients/patient-identity';
 import {
   PatientAdditionalFields,
@@ -30,7 +28,6 @@ export default function NewPatientPage() {
     register,
     handleSubmit,
     watch,
-    setValue,
     formState: { errors },
   } = useForm<PatientFormData>({
     resolver: zodResolver(patientSchema),
@@ -39,32 +36,8 @@ export default function NewPatientPage() {
       maritalStatus: '', occupation: '', nationality: '', bloodType: '', disability: '',
       insuranceProvider: '', insurancePolicyNumber: '',
       guardianName: '', guardianRelationship: '', guardianIdentification: '', guardianPhone: '',
-      billingName: '', billingTaxIdType: '', billingTaxId: '', billingEmail: '', billingAddress: '',
     },
   });
-
-  const billing: BillingCustomer = {
-    name: watch('billingName') ?? '',
-    taxIdType: (watch('billingTaxIdType') ?? '') as TaxIdType | '',
-    taxId: watch('billingTaxId') ?? '',
-    email: watch('billingEmail') ?? '',
-    address: watch('billingAddress') ?? '',
-  };
-  const setBilling = (next: BillingCustomer) => {
-    const options = { shouldDirty: true, shouldValidate: false };
-    setValue('billingName', next.name, options);
-    setValue('billingTaxIdType', next.taxIdType, options);
-    setValue('billingTaxId', next.taxId, options);
-    setValue('billingEmail', next.email, options);
-    setValue('billingAddress', next.address, options);
-  };
-  const copyPatientToBilling = () =>
-    setBilling({
-      ...billing,
-      name: `${watch('firstName') ?? ''} ${watch('lastName') ?? ''}`.trim(),
-      email: watch('email') ?? '',
-      address: watch('address') ?? '',
-    });
 
   const onSubmit = (data: PatientFormData) => {
     createPatient(data, {
@@ -185,31 +158,6 @@ export default function NewPatientPage() {
                   <Input id="emergencyContactPhone" {...register('emergencyContactPhone')} />
                 </div>
               </div>
-            </div>
-
-            <div className="border-t pt-6">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 className="font-semibold">Datos de facturación</h3>
-                  <p className="text-sm text-muted-foreground">
-                    A nombre de quién salen las facturas de este paciente. Puede ser otra persona o empresa.
-                  </p>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={copyPatientToBilling}>
-                  Usar los datos del paciente
-                </Button>
-              </div>
-              <BillingCustomerFields
-                idPrefix="patient-billing"
-                value={billing}
-                onChange={setBilling}
-                errors={{
-                  name: errors.billingName?.message,
-                  taxIdType: errors.billingTaxIdType?.message,
-                  taxId: errors.billingTaxId?.message,
-                  email: errors.billingEmail?.message,
-                }}
-              />
             </div>
 
             <div className="space-y-2">
