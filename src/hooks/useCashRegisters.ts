@@ -54,6 +54,10 @@ function useRegisterMutation<TInput>(
       toast.success(success);
     },
     onError: (error) => {
+      // The count moved since the dialog read it: read the register again so the note field shows up.
+      if (error.code === 'CASH_CLOSING_NOTE_REQUIRED') {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CASH_REGISTERS });
+      }
       toast.error(error.message);
     },
   });

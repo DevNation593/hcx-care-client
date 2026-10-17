@@ -118,3 +118,20 @@ describe('useRefundPayment', () => {
     expect(stale(client, [...QUERY_KEYS.CASH_REGISTERS, 'list', null])).toBe(true);
   });
 });
+
+describe('payment errors', () => {
+  it('re-reads the order and the lists when recording a payment fails, keeping the idempotency key rules to the caller', async () => {
+    http.post.mockRejectedValue({ message: 'Sin conexión', code: 'NETWORK_ERROR' });
+    const { client, wrapper } = setup();
+    const { result } = renderHook(() => useRecordPayment('order-1'), { wrapper });
+
+    await act(async () => {
+      await result.current
+        .mutateAsync({ data: { method: 'CASH', amount: '20.00' }, idempotencyKey: 'key-1' })
+        .catch(() => undefined);
+    });
+
+    expect(stale(client, QUERY_KEYS.ORDER('order-1'))).toBe(true);
+    expect(stale(client, [...QUERY_KEYS.ORDERS, 'list', null])).toBe(true);
+  });
+});

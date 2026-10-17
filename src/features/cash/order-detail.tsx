@@ -107,12 +107,14 @@ function PayerSection({ order, onConflict }: { order: Order; onConflict: () => v
 }
 
 export function OrderDetail({ orderId }: { orderId: string }) {
-  const { data: order, isPending, isError } = useOrder(orderId);
+  const { data: order, isPending, isError, isFetching, refetch } = useOrder(orderId);
   const { data: eligibility } = useOrderEligibility(orderId);
   const [conflict, setConflict] = useState(false);
 
   if (isPending) return <p className="text-sm text-muted-foreground">Cargando la orden…</p>;
-  if (isError || !order) return <Alert variant="destructive">No se pudo cargar la orden</Alert>;
+  // A failed background refetch keeps the order on screen: unmounting the page would drop the payment
+  // form and its idempotency key.
+  if (!order) return <Alert variant="destructive">No se pudo cargar la orden</Alert>;
 
   const onConflict = () => setConflict(true);
 
@@ -138,6 +140,14 @@ export function OrderDetail({ orderId }: { orderId: string }) {
           </div>
         </dl>
       </div>
+      {isError && (
+        <Alert variant="warning">
+          No se pudo actualizar la orden.
+          <Button type="button" variant="link" size="sm" disabled={isFetching} onClick={() => refetch()}>
+            Reintentar
+          </Button>
+        </Alert>
+      )}
       {conflict && (
         <Alert variant="warning">
           {CONFLICT_MESSAGE}

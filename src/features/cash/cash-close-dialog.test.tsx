@@ -12,7 +12,7 @@ vi.mock('@/hooks/useCashRegisters', () => ({
 
 const register = { id: 'reg-1', status: 'OPEN', openingCash: '10.00' } as CashRegister;
 
-const method = (received: string) => ({ received, refunded: '0.00' });
+const method = (received: string, refunded = '0.00') => ({ received, refunded });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -25,7 +25,7 @@ beforeEach(() => {
         byMethod: {
           CASH: method('25.00'),
           DEBIT_CARD: method('0.00'),
-          CREDIT_CARD: method('12.00'),
+          CREDIT_CARD: method('12.00', '3.00'),
           TRANSFER: method('0.00'),
           OTHER: method('0.00'),
         },
@@ -42,6 +42,13 @@ describe('CashCloseDialog', () => {
     expect(screen.getByText('$35.00')).toBeInTheDocument();
     expect(screen.getByText('Tarjeta de crédito')).toBeInTheDocument();
     expect(screen.getByText('$12.00')).toBeInTheDocument();
+  });
+
+  it('shows what was refunded next to what was received for each method', () => {
+    render(<CashCloseDialog register={register} open onOpenChange={vi.fn()} />);
+
+    expect(screen.getByText('Devuelto $3.00')).toBeInTheDocument();
+    expect(screen.getAllByText('Devuelto $0.00')).toHaveLength(4);
   });
 
   it('requires a note when the count differs, and sends the amount with two decimals', async () => {

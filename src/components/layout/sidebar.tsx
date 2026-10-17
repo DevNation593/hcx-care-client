@@ -88,7 +88,7 @@ export function Sidebar() {
         { name: 'Consentimientos', href: '/admin/consents', icon: FileSignature, show: isEnabled('core.specialties') && can('treatments.manage', isMaster) },
       ],
     },
-    { name: 'Caja', href: '/cash', icon: Wallet, show: isEnabled('core.billing') && (can('billing.view', isMaster) || can('cash.manage', isMaster)) },
+    { name: 'Caja', href: '/cash', icon: Wallet, show: isEnabled('core.billing') && can('billing.view', isMaster) },
     { name: 'Facturación', href: '/admin/billing', icon: FileText, show: isEnabled('core.billing') && can('billing.view', isMaster) },
     {
       name: 'Administración',

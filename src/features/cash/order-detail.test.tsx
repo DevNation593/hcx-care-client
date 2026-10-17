@@ -5,9 +5,10 @@ import { OrderDetail } from './order-detail';
 
 const hooks = vi.hoisted(() => ({
   can: vi.fn(),
-  order: { data: undefined as unknown, isPending: false, isError: false },
+  order: { data: undefined as unknown, isPending: false, isError: false, isFetching: false, refetch: vi.fn() },
   eligibility: { data: undefined as unknown },
   recordPayment: vi.fn(),
+  refetchOrder: vi.fn(),
   refundPayment: vi.fn(),
   addItem: vi.fn(),
   removeItem: vi.fn(),
@@ -96,7 +97,7 @@ const makeOrder = (overrides: Partial<Order> = {}): Order =>
   }) as Order;
 
 function setOrder(order: Order) {
-  hooks.order = { data: order, isPending: false, isError: false };
+  hooks.order = { data: order, isPending: false, isError: false, isFetching: false, refetch: hooks.refetchOrder };
 }
 
 beforeEach(() => {
@@ -188,6 +189,32 @@ describe('OrderDetail', () => {
     const keys = hooks.recordPayment.mock.calls.map(([input]) => input.idempotencyKey);
     expect(keys).toHaveLength(2);
     expect(keys[1]).toBe(keys[0]);
+  });
+
+  it('keeps the form mounted and the key when a background refetch fails', async () => {
+    hooks.recordPayment.mockRejectedValueOnce({ message: 'Sin conexión' }).mockResolvedValue({});
+    const { rerender } = render(<OrderDetail orderId="o-1" />);
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Registrar pago' })));
+    hooks.order = { ...hooks.order, isError: true };
+    rerender(<OrderDetail orderId="o-1" />);
+
+    expect(screen.queryByText('No se pudo cargar la orden')).not.toBeInTheDocument();
+    expect(screen.getByText(/No se pudo actualizar la orden/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(hooks.refetchOrder).toHaveBeenCalled();
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Registrar pago' })));
+    const keys = hooks.recordPayment.mock.calls.map(([input]) => input.idempotencyKey);
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it('shows the error page only when there is no order to show', () => {
+    hooks.order = { data: undefined, isPending: false, isError: true, isFetching: false, refetch: vi.fn() };
+    render(<OrderDetail orderId="o-1" />);
+
+    expect(screen.getByText('No se pudo cargar la orden')).toBeInTheDocument();
   });
 
   it('keeps an amount typed by the user when the balance changes', () => {

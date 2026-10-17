@@ -69,7 +69,12 @@ export function CashCloseDialog({ register, open, onOpenChange }: CashCloseDialo
               {(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map((method) => (
                 <div key={method} className="flex justify-between">
                   <span>{PAYMENT_METHOD_LABELS[method]}</span>
-                  <span>{formatMoney(summary.byMethod[method].received)}</span>
+                  <span>
+                    {formatMoney(summary.byMethod[method].received)}
+                    <span className="ml-2 text-muted-foreground">
+                      Devuelto {formatMoney(summary.byMethod[method].refunded)}
+                    </span>
+                  </span>
                 </div>
               ))}
               <div className="flex justify-between border-t pt-1 font-medium">

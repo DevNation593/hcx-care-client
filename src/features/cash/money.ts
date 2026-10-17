@@ -1,8 +1,8 @@
-const MONEY = /^-?\d+(\.\d{1,2})?$/;
+const MONEY = /^-?\d+([.,]\d{1,2})?$/;
 
-/** Cents of an amount typed by the user, or null when it is not a valid amount with up to 2 decimals. */
+/** Cents of an amount typed by the user (a comma works as the decimal separator), or null when it is not a valid amount with up to 2 decimals. */
 export function parseCents(value: string): number | null {
-  const text = value.trim();
+  const text = value.trim().replace(',', '.');
   if (!MONEY.test(text)) return null;
   const negative = text.startsWith('-');
   const [whole, fraction = ''] = text.replace('-', '').split('.');

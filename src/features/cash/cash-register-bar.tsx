@@ -16,13 +16,14 @@ import { centsToAmount, parseCents } from './money';
 export function CashRegisterBar({ branchId }: { branchId: string }) {
   const user = useAuthStore((state) => state.user);
   const { can } = useMyPermissions();
-  const { data: register } = useCurrentCashRegister(branchId);
+  const { data: register, isError, isFetching, refetch } = useCurrentCashRegister(branchId);
   const openRegister = useOpenCashRegister();
   const [opening, setOpening] = useState(false);
   const [openingCash, setOpeningCash] = useState('');
   const [closing, setClosing] = useState(false);
 
-  const canManage = can('cash.manage', !!user && isMasterRole(user.role));
+  // Without a readable register the state is unknown: never claim it is closed, nor offer to open or close it.
+  const canManage = can('cash.manage', !!user && isMasterRole(user.role)) && !isError;
   const openingCents = parseCents(openingCash);
 
   const handleOpen = async (event: React.FormEvent) => {
@@ -43,9 +44,20 @@ export function CashRegisterBar({ branchId }: { branchId: string }) {
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <p className="text-sm font-medium">
-          {register ? `Caja abierta desde ${formatDate(register.openedAt, 'HH:mm')}${openedBy}` : 'Caja cerrada'}
-        </p>
+        {isError ? (
+          <>
+            <p role="alert" className="text-sm font-medium text-destructive">
+              No se pudo leer el estado de la caja
+            </p>
+            <Button variant="outline" disabled={isFetching} onClick={() => refetch()}>
+              Reintentar
+            </Button>
+          </>
+        ) : (
+          <p className="text-sm font-medium">
+            {register ? `Caja abierta desde ${formatDate(register.openedAt, 'HH:mm')}${openedBy}` : 'Caja cerrada'}
+          </p>
+        )}
         {canManage && register && (
           <>
             <Button variant="outline" onClick={() => setClosing(true)}>

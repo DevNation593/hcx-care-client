@@ -209,7 +209,7 @@ describe('Sidebar billing entry', () => {
 });
 
 describe('Sidebar cash entry', () => {
-  it('is shown to an assistant with cash.manage and hidden without any permission', async () => {
+  it('is shown to an assistant with billing.view and hidden with cash.manage alone', async () => {
     useAuthStore.setState({ user: { ...admin, role: UserRole.ASISTENTE } });
     const { unmount } = renderSidebar();
     expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
@@ -217,6 +217,12 @@ describe('Sidebar cash entry', () => {
     unmount();
 
     permissions.granted = ['cash.manage'];
+    const second = renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Caja' })).not.toBeInTheDocument();
+    second.unmount();
+
+    permissions.granted = ['billing.view'];
     renderSidebar();
     expect(await screen.findByRole('link', { name: 'Caja' })).toHaveAttribute('href', '/cash');
     permissions.granted = [];

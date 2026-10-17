@@ -7,10 +7,12 @@ const hooks = vi.hoisted(() => ({
   can: vi.fn(),
   push: vi.fn(),
   createOrder: vi.fn(),
+  useOrders: vi.fn(),
+  refetchCurrent: vi.fn(),
   openRegister: vi.fn(),
-  current: { data: null as unknown },
+  current: { data: null as unknown, isError: false, isFetching: false, refetch: vi.fn() } as Record<string, unknown>,
   billable: { data: [] as unknown[], isPending: false, isError: false },
-  orders: { data: { items: [] as unknown[] }, isPending: false, isError: false },
+  orders: { data: { items: [] as unknown[] }, isPending: false, isError: false } as Record<string, unknown>,
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: hooks.push }) }));
@@ -31,7 +33,7 @@ vi.mock('@/hooks/useCashRegisters', () => ({
 }));
 vi.mock('@/hooks/useOrders', () => ({
   useBillableSessions: () => hooks.billable,
-  useOrders: () => hooks.orders,
+  useOrders: (filters: unknown) => hooks.useOrders(filters),
   useCreateOrder: () => ({ mutateAsync: hooks.createOrder, isPending: false }),
 }));
 
@@ -51,9 +53,10 @@ const billable = (id: string, compliant: boolean) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   hooks.can.mockReturnValue(true);
-  hooks.current = { data: null };
+  hooks.current = { data: null, isError: false, isFetching: false, refetch: hooks.refetchCurrent };
   hooks.billable = { data: [billable('s1', true), billable('s2', false)], isPending: false, isError: false };
-  hooks.orders = { data: { items: [] }, isPending: false, isError: false };
+  hooks.orders = { data: { items: [], total: 0, page: 1, pageSize: 20 }, isPending: false, isError: false };
+  hooks.useOrders.mockImplementation(() => hooks.orders);
   hooks.createOrder.mockResolvedValue({ id: 'order-7' });
   useAuthStore.setState({ user: { id: 'me', role: 'ASISTENTE', firstName: 'Sofía', lastName: 'Ruiz' } as never });
 });
@@ -65,6 +68,18 @@ describe('CashPage', () => {
 
     expect(screen.getByText('Caja cerrada')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Abrir caja' })).not.toBeInTheDocument();
+  });
+
+  it('shows an error with a retry, not a closed register, when the register cannot be read', () => {
+    hooks.current = { data: undefined, isError: true, isFetching: false, refetch: hooks.refetchCurrent };
+    render(<CashPage />);
+
+    expect(screen.getByText('No se pudo leer el estado de la caja')).toBeInTheDocument();
+    expect(screen.queryByText('Caja cerrada')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir caja' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cerrar caja' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(hooks.refetchCurrent).toHaveBeenCalled();
   });
 
   it('opens the register with the opening cash of the main branch', async () => {
@@ -82,6 +97,7 @@ describe('CashPage', () => {
   it('shows who opened the register and offers to close it', () => {
     hooks.current = {
       data: { id: 'reg-1', status: 'OPEN', openedById: 'me', openedAt: '2026-10-15T15:30:00.000Z' },
+      isError: false,
     };
     render(<CashPage />);
 
@@ -173,5 +189,50 @@ describe('CashPage', () => {
     fireEvent.click(screen.getByText('Clínica Sol'));
 
     expect(hooks.push).toHaveBeenCalledWith('/cash/orders/o-1');
+  });
+
+  describe('orders tab', () => {
+    const manyOrders = (total: number) => ({
+      data: {
+        items: [{ id: 'o-1', number: 12, status: 'OPEN', billingProfile: null, total: '40.00', balance: '40.00' }],
+        total,
+        page: 1,
+        pageSize: 20,
+      },
+      isPending: false,
+      isError: false,
+    });
+    const lastFilters = () => hooks.useOrders.mock.calls.at(-1)?.[0];
+
+    it('lists only open orders of the branch by default', () => {
+      render(<CashPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'Órdenes' }));
+
+      expect(lastFilters()).toEqual({ branchId: 'b-1', page: 1, pageSize: 20, status: 'OPEN' });
+    });
+
+    it('filters by status, and Todas sends no status', () => {
+      render(<CashPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'Órdenes' }));
+
+      fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'PAID' } });
+      expect(lastFilters()).toMatchObject({ status: 'PAID', page: 1 });
+      fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'ALL' } });
+      expect(lastFilters()).not.toHaveProperty('status');
+    });
+
+    it('pages with the API total and goes back to the first page when searching', () => {
+      hooks.orders = manyOrders(45);
+      render(<CashPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'Órdenes' }));
+
+      expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+      expect(lastFilters()).toMatchObject({ page: 2, pageSize: 20 });
+
+      fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: '  Clínica Sol ' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Buscar' }));
+      expect(lastFilters()).toMatchObject({ page: 1, q: 'Clínica Sol' });
+    });
   });
 });

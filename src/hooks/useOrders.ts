@@ -73,9 +73,12 @@ function useOrderMutation<TInput>(
     },
     onError: (error) => {
       // Someone else edited the order: read it again so the next attempt has the new version.
-      if (error.code === 'ORDER_VERSION_CONFLICT') {
+      // A payment that failed (a lost response, a closed order) may still have landed: re-read the order
+      // and the lists so the balance reflects the server.
+      if (error.code === 'ORDER_VERSION_CONFLICT' || cash) {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDER(orderId) });
       }
+      if (cash) queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDERS });
       toast.error(error.message);
     },
   });
