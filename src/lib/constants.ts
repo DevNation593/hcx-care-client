@@ -6,7 +6,13 @@ import { PlanTier, UserRole, AppointmentStatus, TaskStatus, TaskPriority } from 
 
 export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'HCX Care';
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4200';
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000/api/v1';
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+if (!apiBaseUrl && process.env.NODE_ENV === 'production') {
+  throw new Error('Missing NEXT_PUBLIC_API_BASE_URL in production environment');
+}
+
+export const API_BASE_URL = apiBaseUrl || 'http://localhost:3000/api/v1';
 
 function requiredPathSegment(value: string, label: string): string {
   if (!value?.trim()) throw new Error(`${label} ID is required.`);
@@ -124,6 +130,29 @@ export const API_ENDPOINTS = {
   PATIENT_ENCOUNTER_CLOSE: (tenantId: string, patientId: string, encounterId: string) =>
     `/tenants/${tenantId}/patients/${patientId}/encounters/${encounterId}/close`,
 
+  // Treatments, consent templates and treatment sessions
+  TREATMENTS: (tenantId: string) => `/tenants/${tenantId}/treatments`,
+  TREATMENT: (tenantId: string, id: string) => `/tenants/${tenantId}/treatments/${id}`,
+  TREATMENT_VERSIONS: (tenantId: string, id: string) =>
+    `/tenants/${tenantId}/treatments/${id}/versions`,
+  CONSENT_TEMPLATES: (tenantId: string) => `/tenants/${tenantId}/consent-templates`,
+  CONSENT_TEMPLATE: (tenantId: string, id: string) =>
+    `/tenants/${tenantId}/consent-templates/${id}`,
+  CONSENT_TEMPLATE_DRAFT: (tenantId: string, id: string) =>
+    `/tenants/${tenantId}/consent-templates/${id}/draft`,
+  CONSENT_TEMPLATE_PUBLISH: (tenantId: string, id: string) =>
+    `/tenants/${tenantId}/consent-templates/${id}/publish`,
+  CONSENT_TEMPLATE_VERSION_RETIRE: (tenantId: string, versionId: string) =>
+    `/tenants/${tenantId}/consent-template-versions/${versionId}/retire`,
+  PATIENT_TREATMENT_SESSIONS: (tenantId: string, patientId: string) =>
+    `/tenants/${tenantId}/patients/${patientId}/treatment-sessions`,
+  TREATMENT_SESSION: (tenantId: string, id: string) =>
+    `/tenants/${tenantId}/treatment-sessions/${id}`,
+  TREATMENT_SESSION_COMMAND: (tenantId: string, id: string, command: string) =>
+    `/tenants/${tenantId}/treatment-sessions/${id}/${command}`,
+  CONSENT_DOCUMENT_COMMAND: (tenantId: string, id: string, command: string) =>
+    `/tenants/${tenantId}/consent-documents/${id}/${command}`,
+
   // Branches and catalogs
   BRANCHES: (tenantId: string) => `/tenants/${tenantId}/branches`,
   BRANCH: (tenantId: string, branchId: string) => `/tenants/${tenantId}/branches/${branchId}`,
@@ -233,6 +262,13 @@ export const QUERY_KEYS = {
     ['patients', patientId, 'specialty-records', recordId],
   PATIENT_ENCOUNTERS: (patientId: string) => ['patients', patientId, 'encounters'],
   PATIENT_FILES: (patientId: string) => ['patients', patientId, 'files'],
+  TREATMENTS: ['treatments'],
+  TREATMENT: (id: string) => ['treatments', id],
+  CONSENT_TEMPLATES: ['consent-templates'],
+  CONSENT_TEMPLATE: (id: string) => ['consent-templates', id],
+  PATIENT_TREATMENT_SESSIONS: (patientId: string) => ['patients', patientId, 'treatment-sessions'],
+  TREATMENT_SESSIONS: ['treatment-sessions'],
+  TREATMENT_SESSION: (id: string) => ['treatment-sessions', id],
   BRANCHES: (tenantId: string) => ['tenant', 'branches', tenantId],
   MEDICATIONS: (tenantId: string) => ['tenant', 'medications', tenantId],
   CLINICAL_MODULES: (tenantId: string) => ['tenant', 'clinical-modules', tenantId],

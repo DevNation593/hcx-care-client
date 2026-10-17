@@ -28,6 +28,8 @@ import {
   ListChecks,
   Stethoscope,
   BarChart3,
+  Syringe,
+  FileSignature,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -81,6 +83,8 @@ export function Sidebar() {
       items: [
         { name: 'Módulos clínicos', href: '/admin/specialties', icon: LayoutGrid, show: isEnabled('core.specialties') && managesUsers },
         { name: 'Formularios', href: '/admin/forms', icon: ListChecks, show: isEnabled('core.specialties') && managesSubscription },
+        { name: 'Tratamientos', href: '/admin/treatments', icon: Syringe, show: isEnabled('core.specialties') && can('treatments.manage', isMaster) },
+        { name: 'Consentimientos', href: '/admin/consents', icon: FileSignature, show: isEnabled('core.specialties') && can('treatments.manage', isMaster) },
       ],
     },
     { name: 'Facturación', href: '/admin/billing', icon: FileText, show: isEnabled('core.billing') && can('billing.view', user ? isMasterRole(user.role) || isProfessionalRole(user.role) : false) },
