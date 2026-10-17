@@ -22,6 +22,14 @@ const STEP_LABELS: Record<SessionStepId, string> = {
   close: 'Cierre',
 };
 
+// Statuses of a session that is clinically complete (billing happens after the close).
+const CLINICALLY_COMPLETE: TreatmentSessionStatus[] = [
+  'CLINICAL_COMPLETE',
+  'BILLING_PENDING',
+  'BILLED',
+  'BILLING_FAILED',
+];
+
 // Statuses that end a session before it is clinically complete.
 const ENDED: TreatmentSessionStatus[] = ['CONSENT_REFUSED', 'CONSENT_REVOKED', 'CANCELLED', 'NO_SHOW'];
 
@@ -34,8 +42,8 @@ const ENDED: TreatmentSessionStatus[] = ['CONSENT_REFUSED', 'CONSENT_REVOKED', '
  */
 export function buildSessionSteps(session: TreatmentSessionDetail): SessionStep[] {
   const { policy, requirements, status } = session;
-  const started = session.startedAt !== null || status === 'IN_PROGRESS' || status === 'CLINICAL_COMPLETE';
-  const completed = status === 'CLINICAL_COMPLETE';
+  const started = session.startedAt !== null || status === 'IN_PROGRESS' || CLINICALLY_COMPLETE.includes(status);
+  const completed = CLINICALLY_COMPLETE.includes(status);
   const ended = ENDED.includes(status);
   const pick = (codes: MissingRequirement[], code: MissingRequirement) =>
     codes.includes(code) ? [code] : [];

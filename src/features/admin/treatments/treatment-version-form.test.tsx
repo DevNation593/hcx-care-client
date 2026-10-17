@@ -105,6 +105,7 @@ describe('TreatmentVersionForm', () => {
         informedConsent: { required: true, validityDays: 365 },
         photos: { minimumBefore: 2, minimumAfter: 1 },
         clinicalNotes: { requiredForCompletion: true },
+        billingGate: { requireClinicalCompletion: true },
       },
     });
   });
@@ -126,8 +127,43 @@ describe('TreatmentVersionForm', () => {
         informedConsent: { required: false, validityDays: null },
         photos: { minimumBefore: 0, minimumAfter: 0 },
         clinicalNotes: { requiredForCompletion: false },
+        billingGate: { requireClinicalCompletion: true },
       },
     });
+  });
+
+  it('sends the billing gate unchecked as false', () => {
+    setup();
+    type(/^Precio/, '40');
+    const gate = screen.getByLabelText('Exigir cierre clínico para facturar');
+    expect(gate).toBeChecked();
+    fireEvent.click(gate);
+    save();
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requirements: expect.objectContaining({ billingGate: { requireClinicalCompletion: false } }),
+      }),
+    );
+  });
+
+  it('shows a stored version without billingGate as checked', () => {
+    const legacy = {
+      price: 10,
+      taxRatePercent: 0,
+      durationMinutes: 30,
+      formDefinitionId: null,
+      formVersion: null,
+      consentTemplateVersionId: null,
+      requirements: {
+        medicalForm: { required: false },
+        informedConsent: { required: false, validityDays: null },
+        photos: { minimumBefore: 0, minimumAfter: 0 },
+        clinicalNotes: { requiredForCompletion: false },
+      },
+    } as unknown as TreatmentVersion;
+    setup({ initial: legacy });
+    expect(screen.getByLabelText('Exigir cierre clínico para facturar')).toBeChecked();
   });
 
   it('starts from the version being edited', () => {
@@ -143,6 +179,7 @@ describe('TreatmentVersionForm', () => {
         informedConsent: { required: true, validityDays: 30 },
         photos: { minimumBefore: 1, minimumAfter: 0 },
         clinicalNotes: { requiredForCompletion: true },
+        billingGate: { requireClinicalCompletion: false },
       },
     } as TreatmentVersion;
     setup({ initial });

@@ -97,6 +97,32 @@ import type {
   TreatmentWithCurrent,
   TreatmentWithVersions,
 } from '@/types/treatments';
+import type {
+  Paginated,
+  BillingProfile,
+  BillingProfileInput,
+  BillingProfileUpdate,
+  BillingProfileFilters,
+  LinkedBillingProfile,
+  LinkBillingProfileInput,
+  CashRegister,
+  CashRegisterDetail,
+  CashRegisterFilters,
+  OpenCashRegisterInput,
+  CloseCashRegisterInput,
+  Order,
+  OrderFilters,
+  CreateOrderInput,
+  AddOrderItemInput,
+  UpdateOrderItemInput,
+  SetOrderBillingProfileInput,
+  CancelOrderInput,
+  RecordPaymentInput,
+  RefundPaymentInput,
+  BillableSession,
+  BillableSessionFilters,
+  BillingEligibility,
+} from '@/types/cash';
 
 // ==========================================
 // HELPER: Get tenantId from auth store
@@ -319,16 +345,6 @@ function normalizeTenantSettings(raw: any): TenantSettings {
     legalName: raw.legalName ?? '',
     taxIdentificationType: raw.taxIdentificationType ?? 'RUC',
     taxIdentificationNumber: raw.taxIdentificationNumber ?? '',
-    fakturApiKey: raw.fakturApiKey ?? '',
-    fakturEstablishment: raw.fakturEstablishment ?? '',
-    fakturEmissionPoint: raw.fakturEmissionPoint ?? '',
-    fakturNextSequential: raw.fakturNextSequential ?? 1,
-    fakturBusinessName: raw.fakturBusinessName ?? '',
-    fakturBusinessAddress: raw.fakturBusinessAddress ?? '',
-    fakturSpecialTaxpayer: !!raw.fakturSpecialTaxpayer,
-    fakturAccountingRequired: !!raw.fakturAccountingRequired,
-    fakturWithholdingAgent: !!raw.fakturWithholdingAgent,
-    fakturEnabled: !!raw.fakturEnabled,
     workingHours: normalizeWorkingHours(raw),
     defaultSessionDuration: raw.defaultAppointmentDuration ?? 60,
     reminderRules,
@@ -500,16 +516,6 @@ export const tenantSettingsApi = {
       legalName: settings.legalName,
       taxIdentificationType: settings.taxIdentificationType,
       taxIdentificationNumber: settings.taxIdentificationNumber,
-      fakturApiKey: settings.fakturApiKey,
-      fakturEstablishment: settings.fakturEstablishment,
-      fakturEmissionPoint: settings.fakturEmissionPoint,
-      fakturNextSequential: settings.fakturNextSequential,
-      fakturBusinessName: settings.fakturBusinessName,
-      fakturBusinessAddress: settings.fakturBusinessAddress,
-      fakturSpecialTaxpayer: settings.fakturSpecialTaxpayer,
-      fakturAccountingRequired: settings.fakturAccountingRequired,
-      fakturWithholdingAgent: settings.fakturWithholdingAgent,
-      fakturEnabled: settings.fakturEnabled,
       timezone: settings.timezone,
       locale: settings.locale,
       defaultAppointmentDuration: settings.defaultSessionDuration,
@@ -551,25 +557,12 @@ export const tenantSettingsApi = {
   },
 };
 
-export interface CreateInvoiceInput {
-  patientId: string;
-  subtotal: number;
-  tax?: number;
-  description: string;
-  idempotencyKey?: string;
-  /** Recipient for this invoice; anything omitted comes from the patient record. */
-  customer?: Partial<Record<'name' | 'taxIdType' | 'taxId' | 'email' | 'address', string>>;
-  saveCustomerToPatient?: boolean;
-}
-
 export const billingApi = {
   listInvoices: (params?: { patientId?: string }) =>
     apiClient.get<Invoice[]>(
       API_ENDPOINTS.BILLING_INVOICES(getTenantId()),
       params?.patientId ? { params: { patientId: params.patientId } } : undefined,
     ),
-  createInvoice: (data: CreateInvoiceInput) =>
-    apiClient.post<Invoice>(API_ENDPOINTS.BILLING_INVOICES(getTenantId()), data),
 };
 
 export const specialtyRecordsApi = {
@@ -635,6 +628,79 @@ export const treatmentsApi = {
   // Price and requirements are immutable: a change is a new version, which becomes the current one.
   addVersion: (id: string, data: TreatmentVersionInput) =>
     apiClient.post<TreatmentWithVersions>(API_ENDPOINTS.TREATMENT_VERSIONS(getTenantId(), id), data),
+};
+
+export const billingProfilesApi = {
+  list: (filters?: BillingProfileFilters) =>
+    apiClient.get<Paginated<BillingProfile>>(API_ENDPOINTS.BILLING_PROFILES(getTenantId()), {
+      params: filters,
+    }),
+  get: (id: string) =>
+    apiClient.get<BillingProfile>(API_ENDPOINTS.BILLING_PROFILE(getTenantId(), id)),
+  create: (data: BillingProfileInput) =>
+    apiClient.post<BillingProfile>(API_ENDPOINTS.BILLING_PROFILES(getTenantId()), data),
+  update: (id: string, data: BillingProfileUpdate) =>
+    apiClient.patch<BillingProfile>(API_ENDPOINTS.BILLING_PROFILE(getTenantId(), id), data),
+  forPatient: (patientId: string) =>
+    apiClient.get<LinkedBillingProfile[]>(
+      API_ENDPOINTS.PATIENT_BILLING_PROFILES(getTenantId(), patientId),
+    ),
+  link: (patientId: string, data: LinkBillingProfileInput) =>
+    apiClient.post<LinkedBillingProfile[]>(
+      API_ENDPOINTS.PATIENT_BILLING_PROFILES(getTenantId(), patientId),
+      data,
+    ),
+  // The profile stays; only the link to the patient goes.
+  unlink: (patientId: string, profileId: string) =>
+    apiClient.delete<void>(
+      API_ENDPOINTS.PATIENT_BILLING_PROFILE(getTenantId(), patientId, profileId),
+    ),
+};
+
+export const cashRegistersApi = {
+  list: (filters?: CashRegisterFilters) =>
+    apiClient.get<Paginated<CashRegister>>(API_ENDPOINTS.CASH_REGISTERS(getTenantId()), {
+      params: filters,
+    }),
+  get: (id: string) =>
+    apiClient.get<CashRegisterDetail>(API_ENDPOINTS.CASH_REGISTER(getTenantId(), id)),
+  open: (data: OpenCashRegisterInput) =>
+    apiClient.post<CashRegisterDetail>(API_ENDPOINTS.CASH_REGISTER_OPEN(getTenantId()), data),
+  close: (id: string, data: CloseCashRegisterInput) =>
+    apiClient.post<CashRegisterDetail>(API_ENDPOINTS.CASH_REGISTER_CLOSE(getTenantId(), id), data),
+};
+
+export const ordersApi = {
+  list: (filters?: OrderFilters) =>
+    apiClient.get<Paginated<Order>>(API_ENDPOINTS.ORDERS(getTenantId()), { params: filters }),
+  get: (id: string) => apiClient.get<Order>(API_ENDPOINTS.ORDER(getTenantId(), id)),
+  create: (data: CreateOrderInput) =>
+    apiClient.post<Order>(API_ENDPOINTS.ORDERS(getTenantId()), data),
+  addItem: (id: string, data: AddOrderItemInput) =>
+    apiClient.post<Order>(API_ENDPOINTS.ORDER_ITEMS(getTenantId(), id), data),
+  removeItem: (id: string, itemId: string, version: number) =>
+    apiClient.delete<Order>(API_ENDPOINTS.ORDER_ITEM(getTenantId(), id, itemId), {
+      params: { version },
+    }),
+  updateItem: (id: string, itemId: string, data: UpdateOrderItemInput) =>
+    apiClient.patch<Order>(API_ENDPOINTS.ORDER_ITEM(getTenantId(), id, itemId), data),
+  setBillingProfile: (id: string, data: SetOrderBillingProfileInput) =>
+    apiClient.put<Order>(API_ENDPOINTS.ORDER_BILLING_PROFILE(getTenantId(), id), data),
+  cancel: (id: string, data: CancelOrderInput) =>
+    apiClient.post<Order>(API_ENDPOINTS.ORDER_CANCEL(getTenantId(), id), data),
+  // The key makes a retried request return the original payment instead of recording another.
+  recordPayment: (id: string, data: RecordPaymentInput, idempotencyKey: string) =>
+    apiClient.post<Order>(API_ENDPOINTS.ORDER_PAYMENTS(getTenantId(), id), data, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }),
+  refundPayment: (paymentId: string, data: RefundPaymentInput) =>
+    apiClient.post<Order>(API_ENDPOINTS.PAYMENT_REFUND(getTenantId(), paymentId), data),
+  eligibility: (id: string) =>
+    apiClient.get<BillingEligibility>(API_ENDPOINTS.ORDER_ELIGIBILITY(getTenantId(), id)),
+  billableSessions: (filters?: BillableSessionFilters) =>
+    apiClient.get<BillableSession[]>(API_ENDPOINTS.BILLABLE_SESSIONS(getTenantId()), {
+      params: filters,
+    }),
 };
 
 export const consentTemplatesApi = {
@@ -874,7 +940,6 @@ const patientFields = [
   'maritalStatus', 'occupation', 'nationality', 'bloodType', 'disability',
   'insuranceProvider', 'insurancePolicyNumber',
   'guardianName', 'guardianRelationship', 'guardianIdentification', 'guardianPhone',
-  'billingName', 'billingTaxIdType', 'billingTaxId', 'billingEmail', 'billingAddress',
 ] as const;
 
 function patientPayload(data: Partial<PatientInput>): Partial<PatientInput> {

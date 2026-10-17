@@ -87,16 +87,6 @@ export default function AdminSettingsPage() {
   const [taxIdentificationNumber, setTaxIdentificationNumber] = useState(
     settings?.taxIdentificationNumber || ''
   );
-  const [fakturApiKey, setFakturApiKey] = useState(settings?.fakturApiKey || '');
-  const [fakturEstablishment, setFakturEstablishment] = useState(settings?.fakturEstablishment || '');
-  const [fakturEmissionPoint, setFakturEmissionPoint] = useState(settings?.fakturEmissionPoint || '');
-  const [fakturNextSequential, setFakturNextSequential] = useState(settings?.fakturNextSequential || 1);
-  const [fakturBusinessName, setFakturBusinessName] = useState(settings?.fakturBusinessName || '');
-  const [fakturBusinessAddress, setFakturBusinessAddress] = useState(settings?.fakturBusinessAddress || '');
-  const [fakturSpecialTaxpayer, setFakturSpecialTaxpayer] = useState(settings?.fakturSpecialTaxpayer || false);
-  const [fakturAccountingRequired, setFakturAccountingRequired] = useState(settings?.fakturAccountingRequired || false);
-  const [fakturWithholdingAgent, setFakturWithholdingAgent] = useState(settings?.fakturWithholdingAgent || false);
-  const [fakturEnabled, setFakturEnabled] = useState(settings?.fakturEnabled || false);
   const [hasChanges, setHasChanges] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -113,16 +103,6 @@ export default function AdminSettingsPage() {
     setLegalName(settings.legalName || '');
     setTaxIdentificationType(settings.taxIdentificationType || 'RUC');
     setTaxIdentificationNumber(settings.taxIdentificationNumber || '');
-    setFakturApiKey(settings.fakturApiKey || '');
-    setFakturEstablishment(settings.fakturEstablishment || '');
-    setFakturEmissionPoint(settings.fakturEmissionPoint || '');
-    setFakturNextSequential(settings.fakturNextSequential || 1);
-    setFakturBusinessName(settings.fakturBusinessName || '');
-    setFakturBusinessAddress(settings.fakturBusinessAddress || '');
-    setFakturSpecialTaxpayer(settings.fakturSpecialTaxpayer || false);
-    setFakturAccountingRequired(settings.fakturAccountingRequired || false);
-    setFakturWithholdingAgent(settings.fakturWithholdingAgent || false);
-    setFakturEnabled(settings.fakturEnabled || false);
     setInitialized(true);
   }, [initialized, settings]);
 
@@ -175,21 +155,6 @@ export default function AdminSettingsPage() {
         legalName,
         taxIdentificationType,
         taxIdentificationNumber,
-        fakturApiKey,
-        fakturEstablishment,
-        fakturEmissionPoint,
-        // Sent only when edited: a stale form value must not roll back
-        // sequentials already consumed by issued invoices.
-        fakturNextSequential:
-          fakturNextSequential !== (settings?.fakturNextSequential || 1)
-            ? fakturNextSequential
-            : undefined,
-        fakturBusinessName,
-        fakturBusinessAddress,
-        fakturSpecialTaxpayer,
-        fakturAccountingRequired,
-        fakturWithholdingAgent,
-        fakturEnabled,
       },
       {
         onSuccess: () => {
@@ -209,16 +174,6 @@ export default function AdminSettingsPage() {
       setLegalName(settings.legalName || '');
       setTaxIdentificationType(settings.taxIdentificationType || 'RUC');
       setTaxIdentificationNumber(settings.taxIdentificationNumber || '');
-      setFakturApiKey(settings.fakturApiKey || '');
-      setFakturEstablishment(settings.fakturEstablishment || '');
-      setFakturEmissionPoint(settings.fakturEmissionPoint || '');
-      setFakturNextSequential(settings.fakturNextSequential || 1);
-      setFakturBusinessName(settings.fakturBusinessName || '');
-      setFakturBusinessAddress(settings.fakturBusinessAddress || '');
-      setFakturSpecialTaxpayer(settings.fakturSpecialTaxpayer || false);
-      setFakturAccountingRequired(settings.fakturAccountingRequired || false);
-      setFakturWithholdingAgent(settings.fakturWithholdingAgent || false);
-      setFakturEnabled(settings.fakturEnabled || false);
     }
     setHasChanges(false);
   };
@@ -438,7 +393,7 @@ export default function AdminSettingsPage() {
             Facturación electrónica
           </CardTitle>
           <CardDescription>
-            Estos datos se utilizarán como información del emisor al generar comprobantes con Faktur.
+            Datos del emisor de los comprobantes electrónicos.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -482,106 +437,6 @@ export default function AdminSettingsPage() {
                   markChanged();
                 }}
               />
-            </div>
-            <div className="md:col-span-3 border-t pt-4">
-              <h3 className="font-medium">Conexión con Faktur</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Configura las credenciales y numeración autorizada por tu proveedor.
-              </p>
-            </div>
-            <div className="md:col-span-2">
-              <Label htmlFor="faktur-api-key">API key</Label>
-              <Input
-                id="faktur-api-key"
-                type="password"
-                value={fakturApiKey}
-                placeholder="Ingresa una nueva API key"
-                onChange={(e) => {
-                  setFakturApiKey(e.target.value);
-                  markChanged();
-                }}
-              />
-            </div>
-            <div>
-              <Label htmlFor="faktur-establishment">Establecimiento</Label>
-              <Input
-                id="faktur-establishment"
-                value={fakturEstablishment}
-                placeholder="001"
-                onChange={(e) => {
-                  setFakturEstablishment(e.target.value);
-                  markChanged();
-                }}
-              />
-            </div>
-            <div>
-              <Label htmlFor="faktur-emission-point">Punto de emisión</Label>
-              <Input
-                id="faktur-emission-point"
-                value={fakturEmissionPoint}
-                placeholder="001"
-                onChange={(e) => {
-                  setFakturEmissionPoint(e.target.value);
-                  markChanged();
-                }}
-              />
-            </div>
-            <div>
-              <Label htmlFor="faktur-next-sequential">Siguiente secuencial</Label>
-              <Input
-                id="faktur-next-sequential"
-                type="number"
-                min={1}
-                value={fakturNextSequential}
-                onChange={(e) => {
-                  setFakturNextSequential(Number(e.target.value));
-                  markChanged();
-                }}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <Label htmlFor="faktur-business-name">Nombre comercial</Label>
-              <Input
-                id="faktur-business-name"
-                value={fakturBusinessName}
-                onChange={(e) => {
-                  setFakturBusinessName(e.target.value);
-                  markChanged();
-                }}
-              />
-            </div>
-            <div className="md:col-span-3">
-              <Label htmlFor="faktur-business-address">Dirección del establecimiento</Label>
-              <Input
-                id="faktur-business-address"
-                value={fakturBusinessAddress}
-                onChange={(e) => {
-                  setFakturBusinessAddress(e.target.value);
-                  markChanged();
-                }}
-              />
-            </div>
-            <div className="md:col-span-3 flex flex-wrap gap-6">
-              {[
-                ['faktur-enabled', 'Activar facturación electrónica', fakturEnabled, setFakturEnabled],
-                ['faktur-special-taxpayer', 'Contribuyente especial', fakturSpecialTaxpayer, setFakturSpecialTaxpayer],
-                ['faktur-accounting-required', 'Obligado a llevar contabilidad', fakturAccountingRequired, setFakturAccountingRequired],
-                ['faktur-withholding-agent', 'Agente de retención', fakturWithholdingAgent, setFakturWithholdingAgent],
-              ].map(([id, label, checked, setter]) => (
-                <label key={id as string} className="flex items-center gap-2 text-sm">
-                  <input
-                    id={id as string}
-                    type="checkbox"
-                    checked={checked as boolean}
-                    onChange={(e) => {
-                      (setter as (value: boolean) => void)(e.target.checked);
-                      markChanged();
-                    }}
-                    className="rounded border-gray-300"
-                  />
-                  {label as string}
-                </label>
-              ))}
             </div>
           </div>
         </CardContent>

@@ -346,16 +346,6 @@ export interface TenantSettings {
   legalName?: string;
   taxIdentificationType?: string;
   taxIdentificationNumber?: string;
-  fakturApiKey?: string;
-  fakturEstablishment?: string;
-  fakturEmissionPoint?: string;
-  fakturNextSequential?: number;
-  fakturBusinessName?: string;
-  fakturBusinessAddress?: string;
-  fakturSpecialTaxpayer?: boolean;
-  fakturAccountingRequired?: boolean;
-  fakturWithholdingAgent?: boolean;
-  fakturEnabled?: boolean;
   workingHours: WorkingHours;
   defaultSessionDuration: number; // minutes
   reminderRules: ReminderRule[];
@@ -552,12 +542,6 @@ export interface Patient {
   guardianRelationship?: string | null;
   guardianIdentification?: string | null;
   guardianPhone?: string | null;
-  // Billing recipient for this patient's invoices; may be a third party.
-  billingName: string | null;
-  billingTaxIdType: string | null;
-  billingTaxId: string | null;
-  billingEmail: string | null;
-  billingAddress: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -605,11 +589,6 @@ export interface PatientInput {
   guardianRelationship?: string;
   guardianIdentification?: string;
   guardianPhone?: string;
-  billingName?: string | null;
-  billingTaxIdType?: string | null;
-  billingTaxId?: string | null;
-  billingEmail?: string | null;
-  billingAddress?: string | null;
 }
 
 export interface SpecialtySummary {

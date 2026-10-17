@@ -46,7 +46,7 @@ export function CloseSummaryStep({ session }: { session: TreatmentSessionDetail 
       {ENDED_NOTICES[session.status] ? (
         <Alert variant="default">{ENDED_NOTICES[session.status]}</Alert>
       ) : (
-        session.status !== 'CLINICAL_COMPLETE' && (
+        !['CLINICAL_COMPLETE', 'BILLING_PENDING', 'BILLED', 'BILLING_FAILED'].includes(session.status) && (
           <Alert variant="default">
             Este resumen es de solo lectura y se completa al cerrar la atención.
           </Alert>

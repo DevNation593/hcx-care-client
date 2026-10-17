@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { normalizeTaxId, patientBillingErrors, type TaxIdType } from '@/features/billing/billing-customer';
 import {
   identificationErrors,
   isMinor,
@@ -185,12 +184,6 @@ export const patientSchema = z.object({
   guardianRelationship: z.string().optional(),
   guardianIdentification: z.string().optional(),
   guardianPhone: z.string().optional(),
-  // Billing recipient: optional, but what is entered must be consistent.
-  billingName: z.string().optional(),
-  billingTaxIdType: z.string().optional(),
-  billingTaxId: z.string().optional().transform((value) => (value ? normalizeTaxId(value) : value)),
-  billingEmail: z.string().optional(),
-  billingAddress: z.string().optional(),
 }).superRefine((data, context) => {
   const identification = identificationErrors(
     data.identificationType ?? '',
@@ -205,24 +198,6 @@ export const patientSchema = z.object({
       message: 'Un paciente menor de edad necesita un representante legal.',
       path: ['guardianName'],
     });
-  }
-
-  const errors = patientBillingErrors({
-    name: data.billingName ?? '',
-    taxIdType: (data.billingTaxIdType ?? '') as TaxIdType | '',
-    taxId: data.billingTaxId ?? '',
-    email: data.billingEmail ?? '',
-    address: data.billingAddress ?? '',
-  });
-  const paths = {
-    name: 'billingName',
-    taxIdType: 'billingTaxIdType',
-    taxId: 'billingTaxId',
-    email: 'billingEmail',
-    address: 'billingAddress',
-  } as const;
-  for (const [field, message] of Object.entries(errors)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message, path: [paths[field as keyof typeof paths]] });
   }
 });
 
