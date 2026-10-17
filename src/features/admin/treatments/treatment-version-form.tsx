@@ -102,6 +102,10 @@ export function TreatmentVersionForm({
   const [minBefore, setMinBefore] = useState(String(initial?.requirements.photos.minimumBefore ?? 0));
   const [minAfter, setMinAfter] = useState(String(initial?.requirements.photos.minimumAfter ?? 0));
   const [notesRequired, setNotesRequired] = useState(initial?.requirements.clinicalNotes.requiredForCompletion ?? false);
+  // A version stored before the billing gate existed bills after the clinical close.
+  const [billAfterClose, setBillAfterClose] = useState(
+    initial?.requirements.billingGate?.requireClinicalCompletion ?? true,
+  );
   const [attempted, setAttempted] = useState(false);
 
   const priceValue = parseAmount(price);
@@ -175,6 +179,7 @@ export function TreatmentVersionForm({
         },
         photos: { minimumBefore: beforeValue as number, minimumAfter: afterValue as number },
         clinicalNotes: { requiredForCompletion: notesRequired },
+        billingGate: { requireClinicalCompletion: billAfterClose },
       },
     });
   };
@@ -412,6 +417,12 @@ export function TreatmentVersionForm({
           label="Exige notas para cerrar"
           checked={notesRequired}
           onChange={setNotesRequired}
+        />
+        <Toggle
+          id="tv-billing-gate"
+          label="Exigir cierre clínico para facturar"
+          checked={billAfterClose}
+          onChange={setBillAfterClose}
         />
       </fieldset>
 

@@ -38,7 +38,8 @@ export function PatientInvoicesTab({ patientId }: { patientId: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-4">
+        <Link href="/cash" className="text-sm text-primary underline">Cobrar en caja</Link>
         <Link href="/admin/billing" className="text-sm text-primary underline">Ir a Facturación</Link>
       </div>
       {items.length === 0 ? (
