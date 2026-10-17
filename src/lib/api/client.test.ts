@@ -79,6 +79,77 @@ describe('ApiClient error normalization', () => {
     }
   });
 
+  it('reads the JSON error body of a request that expected a file', async () => {
+    interceptor.status = 500;
+    interceptor.responseData = new Blob(
+      [JSON.stringify({
+        statusCode: 500, code: 'CONSENT_PDF_INTEGRITY',
+        message: 'El PDF del consentimiento no coincide con el que se firmó.',
+      })],
+      { type: 'application/json' },
+    );
+    await expect(apiClient.post('/tenants/t/consent-documents/d/pdf', {})).rejects.toMatchObject({
+      status: 500, code: 'CONSENT_PDF_INTEGRITY',
+      message: 'El PDF del consentimiento no coincide con el que se firmó.',
+    });
+  });
+
+  it('keeps the generic message when a file error body is not JSON', async () => {
+    interceptor.status = 500;
+    interceptor.responseData = new Blob(['<html>Bad gateway</html>'], { type: 'text/html' });
+    await expect(apiClient.post('/tenants/t/consent-documents/d/pdf', {})).rejects.toMatchObject({
+      status: 500, message: 'Ocurrió un error',
+    });
+  });
+
+  it('keeps the missing requirements of a blocked start', async () => {
+    interceptor.status = 422;
+    interceptor.responseData = {
+      statusCode: 422, code: 'TREATMENT_REQUIREMENTS_MISSING', message: 'Faltan requisitos',
+      missing: ['FINALIZED_MEDICAL_FORM', 'BEFORE_PHOTOS'],
+    };
+    await expect(apiClient.post('/treatment-sessions/s1/start', {})).rejects.toMatchObject({
+      status: 422, code: 'TREATMENT_REQUIREMENTS_MISSING', missing: ['FINALIZED_MEDICAL_FORM', 'BEFORE_PHOTOS'],
+    });
+  });
+
+  it.each([
+    ['a string', 'BEFORE_PHOTOS'],
+    ['an object', { 0: 'BEFORE_PHOTOS' }],
+  ])('drops `missing` when it is %s instead of a list', async (_name, missing) => {
+    interceptor.responseData = { statusCode: 422, message: 'Faltan requisitos', missing };
+    const error = await apiClient.post('/treatment-sessions/s1/start', {}).catch((e) => e);
+    expect(error).not.toHaveProperty('missing');
+  });
+
+  it('keeps only known requirement codes in `missing`', async () => {
+    interceptor.responseData = {
+      statusCode: 422, message: 'Faltan requisitos', missing: ['AFTER_PHOTOS', 'constructor', 'SOMETHING_NEW', 7, null],
+    };
+    await expect(apiClient.post('/treatment-sessions/s1/complete', {})).rejects.toMatchObject({ missing: ['AFTER_PHOTOS'] });
+  });
+
+  it('maps the plain-text issues of rejected treatment requirements to issue entries', async () => {
+    interceptor.status = 400;
+    interceptor.responseData = {
+      statusCode: 400, code: 'TREATMENT_REQUIREMENTS_INVALID', message: 'Los requisitos del tratamiento no son válidos.',
+      issues: ['photos.minimumBefore debe ser un entero entre 0 y 20', 7, 'consentTemplateVersionId no existe'],
+    };
+    await expect(apiClient.post('/treatments', {})).rejects.toMatchObject({
+      status: 400, code: 'TREATMENT_REQUIREMENTS_INVALID',
+      issues: [
+        { field: '', message: 'photos.minimumBefore debe ser un entero entre 0 y 20' },
+        { field: '', message: 'consentTemplateVersionId no existe' },
+      ],
+    });
+  });
+
+  it('ignores `issues` that is not a list', async () => {
+    interceptor.responseData = { statusCode: 400, message: 'Invalid', issues: 'nope' };
+    const error = await apiClient.post('/treatments', {}).catch((e) => e);
+    expect(error).not.toHaveProperty('issues');
+  });
+
   it('uses the uppercase guard code reported in `error` as the error code', async () => {
     interceptor.responseData = {
       statusCode: 403, error: 'FEATURE_NOT_AVAILABLE', message: 'This feature requires a higher plan.',
