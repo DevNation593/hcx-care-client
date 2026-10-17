@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,7 +22,11 @@ export function InvoiceRequestPanel({
   eligibility?: BillingEligibility;
 }) {
   const { view, create } = useInvoicingPermissions();
-  const list = useInvoiceRequests({ orderId: order.id, page: 1, pageSize: 1 });
+  // A prior safe rejection says nothing about the replacement whose response was lost.
+  const [unresolvedAttempt, setUnresolvedAttempt] = useState<{ previousRequestId?: string }>();
+  const list = useInvoiceRequests({ orderId: order.id, page: 1, pageSize: 1 }, true, {
+    discoverUnresolvedAttempt: !!unresolvedAttempt,
+  });
   const [receipt, setReceipt] = useState<InvoiceReceipt>();
   const idempotencyKey = useRef<string>();
   const [error, setError] = useState<ApiError>();
@@ -30,26 +34,36 @@ export function InvoiceRequestPanel({
   const selected = receipt ?? list.data?.items[0];
   const detail = useInvoiceRequest(selected?.id);
   const request = detail.data ?? selected;
+  const currentAttemptDiscovered =
+    !!unresolvedAttempt && !!request && request.id !== unresolvedAttempt.previousRequestId;
+  useEffect(() => {
+    if (currentAttemptDiscovered) setUnresolvedAttempt(undefined);
+  }, [currentAttemptDiscovered]);
   const safeFinal =
+    !unresolvedAttempt &&
     !!request &&
     !request.requiresReconciliation &&
     (request.status === 'REJECTED' || request.status === 'FAILED');
-  const uncertainRetry =
-    !!error &&
-    !!idempotencyKey.current &&
-    (!error.status || error.status >= 500) &&
-    (!request || (!safeFinal && request.status !== 'AUTHORIZED'));
+  const uncertainRetry = !!unresolvedAttempt && !currentAttemptDiscovered;
   const canStart = !!eligibility?.eligible && order.status === 'PAID';
   const checklist = error?.billingEligibility ?? eligibility;
   async function submit(fresh = false) {
     if (mutation.isPending) return;
-    if (fresh) idempotencyKey.current = undefined;
+    if (fresh && !unresolvedAttempt) {
+      idempotencyKey.current = undefined;
+      setReceipt(undefined);
+    }
     idempotencyKey.current ??= crypto.randomUUID();
     setError(undefined);
     try {
       setReceipt(await mutation.mutateAsync(idempotencyKey.current));
+      setUnresolvedAttempt(undefined);
     } catch (error) {
-      setError(error as ApiError);
+      const failure = error as ApiError;
+      setError(failure);
+      if (!failure.status || failure.status >= 500) {
+        setUnresolvedAttempt((attempt) => attempt ?? { previousRequestId: request?.id });
+      }
     }
   }
   return (

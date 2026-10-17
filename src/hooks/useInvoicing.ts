@@ -44,7 +44,11 @@ function refreshInvoicing(client: QueryClient, tenantId: string | null, orderId:
   void client.invalidateQueries({ queryKey: invoicingKeys.all(tenantId) });
   refreshInvoiceOrder(client, orderId);
 }
-export function useInvoiceRequests(filters: InvoiceFilters, enabled = true) {
+export function useInvoiceRequests(
+  filters: InvoiceFilters,
+  enabled = true,
+  { discoverUnresolvedAttempt = false }: { discoverUnresolvedAttempt?: boolean } = {},
+) {
   const tenantId = useTenantId();
   const { view } = useInvoicingPermissions();
   return useQuery({
@@ -52,7 +56,11 @@ export function useInvoiceRequests(filters: InvoiceFilters, enabled = true) {
     queryFn: () => invoicingApi.list(requireTenantId(tenantId), filters),
     enabled: !!tenantId && view && enabled,
     refetchInterval: (query) =>
-      !query.state.data || query.state.data.items.some(invoiceNeedsPolling) ? 5000 : false,
+      discoverUnresolvedAttempt ||
+      !query.state.data ||
+      query.state.data.items.some(invoiceNeedsPolling)
+        ? 5000
+        : false,
   });
 }
 export function useInvoiceRequest(id?: string) {

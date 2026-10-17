@@ -231,6 +231,136 @@ describe('InvoiceRequestPanel', () => {
     );
     expect(screen.queryByText('Autorizada')).not.toBeInTheDocument();
   });
+  it.each(['REJECTED', 'FAILED'])(
+    'keeps a replacement key after the response is lost with a prior %s request',
+    async (status) => {
+      const previous = receipt({ id: 'previous-request', status });
+      vi.mocked(apiClient.get).mockImplementation(async (url) =>
+        url.endsWith('/previous-request') ? previous : { items: [previous], total: 1 },
+      );
+      vi.mocked(apiClient.post)
+        .mockRejectedValueOnce({ code: 'NETWORK_ERROR', message: 'Respuesta de reemplazo perdida' })
+        .mockResolvedValueOnce(receipt({ id: 'replacement-request' }));
+      mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+      await screen.findByText(status === 'REJECTED' ? 'Rechazada' : 'Fallida');
+      vi.mocked(apiClient.get).mockRejectedValue({ message: 'No se pudo refrescar' });
+      fireEvent.click(screen.getByRole('button', { name: 'Volver a emitir' }));
+      await screen.findByText('Respuesta de reemplazo perdida');
+      await act(async () => {
+        await client.invalidateQueries();
+      });
+      expect(screen.getByText(/No se pudo actualizar la factura/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Volver a emitir|Reintentar emisión/ }));
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(2));
+      const calls = vi.mocked(apiClient.post).mock.calls;
+      expect(calls[1][2]?.headers?.['Idempotency-Key']).toBe(
+        calls[0][2]?.headers?.['Idempotency-Key'],
+      );
+    },
+  );
+  it('discovers a lost submission on the next five-second poll despite an empty list', async () => {
+    vi.useFakeTimers();
+    vi.mocked(apiClient.post).mockRejectedValue({
+      code: 'NETWORK_ERROR',
+      message: 'Respuesta perdida',
+    });
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' })));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByText('Respuesta perdida')).toBeInTheDocument();
+    const calls = vi.mocked(apiClient.get).mock.calls.length;
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? receipt() : { items: [receipt()], total: 1 },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(apiClient.get).toHaveBeenCalledWith('/tenants/t1/invoice-requests', {
+      params: { orderId: 'o1', page: 1, pageSize: 1 },
+    });
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(calls);
+    expect(screen.getByText('Solicitada')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reintentar emisión' })).not.toBeInTheDocument();
+  });
+  it('polls past an old safe final and allows a fresh key only after the replacement is safely final', async () => {
+    vi.useFakeTimers();
+    const previous = receipt({ id: 'previous-request', status: 'REJECTED' });
+    let observed = previous;
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/invoice-requests') ? { items: [observed], total: 1 } : observed,
+    );
+    vi.mocked(apiClient.post)
+      .mockRejectedValueOnce({ code: 'NETWORK_ERROR', message: 'Respuesta perdida' })
+      .mockResolvedValueOnce(receipt({ id: 'next-request' }));
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Volver a emitir' })));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByRole('button', { name: 'Reintentar emisión' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Volver a emitir' })).not.toBeInTheDocument();
+    const priorCalls = vi.mocked(apiClient.get).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(priorCalls);
+    expect(screen.getByRole('button', { name: 'Reintentar emisión' })).toBeEnabled();
+    observed = receipt({ id: 'replacement-request', status: 'FAILED' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByText('Fallida')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Volver a emitir' })).toBeEnabled();
+    const finalCalls = vi.mocked(apiClient.get).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(apiClient.get).toHaveBeenCalledTimes(finalCalls);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Volver a emitir' })));
+    const calls = vi.mocked(apiClient.post).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[1][2]?.headers?.['Idempotency-Key']).not.toBe(
+      calls[0][2]?.headers?.['Idempotency-Key'],
+    );
+  });
+  it('does not poll ordinary empty lists without an unresolved submission', async () => {
+    vi.useFakeTimers();
+    mount(<InvoicesTab branchId="b1" />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(apiClient.get).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(apiClient.get).toHaveBeenCalledTimes(1);
+  });
+  it('does not make discovery reads for a create-only lost response', async () => {
+    vi.useFakeTimers();
+    state.view = false;
+    vi.mocked(apiClient.post).mockRejectedValue({
+      code: 'NETWORK_ERROR',
+      message: 'Respuesta perdida',
+    });
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />, UserRole.ASISTENTE);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' })));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(apiClient.get).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Reintentar emisión' })).toBeEnabled();
+  });
   it('stops retry controls when a lost response is resolved as authorized', async () => {
     vi.mocked(apiClient.post).mockRejectedValue({ code: 'NETWORK_ERROR', message: 'Sin conexión' });
     mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
