@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Invoice } from '@/types';
 import { PatientInvoicesTab } from './patient-invoices-tab';
 
-const api = vi.hoisted(() => ({ listInvoices: vi.fn() }));
+const api = vi.hoisted(() => ({ listInvoices: vi.fn(), list: vi.fn(), view: true }));
+vi.mock('@/lib/api/invoicing-api', () => ({ invoicingApi: { list: api.list } }));
+vi.mock('@/hooks/usePermissions', () => ({ useMyPermissions: () => ({ can: () => api.view }) }));
+vi.mock('@/hooks/useTenantScope', () => ({ useTenantId: () => 't1', requireTenantId: () => 't1' }));
 vi.mock('@/lib/api/endpoints', () => ({ billingApi: { listInvoices: api.listInvoices } }));
 
 const invoice = (overrides: Partial<Invoice>): Invoice => ({
@@ -19,7 +22,7 @@ function renderTab() {
   return render(<QueryClientProvider client={client}><PatientInvoicesTab patientId="patient-2" /></QueryClientProvider>);
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); api.view = true; api.list.mockResolvedValue({ items: [], total: 0 }); });
 
 describe('PatientInvoicesTab', () => {
   it('requests only this patient invoices and lists them with their payer and documents', async () => {
@@ -53,4 +56,14 @@ describe('PatientInvoicesTab', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Reintentar' }));
     await waitFor(() => expect(api.listInvoices).toHaveBeenCalledTimes(2));
   });
+});
+
+it('loads new invoices with a server patient filter', async () => {
+  api.listInvoices.mockResolvedValue([]);
+  renderTab();
+  await waitFor(() => expect(api.list).toHaveBeenCalledWith('t1', { patientId: 'patient-2', page: 1, pageSize: 20 }));
+});
+it('does not query either invoice source without billing.view', () => {
+  api.view = false; renderTab();
+  expect(api.listInvoices).not.toHaveBeenCalled(); expect(api.list).not.toHaveBeenCalled();
 });

@@ -1,5 +1,7 @@
 'use client';
 
+import { InvoicingSettings } from '@/features/billing/invoicing-settings';
+import { useInvoicingPermissions } from '@/hooks/useInvoicing';
 import { SectionGate } from '@/components/layout/section-gate';
 import { useQuery } from '@tanstack/react-query';
 import { FileText } from 'lucide-react';
@@ -32,7 +34,8 @@ const money = (value: number | string) => `$${Number(value).toFixed(2)}`;
 const isWebUrl = (value?: string) => !!value && /^https?:\/\//i.test(value);
 
 function BillingPageContent() {
-  const invoicesQuery = useQuery({ queryKey: INVOICES_KEY, queryFn: () => billingApi.listInvoices() });
+  const { view } = useInvoicingPermissions();
+  const invoicesQuery = useQuery({ queryKey: INVOICES_KEY, queryFn: () => billingApi.listInvoices(), enabled: view });
   const invoices = invoicesQuery.data ?? [];
   const pagination = usePagination(invoices);
 
@@ -48,12 +51,13 @@ function BillingPageContent() {
             Consulta el historial de comprobantes electrónicos de este consultorio.
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            La facturación electrónica se conectará con emite-facil próximamente.
+            Emite facturas desde las órdenes pagadas en Caja.
           </p>
         </div>
       </div>
 
-      <Card>
+      <InvoicingSettings />
+      {view && <Card>
         <CardHeader>
           <CardTitle>Comprobantes electrónicos</CardTitle>
           <CardDescription>
@@ -152,7 +156,7 @@ function BillingPageContent() {
             </>
           )}
         </CardContent>
-      </Card>
+      </Card>}
     </div>
   );
 }

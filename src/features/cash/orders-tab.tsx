@@ -16,7 +16,7 @@ import { formatMoney } from './money';
 const STATUS_LABELS: Record<OrderStatus, string> = {
   OPEN: 'Abierta',
   PAID: 'Pagada',
-  INVOICED: 'Facturada',
+  INVOICED: 'En facturación',
   CANCELLED: 'Cancelada',
 };
 
@@ -25,7 +25,7 @@ type StatusFilter = OrderStatus | 'ALL';
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'OPEN', label: 'Abiertas' },
   { value: 'PAID', label: 'Pagadas' },
-  { value: 'INVOICED', label: 'Facturadas' },
+  { value: 'INVOICED', label: 'En facturación' },
   { value: 'CANCELLED', label: 'Canceladas' },
   { value: 'ALL', label: 'Todas' },
 ];

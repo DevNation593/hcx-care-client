@@ -5,7 +5,10 @@ import BillingPage from '@/app/(dashboard)/admin/billing/page';
 import { useAuthStore } from '@/store/authStore';
 import { UserRole, type Invoice, type User } from '@/types';
 
-const api = vi.hoisted(() => ({ listInvoices: vi.fn() }));
+const api = vi.hoisted(() => ({ listInvoices: vi.fn(), connection: vi.fn(), list: vi.fn(), view: true }));
+vi.mock('@/lib/api/invoicing-api', () => ({ invoicingApi: { connection: api.connection, list: api.list } }));
+vi.mock('@/hooks/usePermissions', () => ({ useMyPermissions: () => ({ can: () => api.view }) }));
+vi.mock('@/hooks/useBranches', () => ({ useBranches: () => ({ data: [] }) }));
 vi.mock('@/lib/api/endpoints', () => ({
   billingApi: { listInvoices: api.listInvoices },
 }));
@@ -41,6 +44,9 @@ function renderPage(role: UserRole = UserRole.MASTER) {
 beforeEach(() => {
   vi.clearAllMocks();
   api.listInvoices.mockResolvedValue([]);
+  api.connection.mockResolvedValue(null);
+  api.list.mockResolvedValue({ items: [], total: 0 });
+  api.view = true;
 });
 
 describe('BillingPage history', () => {
@@ -70,13 +76,27 @@ describe('BillingPage history', () => {
     expect(screen.queryByRole('link', { name: 'XML' })).not.toBeInTheDocument();
   });
 
-  it('is read-only: shows the emite-facil note and no Faktur configuration or emission form', async () => {
+  it('keeps history read-only and enables B2 configuration without Faktur controls', async () => {
     renderPage();
     expect(await screen.findByText('Aún no hay comprobantes emitidos.')).toBeInTheDocument();
-    expect(screen.getByText('La facturación electrónica se conectará con emite-facil próximamente.')).toBeInTheDocument();
+    expect(await screen.findByLabelText('API key')).toHaveValue('');
+    expect(screen.queryByText(/próximamente/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Configurar Faktur' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Emitir factura' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Paciente')).not.toBeInTheDocument();
     expect(screen.queryByText(/Faktur/)).not.toBeInTheDocument();
   });
+});
+
+it('does not mount MASTER settings for an assistant with billing access', async () => {
+  renderPage(UserRole.ASISTENTE);
+  await screen.findByText('Aún no hay comprobantes emitidos.');
+  expect(api.connection).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
+});
+it('does not load invoice history without billing.view', () => {
+  api.view = false;
+  renderPage(UserRole.ASISTENTE);
+  expect(api.listInvoices).not.toHaveBeenCalled();
+  expect(api.list).not.toHaveBeenCalled();
 });
