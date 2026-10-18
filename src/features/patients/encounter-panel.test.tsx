@@ -80,7 +80,33 @@ describe('EncounterPanel', () => {
     expect(screen.queryByLabelText('Tipo de atención')).not.toBeInTheDocument();
   });
 
-  it('offers the professional’s own pending appointments and the branches when there are several', async () => {
+  it('keeps the only active branch unselected until the user chooses it', async () => {
+    hooks.branches = [
+      { id: 'main', name: 'Sede principal', isMain: true, isActive: true },
+      { id: 'closed', name: 'Sede cerrada', isMain: false, isActive: false },
+    ];
+    render(<EncounterPanel patientId="patient-1" encounters={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar atención' }));
+
+    const branch = screen.getByLabelText('Sede');
+    expect(branch).toHaveValue('');
+    expect(within(branch).getAllByRole('option').map((option) => option.getAttribute('value'))).toEqual([
+      '',
+      'main',
+    ]);
+
+    fireEvent.change(branch, { target: { value: 'main' } });
+    fireEvent.change(screen.getByLabelText(/Motivo de consulta/), { target: { value: 'Control' } });
+    await submit('Iniciar atención');
+
+    expect(hooks.start).toHaveBeenCalledWith({
+      encounterType: 'FIRST_VISIT',
+      reason: 'Control',
+      branchId: 'main',
+    });
+  });
+
+  it('offers the professional’s own pending appointments and the active branches', async () => {
     hooks.appointments = [
       appointment(),
       appointment({ id: 'other-professional', professionalId: 'someone', title: 'De otro' }),
