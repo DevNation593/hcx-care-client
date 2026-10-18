@@ -250,7 +250,7 @@ function StartEncounterForm({
             </select>
           </div>
         )}
-        {activeBranches.length > 1 && (
+        {activeBranches.length > 0 && (
           <div>
             <Label htmlFor="encounter-branch">Sede</Label>
             <select
@@ -259,7 +259,7 @@ function StartEncounterForm({
               onChange={(event) => setBranchId(event.target.value)}
               className={SELECT_CLASS}
             >
-              <option value="">{appointmentId ? 'La de la cita' : 'Sin sede'}</option>
+              <option value="">Selecciona una sede</option>
               {activeBranches.map((branch) => (
                 <option key={branch.id} value={branch.id}>
                   {branch.name}
