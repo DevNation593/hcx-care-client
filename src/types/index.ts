@@ -858,6 +858,8 @@ export interface ApiError {
   details?: Record<string, any>;
   /** Requirement codes a blocked treatment session start or completion is missing. */
   missing?: MissingRequirement[];
+  /** Checklist of a blocked invoice; clinical workflow codes remain in `missing`. */
+  billingEligibility?: import('./cash').BillingEligibility;
   /** Per-field problems of a rejected clinical record or form definition; `field` is empty for a plain text problem (treatment requirements). */
   issues?: { field: string; message: string }[];
 }

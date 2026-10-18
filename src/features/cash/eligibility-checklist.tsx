@@ -7,7 +7,7 @@ interface EligibilityChecklistProps {
   order: Order;
 }
 
-/** What is missing before the order can be invoiced. There is no emit button in this release. */
+/** What is missing before the order can be invoiced. */
 export function EligibilityChecklist({ eligibility, order }: EligibilityChecklistProps) {
   if (eligibility.eligible) {
     return (
