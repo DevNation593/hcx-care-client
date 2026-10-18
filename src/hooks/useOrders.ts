@@ -92,6 +92,7 @@ export function useCreateOrder() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDERS });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BILLABLE_SESSIONS });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BILLING_PROFILES });
       toast.success('Orden creada');
     },
     onError: (error) => {
