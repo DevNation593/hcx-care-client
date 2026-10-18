@@ -27,6 +27,19 @@ vi.mock('axios', () => ({
 }));
 
 describe('ApiClient error normalization', () => {
+  it('preserves the billing 422 checklist separately from clinical requirements', async () => {
+    interceptor.status = 422;
+    interceptor.responseData = {
+      code: 'TREATMENT_DOCUMENTATION_INCOMPLETE', message: 'Falta documentación',
+      missing: ['BILLING_PROFILE', 'SIGNED_APPLICABLE_CONSENT'],
+      items: [{ itemId: 'i1', patientName: 'Ana Paz', codes: ['SIGNED_APPLICABLE_CONSENT'] }],
+    };
+    await expect(apiClient.post('/tenants/t/orders/o/invoice-requests')).rejects.toMatchObject({
+      status: 422,
+      billingEligibility: { eligible: false, missing: ['BILLING_PROFILE', 'SIGNED_APPLICABLE_CONSENT'],
+        items: [{ itemId: 'i1', patientName: 'Ana Paz', codes: ['SIGNED_APPLICABLE_CONSENT'] }] },
+    });
+  });
   beforeEach(() => {
     interceptor.status = 409;
     interceptor.url = '/onboarding/tenants';

@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { InvoicesTab } from '@/features/cash/invoices-tab';
+import { useInvoicingPermissions } from '@/hooks/useInvoicing';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,7 +19,7 @@ const STATUS_LABELS: Record<Invoice['status'], string> = {
 };
 const isWebUrl = (value?: string) => !!value && /^https?:\/\//i.test(value);
 
-export function PatientInvoicesTab({ patientId }: { patientId: string }) {
+function HistoricalPatientInvoices({ patientId }: { patientId: string }) {
   const invoices = useQuery({
     queryKey: [...QUERY_KEYS.TENANT, 'billing', 'invoices', { patientId }],
     queryFn: () => billingApi.listInvoices({ patientId }),
@@ -74,6 +76,23 @@ export function PatientInvoicesTab({ patientId }: { patientId: string }) {
         pageSize={pagination.pageSize}
         onPageChange={pagination.setPage}
       />
+    </div>
+  );
+}
+
+export function PatientInvoicesTab({ patientId }: { patientId: string }) {
+  const { view } = useInvoicingPermissions();
+  if (!view) return <p className="text-sm text-muted-foreground">No tienes permiso para consultar facturas.</p>;
+  return (
+    <div className="space-y-6">
+      <section className="space-y-3">
+        <h3 className="font-semibold">Facturas de órdenes</h3>
+        <InvoicesTab key={patientId} patientId={patientId} />
+      </section>
+      <section className="space-y-3">
+        <h3 className="font-semibold">Comprobantes históricos</h3>
+        <HistoricalPatientInvoices patientId={patientId} />
+      </section>
     </div>
   );
 }

@@ -1,7 +1,13 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render as rtlRender, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Order } from '@/types/cash';
 import { OrderDetail } from './order-detail';
+
+function render(ui: React.ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
 
 const hooks = vi.hoisted(() => ({
   can: vi.fn(),
@@ -301,11 +307,12 @@ describe('OrderDetail', () => {
     expect(screen.getByText('La orden cambió; revisa y vuelve a intentar')).toBeInTheDocument();
   });
 
-  it('has no emit button in B1', () => {
+  it('offers emission for an eligible paid order in B2', () => {
     hooks.eligibility = { data: { eligible: true, missing: [], items: [] } };
+    setOrder(makeOrder({ status: 'PAID' }));
     render(<OrderDetail orderId="o-1" />);
 
     expect(screen.getByText('Lista para facturar')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Emitir|Facturar/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Emitir factura' })).toBeEnabled();
   });
 });

@@ -236,3 +236,11 @@ describe('CashPage', () => {
     });
   });
 });
+
+it('offers the Facturas tab and withholds it without billing.view', () => {
+  const { rerender } = render(<CashPage />);
+  expect(screen.getByRole('button', { name: 'Facturas' })).toBeInTheDocument();
+  hooks.can.mockImplementation((permission: string) => permission !== 'billing.view');
+  rerender(<CashPage />);
+  expect(screen.queryByRole('button', { name: 'Facturas' })).not.toBeInTheDocument();
+});

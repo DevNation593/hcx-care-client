@@ -2,6 +2,15 @@ import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequ
 import { API_BASE_URL, STORAGE_KEYS } from '@/lib/constants';
 import { ApiError } from '@/types';
 import { MISSING_REQUIREMENT_LABELS, type MissingRequirement } from '@/types/treatments';
+import type { BillingCode, ClinicalBillingCode } from '@/types/cash';
+
+const CLINICAL_BILLING_CODES: ClinicalBillingCode[] = [
+  'FINALIZED_MEDICAL_FORM', 'SIGNED_APPLICABLE_CONSENT', 'CLINICAL_COMPLETION', 'SESSION_NOT_BILLABLE',
+];
+const BILLING_CODES: BillingCode[] = [
+  ...CLINICAL_BILLING_CODES,
+  'BILLING_PROFILE', 'INVOICE_ITEMS', 'BALANCE_DUE', 'INVOICING_NOT_CONFIGURED',
+];
 
 // ==========================================
 // API CLIENT CONFIGURATION
@@ -188,6 +197,31 @@ class ApiClient {
           (item): item is MissingRequirement =>
             typeof item === 'string' && Object.hasOwn(MISSING_REQUIREMENT_LABELS, item),
         );
+        if (
+          normalized.code === 'ORDER_NOT_BILLABLE' ||
+          normalized.code === 'TREATMENT_DOCUMENTATION_INCOMPLETE'
+        ) {
+          normalized.billingEligibility = {
+            eligible: false,
+            missing: data.missing.filter(
+              (code): code is BillingCode => BILLING_CODES.includes(code as BillingCode),
+            ),
+            items: Array.isArray(data.items) ? data.items.flatMap((item) => {
+              if (
+                !item || typeof item !== 'object' || typeof item.itemId !== 'string' ||
+                typeof item.patientName !== 'string' || !Array.isArray(item.codes)
+              ) return [];
+              return [{
+                itemId: item.itemId,
+                patientName: item.patientName,
+                codes: item.codes.filter(
+                  (code: unknown): code is ClinicalBillingCode =>
+                    CLINICAL_BILLING_CODES.includes(code as ClinicalBillingCode),
+                ),
+              }];
+            }) : [],
+          };
+        }
       }
       // A treatment whose requirements are rejected lists the problems as plain texts.
       if (Array.isArray(data.issues)) {
