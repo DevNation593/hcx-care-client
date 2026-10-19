@@ -52,6 +52,8 @@ import {
   PlatformTenantList,
   PlatformTenantListParams,
   PlatformTenantDetail,
+  ClinicRole,
+  PlatformRolePermissions,
   SectionCatalog,
   SectionKey,
   CreatePlatformTenantInput,
@@ -437,11 +439,6 @@ export const specialtyCatalogApi = {
 export const tenantSpecialtiesApi = {
   list: (tenantId?: string) =>
     apiClient.get<TenantSpecialty[]>(API_ENDPOINTS.TENANT_SPECIALTIES(tenantId ?? getTenantId())),
-  replace: (specialtyCodes: string[], tenantId?: string) =>
-    apiClient.put<SpecialtySelectionResult>(
-      API_ENDPOINTS.TENANT_SPECIALTIES(tenantId ?? getTenantId()),
-      { specialtyCodes },
-    ),
 };
 
 export const platformApi = {
@@ -464,6 +461,16 @@ export const platformApi = {
     apiClient.post<PlatformTenantDetail>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/reactivate`),
   setSections: (id: string, sections: SectionKey[]) =>
     apiClient.put<PlatformTenantDetail>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/sections`, { sections }),
+  getRolePermissions: (id: string, role: ClinicRole) =>
+    apiClient.get<PlatformRolePermissions>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/roles/${role}/permissions`),
+  setRolePermissions: (id: string, role: ClinicRole, allowed: string[]) =>
+    apiClient.put<PlatformRolePermissions>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/roles/${role}/permissions`, { allowed }),
+  getSpecialtyCatalog: () =>
+    apiClient.get<SpecialtyCatalogItem[]>('/platform/specialty-catalog'),
+  setSpecialties: (id: string, specialtyCodes: string[]) =>
+    apiClient.put<SpecialtySelectionResult>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/specialties`, { specialtyCodes }),
+  setClinicalModule: (id: string, moduleKey: string, enabled: boolean) =>
+    apiClient.patch<TenantModule>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/modules/${encodeURIComponent(moduleKey)}`, { enabled }),
   resetMasterPassword: (id: string, temporaryPassword: string) =>
     apiClient.post<void>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/master/reset-password`, { temporaryPassword }),
   listPayments: (status?: SubscriptionPayment['status']) =>
@@ -477,20 +484,6 @@ export const platformApi = {
 export const tenantModulesApi = {
   list: (tenantId?: string) =>
     apiClient.get<TenantModule[]>(API_ENDPOINTS.TENANT_MODULES(tenantId ?? getTenantId())),
-  setEnabled: (moduleKey: string, enabled: boolean, tenantId?: string) =>
-    apiClient.patch<TenantModule>(
-      API_ENDPOINTS.TENANT_MODULE(tenantId ?? getTenantId(), moduleKey),
-      { enabled },
-    ),
-};
-
-export const specialtiesApi = {
-  list: (tenantId?: string) => tenantSpecialtiesApi.list(tenantId),
-  modules: (tenantId?: string) => tenantModulesApi.list(tenantId),
-  setModuleEnabled: (moduleKey: string, enabled: boolean, tenantId?: string) =>
-    tenantModulesApi.setEnabled(moduleKey, enabled, tenantId),
-  setForTenant: (specialtyCodes: string[], tenantId?: string) =>
-    tenantSpecialtiesApi.replace(specialtyCodes, tenantId),
 };
 
 export const tenantSettingsApi = {

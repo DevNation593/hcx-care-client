@@ -146,6 +146,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('TeamManager', () => {
+  it('does not offer permission assignment to the clinic master', async () => {
+    renderManager([makeUser({ firstName: 'Ana', lastName: 'Vega' })]);
+    expect(await screen.findByText('Ana Vega')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Permisos de Ana Vega' })).not.toBeInTheDocument();
+  });
   it.each(['array', 'paginated'])('shows only account holder, professional and assistant rows for a %s response', async (shape) => {
     const rows = [
       makeUser({ id: 'holder-row', firstName: 'Tina', lastName: 'Titular', role: UserRole.MASTER, professionalProfile: undefined }),
