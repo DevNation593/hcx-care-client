@@ -1158,6 +1158,8 @@ export interface PlatformTenantDetail {
     seatsPsychologistsMax: number;
     maxActivePatients: number;
     basePrice: number;
+    includedSpecialties: number;
+    specialtyPrice: number;
     currency: string;
   };
   usage: {
@@ -1167,6 +1169,22 @@ export interface PlatformTenantDetail {
   };
   specialties: { id: string; code: string; name: string }[];
   sections: { key: SectionKey; name: string; enabled: boolean }[];
+  modules: { key: string; enabled: boolean }[];
+}
+
+export type ClinicRole = 'MASTER' | 'PROFESIONAL' | 'ASISTENTE';
+
+export interface PlatformRolePermissions {
+  tenantId: string;
+  role: ClinicRole;
+  effective: string[];
+  permissions: {
+    key: string;
+    group: string;
+    label: string;
+    allowed: boolean;
+    source: 'role' | 'grant';
+  }[];
 }
 
 export interface SectionCatalog {
