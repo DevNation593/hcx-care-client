@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/store/authStore';
 import { QUERY_KEYS } from '@/lib/constants';
-import { useCancelOrder, useRecordPayment, useRefundPayment } from './useOrders';
+import { useCancelOrder, useCreateOrder, useRecordPayment, useRefundPayment } from './useOrders';
 
 const http = vi.hoisted(() => ({
   get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(), upload: vi.fn(),
@@ -33,6 +33,21 @@ beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.setState({ tenant: { id: 'tenant-1' } as ReturnType<typeof useAuthStore.getState>['tenant'], user: null });
   http.post.mockResolvedValue({ id: 'order-1' });
+});
+
+describe('useCreateOrder', () => {
+  it('refreshes cached patient receivers when the order can create and link a billing profile', async () => {
+    const { client, wrapper } = setup();
+    const profilesKey = [...QUERY_KEYS.BILLING_PROFILES, 'patient', 'patient-1'];
+    client.setQueryData(profilesKey, []);
+    const { result } = renderHook(() => useCreateOrder(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ treatmentSessionIds: ['session-1'] });
+    });
+
+    expect(stale(client, profilesKey)).toBe(true);
+  });
 });
 
 describe('useRecordPayment', () => {

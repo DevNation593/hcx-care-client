@@ -18,6 +18,11 @@ vi.mock('@/lib/api/endpoints', () => ({
     suspendTenant: vi.fn(),
     reactivateTenant: vi.fn(),
     setSections: vi.fn(),
+    getRolePermissions: vi.fn(),
+    setRolePermissions: vi.fn(),
+    getSpecialtyCatalog: vi.fn(),
+    setSpecialties: vi.fn(),
+    setClinicalModule: vi.fn(),
     resetMasterPassword: vi.fn(),
   },
 }));
@@ -53,10 +58,13 @@ const detail: PlatformTenantDetail = {
     seatsPsychologistsMax: 5,
     maxActivePatients: 100,
     basePrice: 49,
+    includedSpecialties: 2,
+    specialtyPrice: 15,
     currency: 'USD',
   },
   usage: { seatsPsychologistsUsed: 3, activePatientsCount: 42, monthlyNotificationsSent: 17 },
-  specialties: [{ id: 's1', code: 'PSICOLOGIA', name: 'Psicología' }],
+  specialties: [{ id: 's1', code: 'PSYCHOLOGY', name: 'Psicología' }],
+  modules: [{ key: 'psychology.assessments', enabled: true }],
   sections: [
     { key: 'core.calendar', name: 'Agenda', enabled: true },
     { key: 'core.patients', name: 'Pacientes', enabled: true },
@@ -97,6 +105,23 @@ beforeEach(() => {
   vi.mocked(platformApi.suspendTenant).mockResolvedValue(suspended);
   vi.mocked(platformApi.reactivateTenant).mockResolvedValue(detail);
   vi.mocked(platformApi.setSections).mockResolvedValue(detail);
+  vi.mocked(platformApi.getRolePermissions).mockResolvedValue({
+    tenantId: 't-1', role: 'MASTER', effective: ['patients.create', 'billing.view'],
+    permissions: [
+      { key: 'patients.create', group: 'Pacientes', label: 'Registrar pacientes', allowed: true, source: 'role' },
+      { key: 'billing.view', group: 'Facturación', label: 'Ver facturas', allowed: true, source: 'role' },
+      { key: 'billing.create', group: 'Facturación', label: 'Emitir facturas', allowed: false, source: 'role' },
+    ],
+  });
+  vi.mocked(platformApi.setRolePermissions).mockResolvedValue({
+    tenantId: 't-1', role: 'MASTER', effective: [], permissions: [],
+  });
+  vi.mocked(platformApi.getSpecialtyCatalog).mockResolvedValue([
+    { id: 's1', code: 'PSYCHOLOGY', name: 'Psicología', description: null, modules: [{ id: 'm1', moduleKey: 'psychology.assessments' }] },
+    { id: 's2', code: 'NUTRITION', name: 'Nutrición', description: null, modules: [{ id: 'm2', moduleKey: 'nutrition.assessments' }] },
+  ]);
+  vi.mocked(platformApi.setSpecialties).mockResolvedValue({ tenantId: 't-1', specialties: [], modules: [], pricing: {} } as never);
+  vi.mocked(platformApi.setClinicalModule).mockResolvedValue({ id: 'm1', tenantId: 't-1', moduleKey: 'psychology.assessments', enabled: false });
   vi.mocked(platformApi.resetMasterPassword).mockResolvedValue(undefined);
 });
 
@@ -205,6 +230,75 @@ describe('TenantDetail', () => {
     await waitFor(() =>
       expect(platformApi.setSections).toHaveBeenCalledWith('t-1', ['core.calendar', 'core.patients', 'core.billing']),
     );
+  });
+
+  it('saves the selected permissions for MASTER in this clinic', async () => {
+    renderDetail();
+    await ready();
+    expect(await screen.findByRole('heading', { name: 'Permisos por rol' })).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Emitir facturas'));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar permisos del rol' }));
+    await waitFor(() => expect(platformApi.setRolePermissions).toHaveBeenCalledWith(
+      't-1', 'MASTER', ['patients.create', 'billing.view', 'billing.create'],
+    ));
+  });
+
+  it('assigns permissions to the selected clinic role', async () => {
+    vi.mocked(platformApi.getRolePermissions).mockImplementation(async (_id, role) => ({
+      tenantId: 't-1', role, effective: [],
+      permissions: [{ key: 'billing.view', group: 'Facturación', label: 'Ver facturas', allowed: false, source: 'grant' }],
+    }));
+    renderDetail();
+    await ready();
+    fireEvent.change(screen.getByLabelText('Rol del consultorio'), { target: { value: 'ASISTENTE' } });
+    fireEvent.click(await screen.findByLabelText('Ver facturas'));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar permisos del rol' }));
+    await waitFor(() => expect(platformApi.setRolePermissions).toHaveBeenCalledWith('t-1', 'ASISTENTE', ['billing.view']));
+  });
+
+  it('lets the owner assign clinical specialties and toggle their modules', async () => {
+    renderDetail();
+    await ready();
+    expect(await screen.findByRole('heading', { name: 'Especialidades y módulos clínicos' })).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Nutrición'));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar especialidades' }));
+    await waitFor(() => expect(platformApi.setSpecialties).toHaveBeenCalledWith('t-1', ['PSYCHOLOGY', 'NUTRITION']));
+    fireEvent.click(screen.getByLabelText('Evaluaciones psicológicas'));
+    await waitFor(() => expect(platformApi.setClinicalModule).toHaveBeenCalledWith('t-1', 'psychology.assessments', false));
+  });
+
+  it('shows the estimated monthly price before assigning a billable specialty', async () => {
+    vi.mocked(platformApi.getTenant).mockResolvedValue({
+      ...detail,
+      specialties: [...detail.specialties, { id: 's2', code: 'NUTRITION', name: 'Nutrición' }],
+    });
+    vi.mocked(platformApi.getSpecialtyCatalog).mockResolvedValue([
+      { id: 's1', code: 'PSYCHOLOGY', name: 'Psicología', description: null, modules: [] },
+      { id: 's2', code: 'NUTRITION', name: 'Nutrición', description: null, modules: [] },
+      { id: 's3', code: 'SPEECH', name: 'Fonoaudiología', description: null, modules: [] },
+    ]);
+    renderDetail();
+    await ready();
+    fireEvent.click(await screen.findByLabelText('Fonoaudiología'));
+    const price = new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(64);
+    expect(screen.getByText(`Total mensual estimado: ${price}`)).toBeTruthy();
+    expect(platformApi.setSpecialties).not.toHaveBeenCalled();
+  });
+
+  it('shows an inactive assigned specialty so the owner can remove it', async () => {
+    vi.mocked(platformApi.getTenant).mockResolvedValue({
+      ...detail,
+      specialties: [...detail.specialties, { id: 's2', code: 'NUTRITION', name: 'Nutrición' }],
+    });
+    vi.mocked(platformApi.getSpecialtyCatalog).mockResolvedValue([
+      { id: 's1', code: 'PSYCHOLOGY', name: 'Psicología', description: null, modules: [] },
+    ]);
+    renderDetail();
+    await ready();
+    expect((screen.getByRole('button', { name: 'Guardar especialidades' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(await screen.findByLabelText('Nutrición (inactiva)'));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar especialidades' }));
+    await waitFor(() => expect(platformApi.setSpecialties).toHaveBeenCalledWith('t-1', ['PSYCHOLOGY']));
   });
 
   it('asks for confirmation and a reason before suspending', async () => {

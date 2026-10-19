@@ -152,7 +152,7 @@ lands on `/platform`; any other role is sent back to its own home route.
 /platform                       Resumen de la plataforma
 /platform/tenants               Lista de consultorios
 /platform/tenants/new           Alta de un consultorio y de su MASTER
-/platform/tenants/[tenantId]    Detalle: datos, plan, secciones, suspensión, contraseña
+/platform/tenants/[tenantId]    Detalle: datos, plan, secciones, especialidades, módulos clínicos, permisos por rol, suspensión, contraseña
 /platform/payments              Pagos de suscripción (confirmar o rechazar)
 ```
 
