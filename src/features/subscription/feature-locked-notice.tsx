@@ -37,11 +37,11 @@ export function FeatureLockedNotice({ featureName }: FeatureLockedNoticeProps) {
     <Card>
       <CardContent className="flex flex-col items-center justify-center py-12 text-center">
         <Lock className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-lg font-medium">{featureName} no está incluido en tu plan</p>
+        <p className="text-lg font-medium">{featureName} no está disponible para tu consultorio</p>
         <p className="text-sm text-muted-foreground mt-1">
           {canUpgrade
-            ? 'Actualiza tu plan o activa el módulo para usar esta función.'
-            : 'Contacta al titular de la cuenta para activar este módulo.'}
+            ? 'Revisa el plan o solicita al administrador de la plataforma que habilite el módulo.'
+            : 'Solicita al titular que revise el plan o contacte al administrador de la plataforma.'}
         </p>
         {canUpgrade && (
           <Button asChild className="mt-4">

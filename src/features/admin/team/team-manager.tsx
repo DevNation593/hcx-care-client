@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Pencil, Stethoscope, UserCheck, UserPlus, UserX } from 'lucide-react';
+import { Pencil, Stethoscope, UserCheck, UserPlus, UserX } from 'lucide-react';
 import Link from 'next/link';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -19,7 +19,6 @@ import { isMasterRole, isClinicPlan } from '@/types/guards';
 import { UserRole, type TenantTeamProfessionalProfileInput, type UpdateTenantUserInput, type UsageMetrics, type User } from '@/types';
 import { useAuthStore } from '@/store/authStore';
 import { TeamMemberDialog } from './team-member-dialog';
-import { UserPermissionsDialog } from './user-permissions-dialog';
 
 type UserListData = {
   users: User[];
@@ -83,7 +82,6 @@ export function TeamManager() {
   const canManage = !!currentUser && isMasterRole(currentUser.role);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<User | null>(null);
-  const [permissionsMember, setPermissionsMember] = useState<User | null>(null);
   const [actionError, setActionError] = useState<ActionError | null>(null);
   const [pendingTenantIds, setPendingTenantIds] = useState<string[]>([]);
   const actionLocks = useRef(new Set<string>());
@@ -365,18 +363,6 @@ export function TeamManager() {
                                 >
                                   <Pencil className="h-4 w-4" aria-hidden="true" />
                                 </Button>
-                                {!isMasterRole(user.role) && (
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    aria-label={`Permisos de ${name}`}
-                                    onClick={() => setPermissionsMember(user)}
-                                    disabled={isMutationPending}
-                                  >
-                                    <KeyRound className="h-4 w-4" aria-hidden="true" />
-                                  </Button>
-                                )}
                                 {profile && (
                                   <Button
                                     type="button"
@@ -456,13 +442,6 @@ export function TeamManager() {
         pending={isMutationPending}
         onSubmit={handleDialogSubmit}
       />
-      {permissionsMember && (
-        <UserPermissionsDialog
-          userId={permissionsMember.id}
-          userName={memberName(permissionsMember)}
-          onClose={() => setPermissionsMember(null)}
-        />
-      )}
     </div>
   );
 }
