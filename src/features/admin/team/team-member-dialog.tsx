@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { tenantTeamMemberSchema, tenantTeamMemberUpdateSchema } from '@/lib/validations/schemas';
+import { aestheticTeamMemberSchema, aestheticTeamMemberUpdateSchema, tenantTeamMemberSchema, tenantTeamMemberUpdateSchema } from '@/lib/validations/schemas';
 import { ROLE_LABELS } from '@/lib/constants';
 import { isMasterRole } from '@/types/guards';
 import {
   UserRole,
+  TenantBusinessKind,
   type AssignableTeamRole,
   type CreateTenantUserInput,
   type TenantSpecialty,
@@ -26,6 +27,7 @@ type TeamMemberDialogProps = {
   specialties: TenantSpecialty[];
   member?: User | null;
   tenantId: string | null;
+  businessKind?: TenantBusinessKind;
   pending?: boolean;
   specialtiesLoading?: boolean;
   specialtiesError?: string | null;
@@ -118,6 +120,7 @@ export function TeamMemberDialog({
   specialties,
   member,
   tenantId,
+  businessKind = TenantBusinessKind.MEDICAL,
   pending = false,
   specialtiesLoading = false,
   specialtiesError,
@@ -134,6 +137,7 @@ export function TeamMemberDialog({
   const isEditing = !!member;
   const isSaving = pending || submitting;
   const isMaster = !!member && isMasterRole(member.role);
+  const isStudio = businessKind === TenantBusinessKind.AESTHETIC_STUDIO;
 
   useEffect(() => {
     memberRef.current = member;
@@ -163,8 +167,8 @@ export function TeamMemberDialog({
         },
       ]
     : enabledSpecialties;
-  const profileIsRequired = values.role === UserRole.PROFESIONAL ||
-    (isMaster && values.masterProvidesCare);
+  const profileIsRequired = !isStudio && (values.role === UserRole.PROFESIONAL ||
+    (isMaster && values.masterProvidesCare));
 
   const setValue = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((current) => ({ ...current, [key]: value }));
@@ -213,19 +217,21 @@ export function TeamMemberDialog({
     };
     let payload: CreateTenantUserInput | UpdateTenantUserInput;
     if (isEditing) {
-      const validation = tenantTeamMemberUpdateSchema.safeParse(candidate);
+      const validation = (isStudio ? aestheticTeamMemberUpdateSchema : tenantTeamMemberUpdateSchema).safeParse(candidate);
       if (!validation.success) {
         setFieldErrors(getFieldErrors(validation.error.issues));
         return;
       }
       const parsed = validation.data;
-      const updatedProfile = parsed.professionalProfile
+      const parsedProfile = 'professionalProfile' in parsed
+        ? parsed.professionalProfile as TenantTeamProfessionalProfileInput | undefined : undefined;
+      const updatedProfile = parsedProfile
         ? {
-            specialtyId: parsed.professionalProfile.specialtyId,
-            professionalTitle: parsed.professionalProfile.professionalTitle,
-            licenseNumber: parsed.professionalProfile.licenseNumber,
-            bio: parsed.professionalProfile.bio,
-            isActive: parsed.professionalProfile.isActive ?? currentProfile?.isActive ?? true,
+            specialtyId: parsedProfile.specialtyId,
+            professionalTitle: parsedProfile.professionalTitle,
+            licenseNumber: parsedProfile.licenseNumber,
+            bio: parsedProfile.bio,
+            isActive: parsedProfile.isActive ?? currentProfile?.isActive ?? true,
           }
         : currentProfile
           ? null
@@ -239,13 +245,14 @@ export function TeamMemberDialog({
         ...(updatedProfile !== undefined ? { professionalProfile: updatedProfile } : {}),
       };
     } else {
-      const validation = tenantTeamMemberSchema.safeParse({ ...candidate, password: values.password });
+      const validation = (isStudio ? aestheticTeamMemberSchema : tenantTeamMemberSchema).safeParse({ ...candidate, password: values.password });
       if (!validation.success) {
         setFieldErrors(getFieldErrors(validation.error.issues));
         return;
       }
       const parsed = validation.data;
-      const profile = parsed.professionalProfile;
+      const profile = 'professionalProfile' in parsed
+        ? parsed.professionalProfile as TenantTeamProfessionalProfileInput | undefined : undefined;
       payload = {
         email: parsed.email,
         password: parsed.password,
@@ -304,8 +311,8 @@ export function TeamMemberDialog({
           </DialogTitle>
           <DialogDescription>
             {isEditing
-              ? 'Actualiza los datos y el perfil clínico del miembro.'
-              : 'Crea una cuenta activa para un miembro del consultorio.'}
+              ? isStudio ? 'Actualiza los datos del miembro.' : 'Actualiza los datos y el perfil clínico del miembro.'
+              : 'Crea una cuenta activa para un miembro del equipo.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -427,13 +434,13 @@ export function TeamMemberDialog({
                 <option value={UserRole.PROFESIONAL}>Profesional</option>
                 <option value={UserRole.ASISTENTE}>Asistente</option>
               </select>
-              <p id="team-member-role-description" className="text-xs text-muted-foreground">
+              {!isStudio && <p id="team-member-role-description" className="text-xs text-muted-foreground">
                 Los perfiles clínicos requieren una especialidad habilitada para el consultorio.
-              </p>
+              </p>}
             </div>
           )}
 
-          {isMaster && (
+          {isMaster && !isStudio && (
             <div className="flex items-start gap-3 rounded-md border p-3">
               <input
                 id="team-member-admin-care"

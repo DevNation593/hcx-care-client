@@ -4,7 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { appointmentsApi, tasksApi, patientsApi, extractArray } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
 import type { Appointment, Task } from '@/types';
-import { TaskStatus, UserRole } from '@/types';
+import { TaskStatus, UserRole, TenantBusinessKind } from '@/types';
+import { AestheticsWorkspace } from '@/features/aesthetics/aesthetics-workspace';
+import { SectionGate } from '@/components/layout/section-gate';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -28,6 +30,13 @@ import Link from 'next/link';
 import { useSections } from '@/hooks/useSections';
 
 export default function DashboardPage() {
+  const isStudio = useAuthStore((state) => state.tenant?.businessKind === TenantBusinessKind.AESTHETIC_STUDIO);
+  return isStudio
+    ? <SectionGate section="core.aesthetics"><AestheticsWorkspace /></SectionGate>
+    : <MedicalDashboardPage />;
+}
+
+function MedicalDashboardPage() {
   const queryClient = useQueryClient();
   const { isEnabled } = useSections();
   const calendarOn = isEnabled('core.calendar');
