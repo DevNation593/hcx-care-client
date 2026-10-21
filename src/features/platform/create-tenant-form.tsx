@@ -13,7 +13,7 @@ import { useCreatePlatformTenant, useSectionCatalog } from '@/hooks/usePlatform'
 import { useSpecialtyCatalog } from '@/hooks/useSpecialties';
 import { ROUTES } from '@/lib/constants';
 import { createPlatformTenantSchema } from '@/lib/validations/schemas';
-import { TenantType, type ApiPlanType, type CreatePlatformTenantInput, type SectionKey } from '@/types';
+import { TenantBusinessKind, TenantType, type ApiPlanType, type CreatePlatformTenantInput, type SectionKey } from '@/types';
 import { generatePassword } from './generate-password';
 import { PLAN_LABELS } from './labels';
 import { SectionChecklist } from './section-checklist';
@@ -35,6 +35,7 @@ const DEFAULT_VALUES: CreatePlatformTenantInput = {
   phone: '',
   address: '',
   tenantType: TenantType.CLINIC,
+  businessKind: TenantBusinessKind.MEDICAL,
   timezone: 'America/Guayaquil',
   locale: 'es',
   masterFirstName: '',
@@ -75,17 +76,20 @@ export function CreateTenantForm() {
     defaultValues: DEFAULT_VALUES,
   });
   const tenantType = watch('tenantType');
+  const businessKind = watch('businessKind');
   const planType = watch('planType');
   const sections = watch('sections') ?? [];
   const specialtyCodes = watch('specialtyCodes');
 
-  const defaultsFor = (type: TenantType, plan: ApiPlanType): SectionKey[] =>
-    sectionCatalog.data?.defaults.find((entry) => entry.tenantType === type && entry.planType === plan)?.sections ?? [];
+  const defaultsFor = (type: TenantType, plan: ApiPlanType, kind: TenantBusinessKind): SectionKey[] =>
+    sectionCatalog.data?.defaults.find((entry) =>
+      entry.tenantType === type && entry.planType === plan && (entry.businessKind ?? TenantBusinessKind.MEDICAL) === kind,
+    )?.sections ?? [];
 
   useEffect(() => {
     if (!sectionCatalog.data || preselected.current) return;
     preselected.current = true;
-    setValue('sections', defaultsFor(DEFAULT_VALUES.tenantType, DEFAULT_VALUES.planType));
+    setValue('sections', defaultsFor(DEFAULT_VALUES.tenantType, DEFAULT_VALUES.planType, DEFAULT_VALUES.businessKind));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionCatalog.data, setValue]);
 
@@ -98,13 +102,19 @@ export function CreateTenantForm() {
   function changePlan(type: TenantType, plan: ApiPlanType) {
     setValue('tenantType', type);
     setValue('planType', plan);
-    const defaults = defaultsFor(type, plan);
+    const defaults = defaultsFor(type, plan, businessKind);
     if (!sectionsEdited.current) applySections(defaults);
     else if (!sameKeys(defaults, sections)) setPendingDefaults(defaults);
   }
 
   function changeType(type: TenantType) {
     changePlan(type, PLANS_BY_TYPE[type].includes(planType) ? planType : 'TRIAL');
+  }
+
+  function changeBusinessKind(kind: TenantBusinessKind) {
+    setValue('businessKind', kind);
+    setValue('specialtyCodes', [], { shouldValidate: true });
+    applySections(defaultsFor(tenantType, planType, kind));
   }
 
   function toggleSpecialty(code: string, checked: boolean) {
@@ -126,7 +136,7 @@ export function CreateTenantForm() {
       createTenant.reset(); // drops the mutation (and its variables) from the mutation cache
       setShowPassword(false);
       sectionsEdited.current = false;
-      reset({ ...DEFAULT_VALUES, sections: defaultsFor(DEFAULT_VALUES.tenantType, DEFAULT_VALUES.planType) });
+      reset({ ...DEFAULT_VALUES, sections: defaultsFor(DEFAULT_VALUES.tenantType, DEFAULT_VALUES.planType, DEFAULT_VALUES.businessKind) });
     } catch (error) {
       const message = (error as { message?: unknown } | null)?.message;
       createTenant.reset(); // a failed mutation would keep the password in its variables
@@ -179,6 +189,13 @@ export function CreateTenantForm() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
+              <Label htmlFor="businessKind">Tipo de negocio</Label>
+              <select id="businessKind" className="h-10 w-full rounded-md border px-3" value={businessKind} onChange={(event) => changeBusinessKind(event.target.value as TenantBusinessKind)}>
+                <option value={TenantBusinessKind.MEDICAL}>Consultorio médico</option>
+                <option value={TenantBusinessKind.AESTHETIC_STUDIO}>Estudio estético</option>
+              </select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="tenantType">Tipo de consultorio</Label>
               <select id="tenantType" className="h-10 w-full rounded-md border px-3" value={tenantType} onChange={(event) => changeType(event.target.value as TenantType)}>
                 {Object.values(TenantType).map((type) => <option key={type} value={type}>{TYPE_LABELS[type]}</option>)}
@@ -214,7 +231,7 @@ export function CreateTenantForm() {
             </div>
           </div>
 
-          <fieldset className="space-y-2" aria-describedby={errors.specialtyCodes ? 'specialtyCodes-error' : undefined}>
+          {businessKind === TenantBusinessKind.MEDICAL && <fieldset className="space-y-2" aria-describedby={errors.specialtyCodes ? 'specialtyCodes-error' : undefined}>
             <legend className="font-medium">Especialidades</legend>
             {specialties.isLoading && <p role="status">Cargando especialidades…</p>}
             {specialties.isError && <p role="alert">No se pudieron cargar las especialidades.</p>}
@@ -225,13 +242,15 @@ export function CreateTenantForm() {
               </label>
             ))}
             {errors.specialtyCodes && <p id="specialtyCodes-error" role="alert" className="text-sm text-destructive">{errors.specialtyCodes.message}</p>}
-          </fieldset>
+          </fieldset>}
 
           {sectionCatalog.isLoading && <p role="status">Cargando secciones…</p>}
           {sectionCatalog.isError && <p role="alert">No se pudo cargar el catálogo de secciones.</p>}
           {sectionCatalog.data && (
             <SectionChecklist
-              catalog={sectionCatalog.data.sections}
+              catalog={sectionCatalog.data.sections.filter((section) => businessKind === TenantBusinessKind.AESTHETIC_STUDIO
+                ? ['core.aesthetics', 'core.team'].includes(section.key)
+                : section.key !== 'core.aesthetics')}
               value={sections}
               onChange={(next) => {
                 sectionsEdited.current = true;

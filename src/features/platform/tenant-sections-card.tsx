@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSectionCatalog, useSetTenantSections } from '@/hooks/usePlatform';
-import type { PlatformTenantDetail, SectionKey } from '@/types';
+import { TenantBusinessKind, type PlatformTenantDetail, type SectionKey } from '@/types';
 import { SectionChecklist } from './section-checklist';
 
 const sameKeys = (a: SectionKey[], b: SectionKey[]) => a.length === b.length && a.every((key) => b.includes(key));
@@ -12,16 +12,21 @@ const sameKeys = (a: SectionKey[], b: SectionKey[]) => a.length === b.length && 
 interface TenantSectionsCardProps {
   tenantId: string;
   sections: PlatformTenantDetail['sections'];
+  businessKind?: TenantBusinessKind;
 }
 
-export function TenantSectionsCard({ tenantId, sections }: TenantSectionsCardProps) {
+export function TenantSectionsCard({ tenantId, sections, businessKind = TenantBusinessKind.MEDICAL }: TenantSectionsCardProps) {
   const catalog = useSectionCatalog();
   const setSections = useSetTenantSections(tenantId);
+  const allowed = (key: SectionKey) => businessKind === TenantBusinessKind.AESTHETIC_STUDIO
+    ? key === 'core.aesthetics' || key === 'core.team'
+    : key !== 'core.aesthetics';
   // null until the admin edits: the saved selection is then shown as it comes from the API.
   const [draft, setDraft] = useState<SectionKey[] | null>(null);
-  const saved = sections.filter((section) => section.enabled).map((section) => section.key);
+  const saved = sections.filter((section) => section.enabled && allowed(section.key)).map((section) => section.key);
+  const hasInvalidEnabled = sections.some((section) => section.enabled && !allowed(section.key));
   const value = draft ?? saved;
-  const dirty = draft !== null && !sameKeys(draft, saved);
+  const dirty = hasInvalidEnabled || (draft !== null && !sameKeys(draft, saved));
 
   async function save() {
     try {
@@ -41,9 +46,10 @@ export function TenantSectionsCard({ tenantId, sections }: TenantSectionsCardPro
         {catalog.isLoading && <p role="status">Cargando secciones…</p>}
         {catalog.isError && <p role="alert">No se pudo cargar el catálogo de secciones.</p>}
         {catalog.data && (
-          <SectionChecklist catalog={catalog.data.sections} value={value} onChange={setDraft} disabled={setSections.isPending} />
+          <SectionChecklist catalog={catalog.data.sections.filter((section) => allowed(section.key))} value={value} onChange={setDraft} disabled={setSections.isPending} />
         )}
         {setSections.isError && <p role="alert" className="text-sm text-destructive">{setSections.error.message}</p>}
+        {hasInvalidEnabled && <p role="alert" className="text-sm text-destructive">Hay secciones incompatibles activadas. Guarda para corregirlas.</p>}
         <Button type="button" disabled={!dirty} loading={setSections.isPending} onClick={() => void save()}>Guardar cambios</Button>
       </CardContent>
     </Card>

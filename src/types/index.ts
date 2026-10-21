@@ -21,11 +21,17 @@ export type SectionKey =
   | 'core.specialties'
   | 'core.billing'
   | 'core.team'
-  | 'core.storage';
+  | 'core.storage'
+  | 'core.aesthetics';
 
 export enum TenantType {
   PERSONAL = 'PERSONAL',
   CLINIC = 'CLINIC',
+}
+
+export enum TenantBusinessKind {
+  MEDICAL = 'MEDICAL',
+  AESTHETIC_STUDIO = 'AESTHETIC_STUDIO',
 }
 
 export enum PlanTier {
@@ -262,6 +268,7 @@ export interface Tenant {
   address?: string;
   logoUrl?: string;
   tenantType?: TenantType;
+  businessKind?: TenantBusinessKind;
   isActive?: boolean;
   onboardingCompleted?: boolean;
   contactEmail?: string;
@@ -1090,6 +1097,7 @@ export interface PlatformTenantRow {
   id: string;
   name: string;
   tenantType: TenantType;
+  businessKind?: TenantBusinessKind;
   isActive: boolean;
   createdAt: string;
   master: { firstName: string; lastName: string; email: string } | null;
@@ -1139,6 +1147,7 @@ export interface PlatformTenantDetail {
     phone: string | null;
     address: string | null;
     tenantType: TenantType;
+    businessKind?: TenantBusinessKind;
     isActive: boolean;
     createdAt: string;
   };
@@ -1189,7 +1198,7 @@ export interface PlatformRolePermissions {
 
 export interface SectionCatalog {
   sections: { key: SectionKey; name: string; requires: SectionKey[] }[];
-  defaults: { planType: ApiPlanType; tenantType: TenantType; sections: SectionKey[] }[];
+  defaults: { planType: ApiPlanType; tenantType: TenantType; businessKind?: TenantBusinessKind; sections: SectionKey[] }[];
 }
 
 export interface CreatePlatformTenantInput {
@@ -1198,6 +1207,7 @@ export interface CreatePlatformTenantInput {
   phone?: string;
   address?: string;
   tenantType: TenantType;
+  businessKind: TenantBusinessKind;
   timezone: string;
   locale: string;
   masterFirstName: string;

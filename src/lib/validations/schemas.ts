@@ -4,7 +4,7 @@ import {
   isMinor,
   normalizeIdentification,
 } from '@/features/patients/patient-identity';
-import { UserRole, Gender, TaskStatus, TaskPriority, AppointmentStatus, TenantType, type CreatePlatformTenantInput } from '@/types';
+import { UserRole, Gender, TaskStatus, TaskPriority, AppointmentStatus, TenantType, TenantBusinessKind, type CreatePlatformTenantInput } from '@/types';
 import { PASSWORD_MIN_LENGTH } from '@/lib/constants';
 
 // ==========================================
@@ -50,7 +50,7 @@ const specialtyCode = z.string().trim().toUpperCase().min(1, 'Selecciona una esp
 
 const sectionKeys = [
   'core.calendar', 'core.patients', 'core.tasks', 'core.clinicalNotes',
-  'core.specialties', 'core.billing', 'core.team', 'core.storage',
+  'core.specialties', 'core.billing', 'core.team', 'core.storage', 'core.aesthetics',
 ] as const;
 
 /** Platform panel: a clinic together with its account holder. The password is never trimmed. */
@@ -60,6 +60,7 @@ export const createPlatformTenantSchema: z.ZodType<CreatePlatformTenantInput> = 
   phone: z.string().trim().optional(),
   address: z.string().trim().optional(),
   tenantType: z.nativeEnum(TenantType),
+  businessKind: z.nativeEnum(TenantBusinessKind),
   timezone: z.string().trim().min(1, 'Selecciona una zona horaria'),
   locale: z.string().trim().min(1, 'Selecciona un idioma'),
   masterFirstName: z.string().trim().min(1, 'Ingresa el nombre'),
@@ -67,9 +68,16 @@ export const createPlatformTenantSchema: z.ZodType<CreatePlatformTenantInput> = 
   masterEmail: onboardingEmail,
   temporaryPassword: z.string().min(PASSWORD_MIN_LENGTH, `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`),
   planType: z.enum(['TRIAL', 'PERSONAL_BASIC', 'PERSONAL_PRO', 'CLINIC_BASIC', 'CLINIC_PRO', 'CLINIC_ENTERPRISE']),
-  specialtyCodes: z.array(specialtyCode).min(1, 'Selecciona al menos una especialidad'),
+  specialtyCodes: z.array(specialtyCode),
   sections: z.array(z.enum(sectionKeys)).optional(),
-}).strict();
+}).strict().superRefine((data, context) => {
+  if (data.businessKind === TenantBusinessKind.MEDICAL && data.specialtyCodes.length === 0) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['specialtyCodes'], message: 'Selecciona al menos una especialidad' });
+  }
+  if (data.businessKind === TenantBusinessKind.AESTHETIC_STUDIO && data.specialtyCodes.length > 0) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['specialtyCodes'], message: 'Un estudio estético no usa especialidades médicas' });
+  }
+});
 
 const planTypes = ['TRIAL', 'PERSONAL_BASIC', 'PERSONAL_PRO', 'CLINIC_BASIC', 'CLINIC_PRO', 'CLINIC_ENTERPRISE'] as const;
 
@@ -145,6 +153,20 @@ export const tenantTeamMemberUpdateSchema = z.object({
   ...tenantTeamMemberBaseFields,
   role: z.union([z.literal(UserRole.MASTER), assignableTeamRole]),
 }).strict().superRefine(refineTenantTeamMember);
+
+/** Studio professionals are team members without clinical licenses or specialties. */
+export const aestheticTeamMemberSchema = z.object({
+  email: onboardingEmail,
+  firstName: z.string().trim().min(1, 'Ingresa el nombre'),
+  lastName: z.string().trim().min(1, 'Ingresa el apellido'),
+  phone: z.string().trim().optional(),
+  role: assignableTeamRole,
+  password: z.string().min(PASSWORD_MIN_LENGTH, `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`),
+}).strict();
+
+export const aestheticTeamMemberUpdateSchema = aestheticTeamMemberSchema.omit({ password: true }).extend({
+  role: z.union([z.literal(UserRole.MASTER), assignableTeamRole]),
+}).strict();
 
 export type TenantTeamMemberFormData = z.infer<typeof tenantTeamMemberSchema>;
 

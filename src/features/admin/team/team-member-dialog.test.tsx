@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserRole, type TenantSpecialty, type UpdateTenantUserInput, type User } from '@/types';
+import { TenantBusinessKind, UserRole, type TenantSpecialty, type UpdateTenantUserInput, type User } from '@/types';
 import { TeamMemberDialog } from './team-member-dialog';
 
 const psychology: TenantSpecialty = {
@@ -25,10 +25,12 @@ function renderDialog({
   onSubmit = vi.fn().mockResolvedValue(undefined),
   member,
   specialties = [psychology, nutrition],
+  businessKind,
 }: {
   onSubmit?: (input: unknown) => Promise<void>;
   member?: User;
   specialties?: TenantSpecialty[];
+  businessKind?: TenantBusinessKind;
 } = {}) {
   const onOpenChange = vi.fn();
   const view = render(
@@ -38,6 +40,7 @@ function renderDialog({
       specialties={specialties}
       member={member}
       tenantId="tenant-1"
+      businessKind={businessKind}
       onSubmit={onSubmit}
     />,
   );
@@ -61,6 +64,16 @@ function chooseRole(role: UserRole) {
 
 describe('TeamMemberDialog', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('creates an aesthetic professional without a medical profile', async () => {
+    const { onSubmit } = renderDialog({ businessKind: TenantBusinessKind.AESTHETIC_STUDIO, specialties: [] });
+    fillIdentityAndPassword();
+    expect(screen.queryByLabelText('Especialidad')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Crear miembro' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
+      email: 'ana@example.com', password: 'Secret123', firstName: 'Ana', lastName: 'Vega', role: UserRole.PROFESIONAL,
+    }));
+  });
 
   it('requires one enabled specialty for a professional and sends an active profile', async () => {
     const { onSubmit, onOpenChange } = renderDialog();
