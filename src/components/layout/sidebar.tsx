@@ -66,10 +66,9 @@ export function Sidebar() {
   const managesUsers = !!user && canManageUsers(user);
   const managesSubscription = !!user && canManageSubscription(user);
   const isMaster = !!user && isMasterRole(user.role);
-  const isStudio = tenant?.businessKind === 'AESTHETIC_STUDIO';
 
   const navigation: NavEntry[] = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, show: !isStudio },
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, show: true },
     {
       name: 'Agenda',
       icon: CalendarDays,
@@ -79,7 +78,6 @@ export function Sidebar() {
       ],
     },
     { name: 'Pacientes', href: '/patients', icon: Users, show: isEnabled('core.patients') },
-    { name: 'Estética', href: '/aesthetics', icon: Syringe, show: isEnabled('core.aesthetics') && can('aesthetics.view', isMaster) },
     {
       name: 'Clínica',
       icon: Stethoscope,
