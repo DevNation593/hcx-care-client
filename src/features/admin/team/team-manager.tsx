@@ -16,7 +16,7 @@ import { subscriptionApi, usersApi, extractArray } from '@/lib/api/endpoints';
 import { countActiveProfessionalProfiles } from '@/lib/professional-profiles';
 import { QUERY_KEYS, ROLE_LABELS } from '@/lib/constants';
 import { isMasterRole, isClinicPlan } from '@/types/guards';
-import { TenantBusinessKind, UserRole, type TenantTeamProfessionalProfileInput, type UpdateTenantUserInput, type UsageMetrics, type User } from '@/types';
+import { UserRole, type TenantTeamProfessionalProfileInput, type UpdateTenantUserInput, type UsageMetrics, type User } from '@/types';
 import { useAuthStore } from '@/store/authStore';
 import { TeamMemberDialog } from './team-member-dialog';
 
@@ -79,14 +79,13 @@ export function TeamManager() {
   const currentUser = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const hasTeamModule = isClinicPlan(tenant);
-  const isStudio = tenant?.businessKind === TenantBusinessKind.AESTHETIC_STUDIO;
   const canManage = !!currentUser && isMasterRole(currentUser.role);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<User | null>(null);
   const [actionError, setActionError] = useState<ActionError | null>(null);
   const [pendingTenantIds, setPendingTenantIds] = useState<string[]>([]);
   const actionLocks = useRef(new Set<string>());
-  const specialtiesQuery = useTenantSpecialties(hasTeamModule && !isStudio);
+  const specialtiesQuery = useTenantSpecialties(hasTeamModule);
 
   const usersQuery = useQuery({
     queryKey: QUERY_KEYS.USERS_SCOPED(tenantId ?? ''),
@@ -124,15 +123,15 @@ export function TeamManager() {
   const activeProfiles = usageBelongsToTenant
     ? usage.users.professionals.active
     : usersQuery.data && !usersQuery.data.isPaginated
-      ? isStudio ? users.filter((user) => user.role === UserRole.PROFESIONAL && user.isActive).length : countActiveProfessionalProfiles(users)
+      ? countActiveProfessionalProfiles(users)
       : null;
   const usageDescription = activeProfiles === null
     ? usageQuery.isError
-      ? `No se pudo consultar el uso de ${isStudio ? 'profesionales' : 'perfiles clínicos'}.`
-      : `Consultando el uso de ${isStudio ? 'profesionales' : 'perfiles clínicos'}…`
+      ? 'No se pudo consultar el uso de perfiles clínicos.'
+      : 'Consultando el uso de perfiles clínicos…'
     : profileLimit !== undefined
-      ? `${activeProfiles} de ${profileLimit} ${isStudio ? 'profesionales' : 'perfiles clínicos'} activos`
-      : `${activeProfiles} ${isStudio ? 'profesionales' : 'perfiles clínicos'} activos`;
+      ? `${activeProfiles} de ${profileLimit} perfiles clínicos activos`
+      : `${activeProfiles} perfiles clínicos activos`;
   const isMutationPending = !!tenantId && pendingTenantIds.includes(tenantId);
   const enabledSpecialties = useMemo(
     () => (specialtiesQuery.data ?? []).filter((specialty) => specialty.isActive),
@@ -269,7 +268,7 @@ export function TeamManager() {
         variant={usageQuery.isError || (profileLimit !== undefined && activeProfiles !== null && activeProfiles >= profileLimit)
           ? 'warning'
           : 'default'}
-        title={isStudio ? 'Uso de profesionales' : 'Uso de perfiles clínicos'}
+        title="Uso de perfiles clínicos"
         description={usageDescription}
       >
         {usageQuery.isError && activeProfiles !== null && (
@@ -313,9 +312,9 @@ export function TeamManager() {
                   <tr className="border-b">
                     <th scope="col" className="px-4 py-3 text-left font-medium">Nombre y correo</th>
                     <th scope="col" className="px-4 py-3 text-left font-medium">Rol</th>
-                    {!isStudio && <th scope="col" className="px-4 py-3 text-left font-medium">Especialidad</th>}
+                    <th scope="col" className="px-4 py-3 text-left font-medium">Especialidad</th>
                     <th scope="col" className="px-4 py-3 text-left font-medium">Cuenta</th>
-                    {!isStudio && <th scope="col" className="px-4 py-3 text-left font-medium">Atención clínica</th>}
+                    <th scope="col" className="px-4 py-3 text-left font-medium">Atención clínica</th>
                     <th scope="col" className="px-4 py-3 text-right font-medium">Acciones</th>
                   </tr>
                 </thead>
@@ -335,13 +334,13 @@ export function TeamManager() {
                           <p className="text-sm text-muted-foreground">{user.email}</p>
                         </td>
                         <td className="px-4 py-3"><Badge variant="outline">{roleLabel}</Badge></td>
-                        {!isStudio && <td className="px-4 py-3">{specialtyName}</td>}
+                        <td className="px-4 py-3">{specialtyName}</td>
                         <td className="px-4 py-3">
                           <Badge variant={user.isActive ? 'success' : 'secondary'}>
                             {user.isActive ? 'Cuenta activa' : 'Cuenta inactiva'}
                           </Badge>
                         </td>
-                        {!isStudio && <td className="px-4 py-3">
+                        <td className="px-4 py-3">
                           {!profile ? (
                             <Badge variant="outline">No aplica</Badge>
                           ) : (
@@ -349,7 +348,7 @@ export function TeamManager() {
                               {profile.isActive ? 'Atención clínica activa' : 'Atención clínica inactiva'}
                             </Badge>
                           )}
-                        </td>}
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap justify-end gap-2">
                             {canManage && (
@@ -364,7 +363,7 @@ export function TeamManager() {
                                 >
                                   <Pencil className="h-4 w-4" aria-hidden="true" />
                                 </Button>
-                                {!isStudio && profile && (
+                                {profile && (
                                   <Button
                                     type="button"
                                     size="sm"
@@ -435,7 +434,6 @@ export function TeamManager() {
           if (!open) setEditingMember(null);
         }}
         tenantId={tenantId}
-        businessKind={tenant?.businessKind}
         member={editingMember}
         specialties={enabledSpecialties}
         specialtiesLoading={specialtiesQuery.isLoading}
