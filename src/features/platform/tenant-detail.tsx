@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { usePlatformTenant } from '@/hooks/usePlatform';
 import { ROUTES } from '@/lib/constants';
-import { TenantBusinessKind, type ApiError } from '@/types';
+import type { ApiError } from '@/types';
 import { TenantAccountCard } from './tenant-account-card';
 import { TenantMasterCard } from './tenant-master-card';
 import { TenantPlanCard } from './tenant-plan-card';
@@ -60,9 +60,9 @@ export function TenantDetail({ tenantId }: { tenantId: string }) {
         <TenantPlanCard tenantId={tenantId} tenantType={data.tenant.tenantType} subscription={data.subscription} usage={data.usage} />
         <TenantStatusCard tenantId={tenantId} tenant={data.tenant} status={data.subscription.status} />
       </div>
-      <TenantSectionsCard key={`${tenantId}:sections`} tenantId={tenantId} sections={data.sections} businessKind={data.tenant.businessKind} />
+      <TenantSectionsCard key={`${tenantId}:sections`} tenantId={tenantId} sections={data.sections} />
       <TenantRolePermissionsCard key={`${tenantId}:roles`} tenantId={tenantId} />
-      {data.tenant.businessKind !== TenantBusinessKind.AESTHETIC_STUDIO && <TenantClinicalModulesCard key={`${tenantId}:clinical`} tenantId={tenantId} detail={data} />}
+      <TenantClinicalModulesCard key={`${tenantId}:clinical`} tenantId={tenantId} detail={data} />
     </div>
   );
 }
