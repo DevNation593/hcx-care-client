@@ -35,11 +35,11 @@ export function TenantSectionsCard({ tenantId, sections }: TenantSectionsCardPro
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Secciones</CardTitle>
+        <CardTitle>Módulos y submódulos</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {catalog.isLoading && <p role="status">Cargando secciones…</p>}
-        {catalog.isError && <p role="alert">No se pudo cargar el catálogo de secciones.</p>}
+        {catalog.isLoading && <p role="status">Cargando módulos…</p>}
+        {catalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos.</p>}
         {catalog.data && (
           <SectionChecklist catalog={catalog.data.sections} value={value} onChange={setDraft} disabled={setSections.isPending} />
         )}

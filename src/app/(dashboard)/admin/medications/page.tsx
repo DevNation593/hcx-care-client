@@ -12,7 +12,7 @@ export default function MedicationsPage() {
   // The account holder manages the catalog; so does any professional who prescribes from it.
   if (!isMasterRole(user.role) && !canAccessClinicalNotes(user)) return <RestrictedAccess />;
   return (
-    <SectionGate section="core.specialties">
+    <SectionGate section="core.clinical.specialties">
       <MedicationsManager />
     </SectionGate>
   );

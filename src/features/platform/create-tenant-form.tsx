@@ -227,8 +227,8 @@ export function CreateTenantForm() {
             {errors.specialtyCodes && <p id="specialtyCodes-error" role="alert" className="text-sm text-destructive">{errors.specialtyCodes.message}</p>}
           </fieldset>
 
-          {sectionCatalog.isLoading && <p role="status">Cargando secciones…</p>}
-          {sectionCatalog.isError && <p role="alert">No se pudo cargar el catálogo de secciones.</p>}
+          {sectionCatalog.isLoading && <p role="status">Cargando módulos…</p>}
+          {sectionCatalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos.</p>}
           {sectionCatalog.data && (
             <SectionChecklist
               catalog={sectionCatalog.data.sections}
@@ -250,8 +250,8 @@ export function CreateTenantForm() {
       <Dialog open={pendingDefaults !== null} onOpenChange={(open) => { if (!open) setPendingDefaults(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>¿Reemplazar la selección de secciones?</DialogTitle>
-            <DialogDescription>Editaste las secciones a mano. El plan elegido trae otra selección por defecto.</DialogDescription>
+            <DialogTitle>¿Reemplazar la selección de módulos?</DialogTitle>
+            <DialogDescription>Editaste los módulos a mano. El plan elegido trae otra selección por defecto.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setPendingDefaults(null)}>Conservar mi selección</Button>

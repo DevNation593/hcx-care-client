@@ -91,7 +91,7 @@ function RecordPrintContent() {
 
 export default function RecordPrintPage() {
   return (
-    <SectionGate section="core.specialties">
+    <SectionGate section="core.clinical.specialties">
       <RecordPrintContent />
     </SectionGate>
   );

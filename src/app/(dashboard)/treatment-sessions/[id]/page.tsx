@@ -8,7 +8,7 @@ export default function TreatmentSessionPage() {
   const params = useParams();
   const id = params.id as string;
   return (
-    <SectionGate section="core.specialties">
+    <SectionGate section="core.treatments.sessions">
       <SessionWorkflow id={id} />
     </SectionGate>
   );

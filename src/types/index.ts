@@ -13,15 +13,39 @@ export enum UserRole {
   PACIENTE = 'PACIENTE',
 }
 
-export type SectionKey =
-  | 'core.calendar'
-  | 'core.patients'
-  | 'core.tasks'
-  | 'core.clinicalNotes'
-  | 'core.specialties'
-  | 'core.billing'
-  | 'core.team'
-  | 'core.storage';
+/** Modules and their submodules: a key with three segments belongs to the module its first two name. */
+export const SECTION_KEYS = [
+  'core.agenda',
+  'core.agenda.calendar',
+  'core.agenda.tasks',
+  'core.agenda.notifications',
+  'core.patients',
+  'core.patients.records',
+  'core.patients.team',
+  'core.patients.files',
+  'core.clinical',
+  'core.clinical.notes',
+  'core.clinical.nextSession',
+  'core.clinical.timeline',
+  'core.clinical.specialties',
+  'core.clinical.forms',
+  'core.clinical.templates',
+  'core.treatments',
+  'core.treatments.catalog',
+  'core.treatments.sessions',
+  'core.treatments.consents',
+  'core.billing',
+  'core.billing.profiles',
+  'core.billing.orders',
+  'core.billing.cash',
+  'core.billing.invoicing',
+  'core.admin',
+  'core.admin.team',
+  'core.admin.branches',
+  'core.admin.reports',
+] as const;
+
+export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export enum TenantType {
   PERSONAL = 'PERSONAL',
@@ -1188,7 +1212,7 @@ export interface PlatformRolePermissions {
 }
 
 export interface SectionCatalog {
-  sections: { key: SectionKey; name: string; requires: SectionKey[] }[];
+  sections: { key: SectionKey; name: string; parent?: SectionKey; requires: SectionKey[]; healthOnly?: boolean }[];
   defaults: { planType: ApiPlanType; tenantType: TenantType; sections: SectionKey[] }[];
 }
 

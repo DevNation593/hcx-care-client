@@ -7,7 +7,7 @@ import { OrderDetail } from '@/features/cash/order-detail';
 export default function CashOrderRoute() {
   const { id } = useParams<{ id: string }>();
   return (
-    <SectionGate section="core.billing">
+    <SectionGate section="core.billing.orders">
       <OrderDetail orderId={id} />
     </SectionGate>
   );

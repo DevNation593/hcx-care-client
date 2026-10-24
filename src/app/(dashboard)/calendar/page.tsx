@@ -230,7 +230,7 @@ function CalendarPageContent() {
 
 export default function CalendarPage() {
   return (
-    <SectionGate section="core.calendar">
+    <SectionGate section="core.agenda.calendar">
       <CalendarPageContent />
     </SectionGate>
   );

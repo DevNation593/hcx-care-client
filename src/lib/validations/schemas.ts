@@ -4,7 +4,7 @@ import {
   isMinor,
   normalizeIdentification,
 } from '@/features/patients/patient-identity';
-import { UserRole, Gender, TaskStatus, TaskPriority, AppointmentStatus, TenantType, type CreatePlatformTenantInput } from '@/types';
+import { UserRole, Gender, TaskStatus, TaskPriority, AppointmentStatus, TenantType, SECTION_KEYS, type CreatePlatformTenantInput } from '@/types';
 import { PASSWORD_MIN_LENGTH } from '@/lib/constants';
 
 // ==========================================
@@ -48,11 +48,6 @@ const professionalProfileInputSchema = z.object({
 const onboardingEmail = z.string().trim().toLowerCase().email('Email inválido');
 const specialtyCode = z.string().trim().toUpperCase().min(1, 'Selecciona una especialidad');
 
-const sectionKeys = [
-  'core.calendar', 'core.patients', 'core.tasks', 'core.clinicalNotes',
-  'core.specialties', 'core.billing', 'core.team', 'core.storage',
-] as const;
-
 /** Platform panel: a clinic together with its account holder. The password is never trimmed. */
 export const createPlatformTenantSchema: z.ZodType<CreatePlatformTenantInput> = z.object({
   name: z.string().trim().min(1, 'Ingresa el nombre del consultorio'),
@@ -68,7 +63,7 @@ export const createPlatformTenantSchema: z.ZodType<CreatePlatformTenantInput> = 
   temporaryPassword: z.string().min(PASSWORD_MIN_LENGTH, `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`),
   planType: z.enum(['TRIAL', 'PERSONAL_BASIC', 'PERSONAL_PRO', 'CLINIC_BASIC', 'CLINIC_PRO', 'CLINIC_ENTERPRISE']),
   specialtyCodes: z.array(specialtyCode).min(1, 'Selecciona al menos una especialidad'),
-  sections: z.array(z.enum(sectionKeys)).optional(),
+  sections: z.array(z.enum(SECTION_KEYS)).optional(),
 }).strict();
 
 const planTypes = ['TRIAL', 'PERSONAL_BASIC', 'PERSONAL_PRO', 'CLINIC_BASIC', 'CLINIC_PRO', 'CLINIC_ENTERPRISE'] as const;

@@ -705,7 +705,7 @@ export default function StorageManagementPage() {
   // The menu entry is hidden for other roles; this covers direct navigation.
   if (!canManage) return <RestrictedAccess />;
   return (
-    <SectionGate section="core.storage">
+    <SectionGate section="core.patients.files">
       <StorageManagementPageContent />
     </SectionGate>
   );

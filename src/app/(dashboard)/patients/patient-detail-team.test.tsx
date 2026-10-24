@@ -15,8 +15,14 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const SECTION_KEYS = [
-  'core.calendar', 'core.patients', 'core.tasks', 'core.clinicalNotes',
-  'core.specialties', 'core.billing', 'core.team', 'core.storage',
+  'core.agenda', 'core.agenda.calendar', 'core.agenda.tasks', 'core.agenda.notifications',
+  'core.patients', 'core.patients.records', 'core.patients.team', 'core.patients.files',
+  'core.clinical', 'core.clinical.notes', 'core.clinical.nextSession', 'core.clinical.timeline',
+  'core.clinical.specialties', 'core.clinical.forms', 'core.clinical.templates', 'core.treatments',
+  'core.treatments.catalog', 'core.treatments.sessions', 'core.treatments.consents',
+  'core.billing', 'core.billing.profiles', 'core.billing.orders', 'core.billing.cash',
+  'core.billing.invoicing', 'core.admin', 'core.admin.team', 'core.admin.branches',
+  'core.admin.reports',
 ];
 
 const patient = {
@@ -274,7 +280,7 @@ describe('patient detail clinical alerts', () => {
 
   it.each([
     ['an account without a professional profile', undefined, []],
-    ['a clinic without clinical modules', { isActive: true }, ['core.specialties']],
+    ['a clinic without clinical modules', { isActive: true }, ['core.clinical.specialties']],
   ])('never requests them for %s', async (_label, professionalProfile, disabledSections) => {
     mocks.alerts = [allergy];
     mocks.disabledSections = disabledSections;
@@ -334,12 +340,14 @@ describe('patient detail treating-team wiring', () => {
 
 describe('patient detail section gating', () => {
   it.each([
-    ['Historia Clínica', 'core.clinicalNotes'],
-    ['Registros clínicos', 'core.specialties'],
-    ['Tratamientos', 'core.specialties'],
-    ['Archivos', 'core.storage'],
-    ['Actividades', 'core.tasks'],
-    ['Facturas', 'core.billing'],
+    ['Equipo tratante', 'core.patients.team'],
+    ['Historia Clínica', 'core.clinical.notes'],
+    ['Registros clínicos', 'core.clinical.specialties'],
+    ['Tratamientos', 'core.treatments.sessions'],
+    ['Archivos', 'core.patients.files'],
+    ['Actividades', 'core.agenda.tasks'],
+    ['Facturas', 'core.billing.profiles'],
+    ['Historia Clínica', 'core.clinical'],
   ])('hides the %s tab when %s is off', (label, key) => {
     mocks.disabledSections = [key];
     renderPage();
@@ -347,15 +355,15 @@ describe('patient detail section gating', () => {
     expect(screen.getByRole('button', { name: 'General' })).toBeInTheDocument();
   });
 
-  it('hides Citas when core.calendar is off and Plan de Sesión when core.clinicalNotes is off', () => {
-    mocks.disabledSections = ['core.calendar', 'core.clinicalNotes'];
+  it('hides Citas when core.agenda.calendar is off and Plan de Sesión when core.clinical.nextSession is off', () => {
+    mocks.disabledSections = ['core.agenda.calendar', 'core.clinical.nextSession'];
     renderPage();
     expect(screen.queryByRole('button', { name: 'Citas' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Plan de Sesión' })).not.toBeInTheDocument();
   });
 
-  it('shows the section notice instead of the page when core.patients is off', () => {
-    mocks.disabledSections = ['core.patients'];
+  it('shows the section notice instead of the page when core.patients.records is off', () => {
+    mocks.disabledSections = ['core.patients.records'];
     renderPage();
     expect(screen.getByText('Sección no disponible')).toBeInTheDocument();
     expect(screen.queryByText('Información Personal')).not.toBeInTheDocument();

@@ -678,7 +678,7 @@ function CreateTaskDialog({
 
 export default function TasksPage() {
   return (
-    <SectionGate section="core.tasks">
+    <SectionGate section="core.agenda.tasks">
       <TasksPageContent />
     </SectionGate>
   );

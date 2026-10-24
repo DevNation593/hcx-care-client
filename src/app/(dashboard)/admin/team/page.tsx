@@ -13,7 +13,7 @@ export default function TeamPage() {
   // The menu entry is hidden for other roles; this covers direct navigation.
   if (!canManage) return <RestrictedAccess />;
   return (
-    <SectionGate section="core.team">
+    <SectionGate section="core.admin.team">
       <TeamManager />
     </SectionGate>
   );

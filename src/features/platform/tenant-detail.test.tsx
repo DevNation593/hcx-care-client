@@ -29,9 +29,9 @@ vi.mock('@/lib/api/endpoints', () => ({
 
 const catalog: SectionCatalog = {
   sections: [
-    { key: 'core.calendar', name: 'Agenda', requires: [] },
+    { key: 'core.agenda', name: 'Agenda', requires: [] },
     { key: 'core.patients', name: 'Pacientes', requires: [] },
-    { key: 'core.tasks', name: 'Actividades', requires: ['core.patients'] },
+    { key: 'core.admin', name: 'Actividades', requires: ['core.patients'] },
     { key: 'core.billing', name: 'Facturación', requires: [] },
   ],
   defaults: [],
@@ -66,9 +66,9 @@ const detail: PlatformTenantDetail = {
   specialties: [{ id: 's1', code: 'PSYCHOLOGY', name: 'Psicología' }],
   modules: [{ key: 'psychology.assessments', enabled: true }],
   sections: [
-    { key: 'core.calendar', name: 'Agenda', enabled: true },
+    { key: 'core.agenda', name: 'Agenda', enabled: true },
     { key: 'core.patients', name: 'Pacientes', enabled: true },
-    { key: 'core.tasks', name: 'Actividades', enabled: false },
+    { key: 'core.admin', name: 'Actividades', enabled: false },
     { key: 'core.billing', name: 'Facturación', enabled: false },
   ],
 };
@@ -228,7 +228,7 @@ describe('TenantDetail', () => {
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
     await waitFor(() =>
-      expect(platformApi.setSections).toHaveBeenCalledWith('t-1', ['core.calendar', 'core.patients', 'core.billing']),
+      expect(platformApi.setSections).toHaveBeenCalledWith('t-1', ['core.agenda', 'core.patients', 'core.billing']),
     );
   });
 
