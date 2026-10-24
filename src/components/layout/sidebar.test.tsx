@@ -108,6 +108,21 @@ describe('Sidebar modules and submodules', () => {
     }
   });
 
+  it('has no aesthetics screen, even if a clinic kept the retired section row', async () => {
+    vi.mocked(tenantModulesApi.list).mockResolvedValue([
+      ...sectionRows(),
+      { id: 'aes', tenantId: 'tenant-a', moduleKey: 'core.aesthetics', enabled: true },
+    ] as TenantModule[]);
+    renderSidebar();
+    await screen.findByRole('link', { name: 'Equipo' });
+
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Estética' })).toBeNull();
+    expect(
+      screen.getAllByRole('link').some((link) => link.getAttribute('href') === '/aesthetics'),
+    ).toBe(false);
+  });
+
   it('collapses and expands the submodules of a module', async () => {
     renderSidebar();
     const agenda = await screen.findByRole('button', { name: 'Agenda' });
