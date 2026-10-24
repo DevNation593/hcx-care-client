@@ -15,16 +15,16 @@ vi.mock('@/lib/api/endpoints', () => ({
 
 const catalog: SectionCatalog = {
   sections: [
-    { key: 'core.calendar', name: 'Agenda', requires: [] },
+    { key: 'core.agenda', name: 'Agenda', requires: [] },
     { key: 'core.patients', name: 'Pacientes', requires: [] },
-    { key: 'core.tasks', name: 'Actividades', requires: ['core.patients'] },
+    { key: 'core.admin', name: 'Actividades', requires: ['core.patients'] },
     { key: 'core.billing', name: 'Facturación', requires: [] },
   ],
   defaults: [
-    { planType: 'TRIAL', tenantType: TenantType.CLINIC, sections: ['core.calendar', 'core.patients'] },
-    { planType: 'CLINIC_PRO', tenantType: TenantType.CLINIC, sections: ['core.calendar', 'core.patients', 'core.tasks', 'core.billing'] },
-    { planType: 'TRIAL', tenantType: TenantType.PERSONAL, sections: ['core.calendar'] },
-    { planType: 'PERSONAL_PRO', tenantType: TenantType.PERSONAL, sections: ['core.calendar', 'core.patients'] },
+    { planType: 'TRIAL', tenantType: TenantType.CLINIC, sections: ['core.agenda', 'core.patients'] },
+    { planType: 'CLINIC_PRO', tenantType: TenantType.CLINIC, sections: ['core.agenda', 'core.patients', 'core.admin', 'core.billing'] },
+    { planType: 'TRIAL', tenantType: TenantType.PERSONAL, sections: ['core.agenda'] },
+    { planType: 'PERSONAL_PRO', tenantType: TenantType.PERSONAL, sections: ['core.agenda', 'core.patients'] },
   ],
 };
 
@@ -128,7 +128,7 @@ describe('CreateTenantForm', () => {
         {
           planType: 'CLINIC_ENTERPRISE',
           tenantType: TenantType.CLINIC,
-          sections: ['core.billing', 'core.tasks', 'core.patients', 'core.calendar'],
+          sections: ['core.billing', 'core.admin', 'core.patients', 'core.agenda'],
         },
       ],
     });
@@ -186,7 +186,7 @@ describe('CreateTenantForm', () => {
       temporaryPassword: 'Temporal-123',
       planType: 'TRIAL',
       specialtyCodes: ['PSICOLOGIA'],
-      sections: ['core.calendar', 'core.patients'],
+      sections: ['core.agenda', 'core.patients'],
     });
   });
 

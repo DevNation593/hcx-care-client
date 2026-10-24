@@ -12,7 +12,7 @@ export default function ConsentsAdminPage() {
   if (!user) return null;
   // Everyone who works with the clinic's consents reads them; only who may manage them sees the actions.
   return (
-    <SectionGate section="core.specialties">
+    <SectionGate section="core.treatments.consents">
       <ConsentsPage canManage={can('treatments.manage', isMasterRole(user.role))} />
     </SectionGate>
   );

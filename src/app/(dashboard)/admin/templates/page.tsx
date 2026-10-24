@@ -12,7 +12,7 @@ export default function TemplatesPage() {
   // The texts are the clinic's: the account holder writes them, every professional uses them.
   if (!isMasterRole(user.role)) return <RestrictedAccess />;
   return (
-    <SectionGate section="core.specialties">
+    <SectionGate section="core.clinical.templates">
       <TemplatesManager />
     </SectionGate>
   );

@@ -12,7 +12,7 @@ export default function TreatmentsAdminPage() {
   if (!user) return null;
   // Everyone who works with the clinic's catalog reads it; only who may manage it sees the actions.
   return (
-    <SectionGate section="core.specialties">
+    <SectionGate section="core.treatments.catalog">
       <TreatmentsPage canManage={can('treatments.manage', isMasterRole(user.role))} />
     </SectionGate>
   );

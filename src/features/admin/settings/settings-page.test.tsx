@@ -9,6 +9,7 @@ const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), de
 vi.mock('@/lib/api/client', () => ({ apiClient: http }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock('@/features/admin/branches/branches-manager', () => ({ BranchesManager: () => null }));
+vi.mock('@/hooks/useSections', () => ({ useSections: () => ({ isEnabled: () => true }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 // Settings as the API returns them.

@@ -118,14 +118,15 @@ const TABS: Tab[] = [
 
 // Tabs backed by an optional section; the rest belong to the patient record itself.
 const TAB_SECTIONS: Partial<Record<TabId, SectionKey>> = {
-  clinical: 'core.clinicalNotes',
-  'session-plan': 'core.clinicalNotes',
-  specialties: 'core.specialties',
-  treatments: 'core.specialties',
-  files: 'core.storage',
-  appointments: 'core.calendar',
-  tasks: 'core.tasks',
-  billing: 'core.billing',
+  team: 'core.patients.team',
+  clinical: 'core.clinical.notes',
+  'session-plan': 'core.clinical.nextSession',
+  specialties: 'core.clinical.specialties',
+  treatments: 'core.treatments.sessions',
+  files: 'core.patients.files',
+  appointments: 'core.agenda.calendar',
+  tasks: 'core.agenda.tasks',
+  billing: 'core.billing.profiles',
 };
 
 // ==========================================
@@ -227,7 +228,7 @@ function PatientDetailPageContent() {
         </div>
       </div>
 
-      {canSeeClinical && isEnabled('core.specialties') && (
+      {canSeeClinical && isEnabled('core.clinical.specialties') && (
         <PatientClinicalAlerts patientId={patientId} />
       )}
 
@@ -274,7 +275,7 @@ function PatientDetailPageContent() {
         {activeTab === 'billing' && canSeeInvoices && (
           <div className="space-y-6">
             <PatientBillingProfiles patientId={patientId} />
-            <PatientInvoicesTab patientId={patientId} />
+            {isEnabled('core.billing.invoicing') && <PatientInvoicesTab patientId={patientId} />}
           </div>
         )}
         {activeTab === 'session-plan' && <SessionPlanTab patientId={patientId} />}
@@ -1377,7 +1378,7 @@ function PatientDetailSkeleton() {
 
 export default function PatientDetailPage() {
   return (
-    <SectionGate section="core.patients">
+    <SectionGate section="core.patients.records">
       <PatientDetailPageContent />
     </SectionGate>
   );

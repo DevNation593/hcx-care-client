@@ -8,14 +8,14 @@ const modules = vi.hoisted(() => ({
 }));
 vi.mock('@/hooks/useSpecialties', () => ({ useTenantModules: () => modules.state }));
 
-const tasksOn: Row[] = [{ moduleKey: 'core.tasks', enabled: true }];
+const tasksOn: Row[] = [{ moduleKey: 'core.admin', enabled: true }];
 
 beforeEach(() => {
   modules.state = { data: tasksOn, isPending: false, isError: false, refetch: vi.fn() };
 });
 
 const renderGate = () =>
-  render(<SectionGate section="core.tasks"><p>Contenido</p></SectionGate>);
+  render(<SectionGate section="core.admin"><p>Contenido</p></SectionGate>);
 
 describe('SectionGate', () => {
   it('renders nothing while the sections load', () => {
@@ -42,7 +42,7 @@ describe('SectionGate', () => {
   });
 
   it('shows the disabled notice when the section is off', () => {
-    modules.state = { ...modules.state, data: [{ moduleKey: 'core.tasks', enabled: false }] };
+    modules.state = { ...modules.state, data: [{ moduleKey: 'core.admin', enabled: false }] };
     renderGate();
     expect(screen.getByText('Sección no disponible')).toBeInTheDocument();
     expect(screen.getByText('Esta sección no está habilitada para tu consultorio')).toBeInTheDocument();

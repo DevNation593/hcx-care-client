@@ -5,7 +5,7 @@ import { CashPage } from '@/features/cash/cash-page';
 
 export default function CashRoute() {
   return (
-    <SectionGate section="core.billing">
+    <SectionGate section="core.billing.cash">
       <CashPage />
     </SectionGate>
   );
