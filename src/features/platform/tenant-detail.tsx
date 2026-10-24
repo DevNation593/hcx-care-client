@@ -60,7 +60,13 @@ export function TenantDetail({ tenantId }: { tenantId: string }) {
         <TenantPlanCard tenantId={tenantId} tenantType={data.tenant.tenantType} subscription={data.subscription} usage={data.usage} />
         <TenantStatusCard tenantId={tenantId} tenant={data.tenant} status={data.subscription.status} />
       </div>
-      <TenantSectionsCard key={`${tenantId}:sections`} tenantId={tenantId} sections={data.sections} />
+      <TenantSectionsCard
+        key={`${tenantId}:sections`}
+        tenantId={tenantId}
+        planId={data.subscription.plan.id}
+        specialtyCodes={data.specialties.map((specialty) => specialty.code)}
+        sections={data.sections}
+      />
       <TenantRolePermissionsCard key={`${tenantId}:roles`} tenantId={tenantId} />
       <TenantClinicalModulesCard key={`${tenantId}:clinical`} tenantId={tenantId} detail={data} />
     </div>

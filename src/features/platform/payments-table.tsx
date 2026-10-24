@@ -25,7 +25,7 @@ import { ROUTES } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
 import { paymentReferenceSchema, paymentRejectReasonSchema } from '@/lib/validations/schemas';
 import type { PlatformPayment, SubscriptionPayment } from '@/types';
-import { PAYMENT_KIND_LABELS, PAYMENT_STATUS_LABELS, PLAN_LABELS } from './labels';
+import { PAYMENT_KIND_LABELS, PAYMENT_STATUS_LABELS } from './labels';
 
 type PaymentStatus = SubscriptionPayment['status'];
 
@@ -169,7 +169,7 @@ export function PaymentsTable() {
                     <p className="text-xs text-muted-foreground">{payment.tenant.email}</p>
                   </TableCell>
                   <TableCell>{PAYMENT_KIND_LABELS[payment.kind]}</TableCell>
-                  <TableCell>{PLAN_LABELS[payment.targetPlan]}</TableCell>
+                  <TableCell>{payment.planName}</TableCell>
                   <TableCell>
                     {payment.amount} {payment.currency}
                   </TableCell>
@@ -210,7 +210,7 @@ export function PaymentsTable() {
             <DialogTitle id="payment-dialog-title">{isConfirm ? '¿Confirmar pago?' : '¿Rechazar pago?'}</DialogTitle>
             <DialogDescription>
               {isConfirm
-                ? `Al confirmar, ${action?.payment.tenant.name} activa el plan ${action ? PLAN_LABELS[action.payment.targetPlan] : ''}. Cada referencia confirma un solo pago.`
+                ? `Al confirmar, ${action?.payment.tenant.name} paga su período de ${action?.payment.planName ?? ''}. Cada referencia confirma un solo pago.`
                 : `El pago de ${action?.payment.tenant.name} quedará rechazado. El motivo queda registrado.`}
             </DialogDescription>
           </DialogHeader>

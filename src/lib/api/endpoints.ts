@@ -26,12 +26,10 @@ import {
   LoginCredentials,
   AuthResponse,
   PaginatedResponse,
-  UpgradeRequest,
-  PlanCatalog,
   SubscriptionPayment,
-  UpgradeResponse,
-  DowngradeRequest,
-  DowngradeResponse,
+  PlatformPlan,
+  PlatformPlanInput,
+  SetPlanOverridesInput,
   PlanTier,
   SubscriptionStatus,
   FeatureFlags,
@@ -226,7 +224,9 @@ function normalizeSubscription(raw: any): Subscription {
     return { ...raw, ...(specialtyPricing ? { specialtyPricing } : {}) } as Subscription;
   }
 
-  const planType = mapPlanType(raw.planType);
+  // The API sends the plan the clinic is on; the tier only keeps the legacy screens working.
+  const planCode: string | undefined = raw.plan?.code ?? raw.planType;
+  const planType = mapPlanType(planCode ?? '');
   const limits: ResourceLimits = {
     maxPsychologists: raw.seatsPsychologistsMax ?? 1,
     maxAssistants: null,
@@ -262,8 +262,8 @@ function normalizeSubscription(raw: any): Subscription {
   const plan: Plan = {
     id: `plan-${planType.toLowerCase()}`,
     planType,
-    name: planType,
-    description: `${planType} plan`,
+    name: raw.plan?.name ?? planType,
+    description: raw.plan?.name ?? `${planType} plan`,
     basePrice: Math.round(Number(raw.basePrice ?? 0) * 100),
     currency: typeof raw.currency === 'string' ? raw.currency : 'USD',
     billingInterval: 'MONTHLY',
@@ -277,7 +277,7 @@ function normalizeSubscription(raw: any): Subscription {
     id: raw.id,
     tenantId: raw.tenantId,
     plan,
-    apiPlanType: raw.planType,
+    apiPlanType: planCode,
     status: mapSubscriptionStatus(raw.status),
     trialEndsAt: raw.trialEndsAt ?? null,
     currentPeriodStart: raw.currentPeriodStart ?? raw.startDate ?? new Date().toISOString(),
@@ -455,6 +455,15 @@ export const platformApi = {
     apiClient.patch<PlatformTenantDetail>(API_ENDPOINTS.PLATFORM_TENANT(id), input),
   changePlan: (id: string, input: ChangePlatformPlanInput) =>
     apiClient.patch<PlatformTenantDetail>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/subscription`, input),
+  setPlanOverrides: (id: string, input: SetPlanOverridesInput) =>
+    apiClient.put<PlatformTenantDetail>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/subscription/overrides`, input),
+  listPlans: () => apiClient.get<PlatformPlan[]>(API_ENDPOINTS.PLATFORM_PLANS),
+  createPlan: (input: PlatformPlanInput) =>
+    apiClient.post<PlatformPlan>(API_ENDPOINTS.PLATFORM_PLANS, input),
+  updatePlan: (id: string, input: Partial<PlatformPlanInput>) =>
+    apiClient.patch<PlatformPlan>(`${API_ENDPOINTS.PLATFORM_PLANS}/${id}`, input),
+  setPlanArchived: (id: string, archived: boolean) =>
+    apiClient.post<PlatformPlan>(`${API_ENDPOINTS.PLATFORM_PLANS}/${id}/${archived ? 'archive' : 'restore'}`),
   suspendTenant: (id: string, reason: string) =>
     apiClient.post<PlatformTenantDetail>(`${API_ENDPOINTS.PLATFORM_TENANT(id)}/suspend`, { reason }),
   reactivateTenant: (id: string) =>
@@ -1214,19 +1223,9 @@ export const subscriptionApi = {
       } as UsageMetrics;
     }),
 
-  // Plans, prices and limits. Every screen that shows them reads this catalog.
-  getPlans: () => apiClient.get<PlanCatalog>(API_ENDPOINTS.SUBSCRIPTION_PLANS(getTenantId())),
-
+  // Only the platform changes the plan: the clinic sees its charges and pays them through support.
   getPayments: () =>
     apiClient.get<SubscriptionPayment[]>(API_ENDPOINTS.SUBSCRIPTION_PAYMENTS(getTenantId())),
-
-  // Registers a pending payment; the plan changes when support confirms it.
-  upgrade: (data: UpgradeRequest) =>
-    apiClient.post<UpgradeResponse>(API_ENDPOINTS.SUBSCRIPTION_UPGRADE(getTenantId()), data),
-
-  // Scheduled for the end of the current period.
-  downgrade: (data: DowngradeRequest) =>
-    apiClient.post<DowngradeResponse>(API_ENDPOINTS.SUBSCRIPTION_DOWNGRADE(getTenantId()), data),
 };
 
 // ==========================================

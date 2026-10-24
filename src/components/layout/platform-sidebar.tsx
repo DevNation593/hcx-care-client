@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, ChevronLeft, ChevronRight, CreditCard, LayoutDashboard } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, CreditCard, Layers, LayoutDashboard } from 'lucide-react';
 import { LogoMark } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { ROUTES } from '@/lib/constants';
@@ -13,6 +13,7 @@ import { useUIStore } from '@/store/uiStore';
 const NAVIGATION = [
   { name: 'Resumen', href: ROUTES.PLATFORM, icon: LayoutDashboard, exact: true },
   { name: 'Consultorios', href: ROUTES.PLATFORM_TENANTS, icon: Building2, exact: false },
+  { name: 'Planes', href: ROUTES.PLATFORM_PLANS, icon: Layers, exact: false },
   { name: 'Pagos', href: ROUTES.PLATFORM_PAYMENTS, icon: CreditCard, exact: false },
 ];
 

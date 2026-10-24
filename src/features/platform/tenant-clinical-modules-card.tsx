@@ -33,9 +33,9 @@ export function TenantClinicalModulesCard({ tenantId, detail }: { tenantId: stri
     : [];
   const hasInactiveSelected = inactiveAssigned.some((specialty) => selected.includes(specialty.code));
   const { basePrice, includedSpecialties, specialtyPrice, currency } = detail.subscription;
-  const previousExtras = Math.max(0, saved.length - includedSpecialties);
+  // The plan price plus the specialties beyond the ones it includes.
   const nextExtras = Math.max(0, selected.length - includedSpecialties);
-  const estimatedTotal = basePrice + (nextExtras - previousExtras) * specialtyPrice;
+  const estimatedTotal = basePrice + nextExtras * specialtyPrice;
   const formattedTotal = new Intl.NumberFormat('es-EC', { style: 'currency', currency }).format(estimatedTotal);
 
   return (
