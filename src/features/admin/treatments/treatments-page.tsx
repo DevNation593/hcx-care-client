@@ -19,7 +19,12 @@ import {
   useTreatments,
   useUpdateTreatment,
 } from '@/hooks/useTreatments';
-import type { TreatmentVersion, TreatmentVersionInput, TreatmentWithCurrent } from '@/types/treatments';
+import type {
+  TreatmentUpdate,
+  TreatmentVersion,
+  TreatmentVersionInput,
+  TreatmentWithCurrent,
+} from '@/types/treatments';
 import { formatDate } from '@/lib/utils';
 import type { ApiError } from '@/types';
 import { TreatmentVersionForm, type ChoicesStatus } from './treatment-version-form';
@@ -27,10 +32,107 @@ import { TreatmentVersionForm, type ChoicesStatus } from './treatment-version-fo
 type Dialogs =
   | null
   | { mode: 'create' }
+  | { mode: 'edit'; treatment: TreatmentWithCurrent }
   | { mode: 'version'; treatment: TreatmentWithCurrent }
   | { mode: 'history'; treatment: TreatmentWithCurrent };
 
 const money = new Intl.NumberFormat('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Same rule as the API: a product code the invoicing provider accepts, with room for its suffix.
+const CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{0,19}$/;
+
+type FieldErrors = { name: string | null; code: string | null };
+
+function fieldErrors(name: string, code: string): FieldErrors {
+  return {
+    name: name.length < 2 ? 'El nombre debe tener al menos 2 caracteres' : null,
+    code: CODE_PATTERN.test(code)
+      ? null
+      : 'El código debe tener de 1 a 20 letras, números, punto, guion o guion bajo, sin espacios',
+  };
+}
+
+interface Fields {
+  name: string;
+  code: string;
+  category: string;
+}
+
+/** Name, code and category of a treatment, shared by the create and edit dialogs. */
+function TreatmentFields({
+  fields,
+  errors,
+  onChange,
+}: {
+  fields: Fields;
+  errors: FieldErrors;
+  onChange: (field: keyof Fields, value: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="md:col-span-2">
+        <Label htmlFor="treatment-name" required>
+          Nombre
+        </Label>
+        <Input
+          id="treatment-name"
+          className="h-11"
+          value={fields.name}
+          maxLength={120}
+          error={errors.name ?? undefined}
+          onChange={(event) => onChange('name', event.target.value)}
+        />
+      </div>
+      <div>
+        <Label htmlFor="treatment-code" required>
+          Código
+        </Label>
+        <Input
+          id="treatment-code"
+          className="h-11 font-mono"
+          value={fields.code}
+          maxLength={20}
+          placeholder="TOX-01"
+          aria-describedby="treatment-code-hint"
+          error={errors.code ?? undefined}
+          onChange={(event) => onChange('code', event.target.value.toUpperCase())}
+        />
+        <p id="treatment-code-hint" className="mt-1 text-xs text-muted-foreground">
+          Código principal con el que sale en la factura.
+        </p>
+      </div>
+      <div>
+        <Label htmlFor="treatment-category">Categoría (opcional)</Label>
+        <Input
+          id="treatment-category"
+          className="h-11"
+          value={fields.category}
+          maxLength={120}
+          onChange={(event) => onChange('category', event.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** The state of TreatmentFields; a change clears the error of that field. */
+function useTreatmentFields(initial: Fields) {
+  const [fields, setFields] = useState(initial);
+  const [errors, setErrors] = useState<FieldErrors>({ name: null, code: null });
+  const onChange = (field: keyof Fields, value: string) => {
+    setFields((current) => ({ ...current, [field]: value }));
+    if (field !== 'category') setErrors((current) => ({ ...current, [field]: null }));
+  };
+  /** The trimmed values, or null after showing why they cannot be saved. */
+  const validated = () => {
+    const name = fields.name.trim();
+    const code = fields.code.trim();
+    const found = fieldErrors(name, code);
+    setErrors(found);
+    return found.name || found.code ? null : { name, code, category: fields.category.trim() };
+  };
+  return { fields, errors, onChange, validated };
+}
 
 function requirementsSummary({ requirements: r }: Pick<TreatmentVersion, 'requirements'>): string {
   return [
@@ -69,19 +171,13 @@ function CreateTreatmentDialog({
   onClose: () => void;
 }) {
   const create = useCreateTreatment();
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState('');
-  const [nameError, setNameError] = useState<string | null>(null);
+  const form = useTreatmentFields({ name: '', code: '', category: '' });
 
   const submit = (version: TreatmentVersionInput) => {
-    if (name.trim().length < 2) {
-      setNameError('El nombre debe tener al menos 2 caracteres');
-      return;
-    }
-    create.mutate(
-      { name: name.trim(), ...(category.trim() ? { category: category.trim() } : {}), version },
-      { onSuccess: onClose },
-    );
+    const values = form.validated();
+    if (!values) return;
+    const { category, ...rest } = values;
+    create.mutate({ ...rest, ...(category ? { category } : {}), version }, { onSuccess: onClose });
   };
 
   return (
@@ -96,40 +192,61 @@ function CreateTreatmentDialog({
           <DialogTitle id="create-treatment-title">Nuevo tratamiento</DialogTitle>
           <DialogDescription>El precio y los requisitos quedan en la versión 1.</DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <Label htmlFor="treatment-name" required>
-              Nombre
-            </Label>
-            <Input
-              id="treatment-name"
-              className="h-11"
-              value={name}
-              maxLength={120}
-              error={nameError ?? undefined}
-              onChange={(event) => {
-                setName(event.target.value);
-                setNameError(null);
-              }}
-            />
-          </div>
-          <div>
-            <Label htmlFor="treatment-category">Categoría (opcional)</Label>
-            <Input
-              id="treatment-category"
-              className="h-11"
-              value={category}
-              maxLength={120}
-              onChange={(event) => setCategory(event.target.value)}
-            />
-          </div>
-        </div>
+        <TreatmentFields fields={form.fields} errors={form.errors} onChange={form.onChange} />
         <TreatmentVersionForm
           {...choices}
           issues={create.error?.issues?.map((issue) => issue.message)}
           submitting={create.isPending}
           onSubmit={submit}
         />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditTreatmentDialog({ treatment, onClose }: { treatment: TreatmentWithCurrent; onClose: () => void }) {
+  const update = useUpdateTreatment();
+  const form = useTreatmentFields({
+    name: treatment.name,
+    code: treatment.code,
+    category: treatment.category ?? '',
+  });
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const values = form.validated();
+    if (!values) return;
+    const category = values.category || null;
+    // Only what changed, so an untouched name never trips over a concurrent rename.
+    const data: TreatmentUpdate = {
+      ...(values.name !== treatment.name ? { name: values.name } : {}),
+      ...(values.code !== treatment.code ? { code: values.code } : {}),
+      ...(category !== treatment.category ? { category } : {}),
+    };
+    if (Object.keys(data).length === 0) {
+      onClose();
+      return;
+    }
+    update.mutate({ id: treatment.id, data }, { onSuccess: onClose });
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !update.isPending && onClose()}>
+      <DialogContent role="dialog" aria-modal="true" aria-labelledby="edit-treatment-title" className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle id="edit-treatment-title">Editar {treatment.name}</DialogTitle>
+          <DialogDescription>
+            Un código nuevo se usa en las facturas que se emitan desde ahora; las ya emitidas no cambian.
+          </DialogDescription>
+        </DialogHeader>
+        <form className="space-y-4" onSubmit={submit} noValidate>
+          <TreatmentFields fields={form.fields} errors={form.errors} onChange={form.onChange} />
+          <div className="flex justify-end">
+            <Button type="submit" className="min-h-[44px]" disabled={update.isPending}>
+              Guardar cambios
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -298,6 +415,9 @@ export function TreatmentsPage({ canManage }: { canManage: boolean }) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium">{treatment.name}</p>
+                      <Badge variant="outline" className="font-mono" title="Código en la factura">
+                        {treatment.code}
+                      </Badge>
                       <Badge variant={treatment.isActive ? 'success' : 'secondary'}>
                         {treatment.isActive ? 'Activo' : 'Inactivo'}
                       </Badge>
@@ -328,6 +448,14 @@ export function TreatmentsPage({ canManage }: { canManage: boolean }) {
                     </Button>
                     {canManage && (
                       <>
+                        <Button
+                          variant="ghost"
+                          className="min-h-[44px]"
+                          onClick={() => setDialog({ mode: 'edit', treatment })}
+                          aria-label={`Editar ${treatment.name}`}
+                        >
+                          Editar
+                        </Button>
                         <Button
                           variant="outline"
                           className="min-h-[44px]"
@@ -360,6 +488,9 @@ export function TreatmentsPage({ canManage }: { canManage: boolean }) {
       {dialog?.mode === 'history' && <HistoryDialog treatment={dialog.treatment} onClose={() => setDialog(null)} />}
       {canManage && dialog?.mode === 'create' && (
         <CreateTreatmentDialog choices={choices} onClose={() => setDialog(null)} />
+      )}
+      {canManage && dialog?.mode === 'edit' && (
+        <EditTreatmentDialog treatment={dialog.treatment} onClose={() => setDialog(null)} />
       )}
       {canManage && dialog?.mode === 'version' && (
         <NewVersionDialog treatment={dialog.treatment} choices={choices} onClose={() => setDialog(null)} />

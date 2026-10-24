@@ -102,6 +102,8 @@ export interface Treatment {
   id: string;
   tenantId: string;
   name: string;
+  /** The main code of its invoice lines; uppercase and unique in the clinic. */
+  code: string;
   category: string | null;
   specialtyId: string | null;
   isActive: boolean;
@@ -143,6 +145,7 @@ export interface TreatmentVersionInput {
 
 export interface TreatmentInput {
   name: string;
+  code: string;
   category?: string;
   specialtyId?: string;
   version: TreatmentVersionInput;
@@ -150,6 +153,7 @@ export interface TreatmentInput {
 
 export interface TreatmentUpdate {
   name?: string;
+  code?: string;
   category?: string | null;
   specialtyId?: string | null;
   isActive?: boolean;
