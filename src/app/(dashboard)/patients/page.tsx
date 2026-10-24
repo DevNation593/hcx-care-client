@@ -206,7 +206,7 @@ function PatientsPageContent() {
 
 export default function PatientsPage() {
   return (
-    <SectionGate section="core.patients">
+    <SectionGate section="core.patients.records">
       <PatientsPageContent />
     </SectionGate>
   );

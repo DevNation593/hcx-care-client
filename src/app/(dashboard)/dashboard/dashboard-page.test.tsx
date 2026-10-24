@@ -10,7 +10,7 @@ vi.mock('@/lib/api/client', () => ({ apiClient: http }));
 vi.mock('@/hooks/useSpecialties', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/hooks/useSpecialties')>()),
   useTenantModules: () => ({
-    data: ['core.calendar', 'core.patients', 'core.tasks'].map((moduleKey) => ({ moduleKey, enabled: true })),
+    data: ['core.agenda', 'core.agenda.calendar', 'core.agenda.tasks', 'core.patients', 'core.patients.records'].map((moduleKey) => ({ moduleKey, enabled: true })),
     isPending: false,
     isError: false,
     refetch: vi.fn(),

@@ -163,7 +163,7 @@ function BillingPageContent() {
 
 export default function BillingPage() {
   return (
-    <SectionGate section="core.billing">
+    <SectionGate section="core.billing.invoicing">
       <BillingPageContent />
     </SectionGate>
   );

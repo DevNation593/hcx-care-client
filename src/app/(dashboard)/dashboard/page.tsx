@@ -30,14 +30,14 @@ import { useSections } from '@/hooks/useSections';
 export default function DashboardPage() {
   const queryClient = useQueryClient();
   const { isEnabled } = useSections();
-  const calendarOn = isEnabled('core.calendar');
+  const calendarOn = isEnabled('core.agenda.calendar');
   // An assistant works on the calendar of one professional at a time, so there is no
   // summary of every calendar to show them here.
   const isAssistant = useAuthStore((state) => state.user?.role) === UserRole.ASISTENTE;
   const appointmentsOn = calendarOn && !isAssistant;
-  const tasksOn = isEnabled('core.tasks');
-  const patientsOn = isEnabled('core.patients');
-  const teamOn = isEnabled('core.team');
+  const tasksOn = isEnabled('core.agenda.tasks');
+  const patientsOn = isEnabled('core.patients.records');
+  const teamOn = isEnabled('core.admin.team');
   const today = new Date().toISOString().split('T')[0];
 
   // Get start of week (Monday)

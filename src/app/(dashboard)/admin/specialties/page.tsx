@@ -13,7 +13,7 @@ export default function SpecialtiesPage() {
   // The menu entry is hidden for other roles; this covers direct navigation.
   if (!canManage) return <RestrictedAccess />;
   return (
-    <SectionGate section="core.specialties">
+    <SectionGate section="core.clinical.specialties">
       <SpecialtyManager />
     </SectionGate>
   );

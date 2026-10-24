@@ -89,7 +89,7 @@ export function StorageUsageWidget() {
   const { data: subscription } = useSubscription();
   const { data: usage } = useUsageMetrics();
 
-  if (!isEnabled('core.storage') || !subscription || !usage) return null;
+  if (!isEnabled('core.patients.files') || !subscription || !usage) return null;
 
   const usedGB = usage.storage.usedGB;
   const limitGB = subscription.plan.limits.storageGB;

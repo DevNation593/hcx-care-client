@@ -12,7 +12,7 @@ export default function ReportsPage() {
   // The report covers the whole clinic: it is for the account holder.
   if (!isMasterRole(user.role)) return <RestrictedAccess />;
   return (
-    <SectionGate section="core.calendar">
+    <SectionGate section="core.admin.reports">
       <ActivityReport />
     </SectionGate>
   );

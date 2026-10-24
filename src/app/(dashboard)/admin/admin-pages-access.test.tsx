@@ -66,9 +66,9 @@ describe('administration pages opened by URL', () => {
 
 describe('administration pages with the section off', () => {
   it.each([
-    ['team', TeamPage, 'core.team'],
-    ['storage', StorageManagementPage, 'core.storage'],
-    ['specialties', SpecialtiesPage, 'core.specialties'],
+    ['team', TeamPage, 'core.admin.team'],
+    ['storage', StorageManagementPage, 'core.patients.files'],
+    ['specialties', SpecialtiesPage, 'core.clinical.specialties'],
   ] as const)('%s tells the account holder the section is not available', (_name, Page, key) => {
     useAuthStore.setState({ user: { ...professional, role: UserRole.MASTER } });
     sections.rows = [{ moduleKey: key, enabled: false }];
