@@ -26,6 +26,7 @@ vi.mock('@/hooks/useConsentTemplates', () => ({ useConsentTemplates: () => hooks
 const treatment = {
   id: 'tr-1',
   name: 'Toxina botulínica',
+  code: 'TOX-01',
   category: 'Estética',
   isActive: true,
   currentVersion: 2,
@@ -75,6 +76,7 @@ describe('TreatmentsPage', () => {
   it('lists the catalog with price, duration and requirements', () => {
     render(<TreatmentsPage canManage />);
     expect(screen.getByText('Toxina botulínica')).toBeInTheDocument();
+    expect(screen.getByText('TOX-01')).toBeInTheDocument();
     expect(screen.getByText(/Precio 120,50/)).toBeInTheDocument();
     expect(screen.getByText(/Consentimiento \(365 días\)/)).toBeInTheDocument();
   });
@@ -85,6 +87,22 @@ describe('TreatmentsPage', () => {
     expect(screen.queryByRole('button', { name: 'Nuevo tratamiento' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Nueva versión/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Desactivar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Editar/ })).not.toBeInTheDocument();
+  });
+
+  it('edits the code and sends only what changed', () => {
+    render(<TreatmentsPage canManage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Toxina botulínica' }));
+    expect(screen.getByLabelText(/^Nombre/)).toHaveValue('Toxina botulínica');
+
+    fireEvent.change(screen.getByLabelText(/^Código/), { target: { value: 'tox 2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(screen.getByText(/El código debe tener de 1 a 20/)).toBeInTheDocument();
+    expect(hooks.update).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(/^Código/), { target: { value: 'tox-02' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(hooks.update).toHaveBeenCalledWith({ id: 'tr-1', data: { code: 'TOX-02' } }, expect.anything());
   });
 
   it('deactivates a treatment', () => {
@@ -113,18 +131,21 @@ describe('TreatmentsPage', () => {
     );
   });
 
-  it('asks for a name before creating', () => {
+  it('asks for a name and a code before creating', () => {
     render(<TreatmentsPage canManage />);
     fireEvent.click(screen.getByRole('button', { name: 'Nuevo tratamiento' }));
     fireEvent.change(screen.getByLabelText(/^Precio/), { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar versión' }));
     expect(screen.getByText('El nombre debe tener al menos 2 caracteres')).toBeInTheDocument();
+    expect(screen.getByText(/El código debe tener de 1 a 20/)).toBeInTheDocument();
     expect(hooks.create).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: ' Relleno ' } });
+    fireEvent.change(screen.getByLabelText(/^Código/), { target: { value: 'rel-01' } });
+    expect(screen.getByLabelText(/^Código/)).toHaveValue('REL-01');
     fireEvent.click(screen.getByRole('button', { name: 'Guardar versión' }));
     expect(hooks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Relleno', version: expect.objectContaining({ price: 10 }) }),
+      expect.objectContaining({ name: 'Relleno', code: 'REL-01', version: expect.objectContaining({ price: 10 }) }),
       expect.anything(),
     );
   });
