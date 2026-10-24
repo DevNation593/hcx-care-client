@@ -9,6 +9,10 @@ interface SectionChecklistProps {
   value: SectionKey[];
   onChange: (next: SectionKey[]) => void;
   disabled?: boolean;
+  /** Keys set apart from the plan for this clinic, marked as such. */
+  overridden?: SectionKey[];
+  /** Overrides the legend, e.g. on a plan, where modules are what it includes. */
+  legend?: string;
 }
 
 /** A module works with its own key; a submodule also needs its module's. */
@@ -50,7 +54,7 @@ function withoutBrokenDependents(catalog: Catalog, keys: Set<SectionKey>): Set<S
   return result;
 }
 
-export function SectionChecklist({ catalog, value, onChange, disabled }: SectionChecklistProps) {
+export function SectionChecklist({ catalog, value, onChange, disabled, overridden = [], legend = 'Módulos habilitados' }: SectionChecklistProps) {
   const selected = new Set(value);
   const modules = catalog.filter((section) => !section.parent);
   const submodulesOf = (key: SectionKey) => catalog.filter((section) => section.parent === key);
@@ -74,18 +78,19 @@ export function SectionChecklist({ catalog, value, onChange, disabled }: Section
 
   return (
     <fieldset className="space-y-3" disabled={disabled}>
-      <legend className="font-medium">Módulos habilitados</legend>
+      <legend className="font-medium">{legend}</legend>
       {modules.map((module) => {
         const moduleOn = selected.has(module.key);
         const children = submodulesOf(module.key);
         return (
           <div key={module.key} className="rounded-md border p-3">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
               <label className="flex cursor-pointer items-center gap-3 font-medium">
                 <input type="checkbox" checked={moduleOn} onChange={(event) => toggle(module.key, event.target.checked)} />
                 {module.name}
               </label>
-              <span className="text-xs text-muted-foreground">
+              {overridden.includes(module.key) && <span className="text-xs text-orange-700">Ajuste</span>}
+              <span className="ml-auto text-xs text-muted-foreground">
                 {children.filter((child) => selected.has(child.key)).length}/{children.length}
               </span>
             </div>
@@ -102,6 +107,7 @@ export function SectionChecklist({ catalog, value, onChange, disabled }: Section
                       {child.name}
                     </label>
                     {child.healthOnly && <span className="text-xs text-muted-foreground">(solo salud)</span>}
+                    {overridden.includes(child.key) && <span className="text-xs text-orange-700">Ajuste</span>}
                   </li>
                 ))}
               </ul>

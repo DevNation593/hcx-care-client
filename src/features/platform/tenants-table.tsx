@@ -18,12 +18,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { usePlatformTenants } from '@/hooks/usePlatform';
+import { usePlatformPlans, usePlatformTenants } from '@/hooks/usePlatform';
 import { ROUTES } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
-import type { ApiPlanType, ApiSubscriptionStatus, PlatformTenantListParams, PlatformTenantRow } from '@/types';
+import type { ApiSubscriptionStatus, PlatformTenantListParams, PlatformTenantRow } from '@/types';
 import {
-  PLAN_LABELS,
   SUBSCRIPTION_STATUS_LABELS,
   SUSPENDED_LABEL,
   tenantStatusLabel,
@@ -66,7 +65,8 @@ function statusVariant(row: PlatformTenantRow): 'success' | 'warning' | 'destruc
 export function TenantsTable() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [planType, setPlanType] = useState<ApiPlanType | ''>('');
+  const [planId, setPlanId] = useState('');
+  const plans = usePlatformPlans();
   const [status, setStatus] = useState<StatusFilter>('');
   const [page, setPage] = useState(1);
 
@@ -81,7 +81,7 @@ export function TenantsTable() {
 
   const params: PlatformTenantListParams = { page, pageSize: PAGE_SIZE };
   if (search.trim()) params.search = search.trim();
-  if (planType) params.planType = planType;
+  if (planId) params.planId = planId;
   if (status === SUSPENDED) params.isActive = false;
   else if (status) params.status = status;
 
@@ -111,16 +111,16 @@ export function TenantsTable() {
             <select
               id="tenant-plan"
               className={selectClass}
-              value={planType}
+              value={planId}
               onChange={(event) => {
-                setPlanType(event.target.value as ApiPlanType | '');
+                setPlanId(event.target.value);
                 setPage(1);
               }}
             >
               <option value="">Todos</option>
-              {(Object.keys(PLAN_LABELS) as ApiPlanType[]).map((plan) => (
-                <option key={plan} value={plan}>
-                  {PLAN_LABELS[plan]}
+              {(plans.data ?? []).map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.name}
                 </option>
               ))}
             </select>
@@ -209,7 +209,7 @@ export function TenantsTable() {
                       <span className="text-muted-foreground">Sin responsable</span>
                     )}
                   </TableCell>
-                  <TableCell>{tenant.planType ? PLAN_LABELS[tenant.planType] : 'Sin plan'}</TableCell>
+                  <TableCell>{tenant.plan?.name ?? 'Sin plan'}</TableCell>
                   <TableCell>
                     <Badge variant={statusVariant(tenant)}>{tenantStatusLabel(tenant)}</Badge>
                   </TableCell>

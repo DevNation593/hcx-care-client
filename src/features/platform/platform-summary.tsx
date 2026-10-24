@@ -8,7 +8,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePlatformSummary } from '@/hooks/usePlatform';
 import { ROUTES } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
-import { PLAN_LABELS } from './labels';
 
 function Counter({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
@@ -131,7 +130,7 @@ export function PlatformSummary() {
                     {tenant.name}
                   </Link>
                   <span className="text-muted-foreground">
-                    {tenant.planType ? PLAN_LABELS[tenant.planType] : 'Sin plan'} · {formatDate(tenant.createdAt, 'PP')}
+                    {tenant.planName ?? 'Sin plan'} · {formatDate(tenant.createdAt, 'PP')}
                   </span>
                 </li>
               ))}

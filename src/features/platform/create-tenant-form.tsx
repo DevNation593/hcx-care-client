@@ -9,20 +9,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useCreatePlatformTenant, useSectionCatalog } from '@/hooks/usePlatform';
+import { useCreatePlatformTenant, usePlatformPlans, useSectionCatalog } from '@/hooks/usePlatform';
 import { useSpecialtyCatalog } from '@/hooks/useSpecialties';
 import { ROUTES } from '@/lib/constants';
 import { createPlatformTenantSchema } from '@/lib/validations/schemas';
-import { TenantType, type ApiPlanType, type CreatePlatformTenantInput, type SectionKey } from '@/types';
+import { TenantType, type CreatePlatformTenantInput, type PlatformPlan, type SectionKey } from '@/types';
 import { generatePassword } from './generate-password';
-import { PLAN_LABELS } from './labels';
+import { formatMoney } from './labels';
+import { planDefaults } from './plan-defaults';
 import { SectionChecklist } from './section-checklist';
 import { TemporaryPasswordNotice } from './temporary-password-notice';
-
-const PLANS_BY_TYPE: Record<TenantType, ApiPlanType[]> = {
-  [TenantType.PERSONAL]: ['TRIAL', 'PERSONAL_BASIC', 'PERSONAL_PRO'],
-  [TenantType.CLINIC]: ['TRIAL', 'CLINIC_BASIC', 'CLINIC_PRO', 'CLINIC_ENTERPRISE'],
-};
 
 const TYPE_LABELS: Record<TenantType, string> = {
   [TenantType.PERSONAL]: 'Personal',
@@ -41,7 +37,8 @@ const DEFAULT_VALUES: CreatePlatformTenantInput = {
   masterLastName: '',
   masterEmail: '',
   temporaryPassword: '',
-  planType: 'TRIAL',
+  planId: '',
+  trialDays: undefined,
   specialtyCodes: [],
   sections: [],
 };
@@ -60,13 +57,15 @@ interface CreatedTenant {
 export function CreateTenantForm() {
   const router = useRouter();
   const sectionCatalog = useSectionCatalog();
+  const plans = usePlatformPlans();
   const specialties = useSpecialtyCatalog();
   const createTenant = useCreatePlatformTenant();
   const [created, setCreated] = useState<CreatedTenant | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [pendingDefaults, setPendingDefaults] = useState<SectionKey[] | null>(null);
-  // True once the admin ticks a box by hand: plan changes then ask before replacing it.
+  // True once the admin ticks a box by hand: plan changes then ask before replacing it, and the
+  // selection is sent; until then the API applies what the plan gives.
   const sectionsEdited = useRef(false);
   const preselected = useRef(false);
 
@@ -75,19 +74,30 @@ export function CreateTenantForm() {
     defaultValues: DEFAULT_VALUES,
   });
   const tenantType = watch('tenantType');
-  const planType = watch('planType');
+  const planId = watch('planId');
   const sections = watch('sections') ?? [];
   const specialtyCodes = watch('specialtyCodes');
 
-  const defaultsFor = (type: TenantType, plan: ApiPlanType): SectionKey[] =>
-    sectionCatalog.data?.defaults.find((entry) => entry.tenantType === type && entry.planType === plan)?.sections ?? [];
+  const plansOf = (type: TenantType): PlatformPlan[] =>
+    (plans.data ?? []).filter((plan) => plan.tenantType === type && !plan.archivedAt);
+  const defaultsFor = (id: string, codes: string[]): SectionKey[] => {
+    const plan = plans.data?.find((entry) => entry.id === id);
+    return plan && sectionCatalog.data ? planDefaults(plan.modules, sectionCatalog.data, codes) : [];
+  };
+
+  function preselect(type: TenantType) {
+    const first = plansOf(type)[0];
+    setValue('planId', first?.id ?? '');
+    setValue('trialDays', first?.trialDays);
+    setValue('sections', first ? defaultsFor(first.id, []) : []);
+  }
 
   useEffect(() => {
-    if (!sectionCatalog.data || preselected.current) return;
+    if (!sectionCatalog.data || !plans.data || preselected.current) return;
     preselected.current = true;
-    setValue('sections', defaultsFor(DEFAULT_VALUES.tenantType, DEFAULT_VALUES.planType));
+    preselect(DEFAULT_VALUES.tenantType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sectionCatalog.data, setValue]);
+  }, [sectionCatalog.data, plans.data, setValue]);
 
   function applySections(next: SectionKey[]) {
     setValue('sections', next);
@@ -95,30 +105,36 @@ export function CreateTenantForm() {
     setPendingDefaults(null);
   }
 
-  function changePlan(type: TenantType, plan: ApiPlanType) {
+  function changePlan(type: TenantType, id: string) {
     setValue('tenantType', type);
-    setValue('planType', plan);
-    const defaults = defaultsFor(type, plan);
+    setValue('planId', id, { shouldValidate: !!id });
+    setValue('trialDays', plans.data?.find((plan) => plan.id === id)?.trialDays);
+    const defaults = defaultsFor(id, specialtyCodes);
     if (!sectionsEdited.current) applySections(defaults);
     else if (!sameKeys(defaults, sections)) setPendingDefaults(defaults);
   }
 
   function changeType(type: TenantType) {
-    changePlan(type, PLANS_BY_TYPE[type].includes(planType) ? planType : 'TRIAL');
+    changePlan(type, plansOf(type)[0]?.id ?? '');
   }
 
   function toggleSpecialty(code: string, checked: boolean) {
     const next = checked ? [...specialtyCodes, code] : specialtyCodes.filter((value) => value !== code);
     setValue('specialtyCodes', next, { shouldValidate: true });
+    // Health-only submodules depend on the specialties while the selection still follows the plan.
+    if (!sectionsEdited.current) setValue('sections', defaultsFor(planId, next));
   }
 
   const submit = handleSubmit(async (values) => {
     setSubmitError(null);
-    const { phone, address, ...rest } = values;
+    const { phone, address, sections: chosen, trialDays, ...rest } = values;
     const payload: CreatePlatformTenantInput = {
       ...rest,
       ...(phone ? { phone } : {}),
       ...(address ? { address } : {}),
+      ...(trialDays !== undefined ? { trialDays } : {}),
+      // Untouched, the API turns on what the plan gives; edited, the differences become overrides.
+      ...(sectionsEdited.current ? { sections: chosen } : {}),
     };
     try {
       const result = await createTenant.mutateAsync(payload);
@@ -126,7 +142,8 @@ export function CreateTenantForm() {
       createTenant.reset(); // drops the mutation (and its variables) from the mutation cache
       setShowPassword(false);
       sectionsEdited.current = false;
-      reset({ ...DEFAULT_VALUES, sections: defaultsFor(DEFAULT_VALUES.tenantType, DEFAULT_VALUES.planType) });
+      reset(DEFAULT_VALUES);
+      preselect(DEFAULT_VALUES.tenantType);
     } catch (error) {
       const message = (error as { message?: unknown } | null)?.message;
       createTenant.reset(); // a failed mutation would keep the password in its variables
@@ -185,10 +202,28 @@ export function CreateTenantForm() {
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="planType">Plan</Label>
-              <select id="planType" className="h-10 w-full rounded-md border px-3" value={planType} onChange={(event) => changePlan(tenantType, event.target.value as ApiPlanType)}>
-                {PLANS_BY_TYPE[tenantType].map((plan) => <option key={plan} value={plan}>{PLAN_LABELS[plan]}</option>)}
+              <Label htmlFor="planId">Plan</Label>
+              <select id="planId" className="h-10 w-full rounded-md border px-3" value={planId} onChange={(event) => changePlan(tenantType, event.target.value)} aria-invalid={!!errors.planId} aria-describedby={errors.planId ? 'planId-error' : undefined}>
+                {plansOf(tenantType).length === 0 && <option value="">Sin planes para este tipo</option>}
+                {plansOf(tenantType).map((plan) => (
+                  <option key={plan.id} value={plan.id}>{plan.name} · {formatMoney(plan.basePrice, plan.currency)}/mes</option>
+                ))}
               </select>
+              {plans.isError && <p role="alert">No se pudieron cargar los planes.</p>}
+              {errors.planId && <p id="planId-error" role="alert" className="text-sm text-destructive">{errors.planId.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="trialDays">Días de prueba</Label>
+              <Input
+                id="trialDays"
+                type="number"
+                min={0}
+                aria-invalid={!!errors.trialDays}
+                aria-describedby={errors.trialDays ? 'trialDays-error' : 'trialDays-hint'}
+                {...register('trialDays', { setValueAs: (value: string) => (value === '' ? undefined : Number(value)) })}
+              />
+              <p id="trialDays-hint" className="text-xs text-muted-foreground">0 empieza a cobrar el plan desde hoy.</p>
+              {errors.trialDays && <p id="trialDays-error" role="alert" className="text-sm text-destructive">{errors.trialDays.message}</p>}
             </div>
           </div>
 
@@ -243,7 +278,7 @@ export function CreateTenantForm() {
 
           {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
 
-          <Button type="submit" loading={createTenant.isPending} disabled={!sectionCatalog.data}>Crear consultorio</Button>
+          <Button type="submit" loading={createTenant.isPending} disabled={!sectionCatalog.data || !plans.data}>Crear consultorio</Button>
         </form>
       </CardContent>
 
