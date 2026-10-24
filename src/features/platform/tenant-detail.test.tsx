@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { platformApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
-import { TenantType, type ApiError, type PlatformTenantDetail, type SectionCatalog } from '@/types';
+import { TenantType, type ApiError, type PlatformPlan, type PlatformTenantDetail, type SectionCatalog } from '@/types';
 import { TenantDetail } from './tenant-detail';
 
 vi.mock('next/link', () => ({
@@ -15,6 +15,8 @@ vi.mock('@/lib/api/endpoints', () => ({
     getSectionCatalog: vi.fn(),
     updateTenant: vi.fn(),
     changePlan: vi.fn(),
+    setPlanOverrides: vi.fn(),
+    listPlans: vi.fn(),
     suspendTenant: vi.fn(),
     reactivateTenant: vi.fn(),
     setSections: vi.fn(),
@@ -34,8 +36,38 @@ const catalog: SectionCatalog = {
     { key: 'core.admin', name: 'Actividades', requires: ['core.patients'] },
     { key: 'core.billing', name: 'Facturación', requires: [] },
   ],
-  defaults: [],
+  nonHealthSpecialtyCodes: ['AESTHETICS'],
 };
+
+const plan = (overrides: Partial<PlatformPlan>): PlatformPlan => ({
+  id: 'plan_clinic_basic',
+  code: 'CLINIC_BASIC',
+  name: 'Clínica Básico',
+  description: null,
+  tenantType: TenantType.CLINIC,
+  sortOrder: 30,
+  archivedAt: null,
+  basePrice: 99,
+  pricePerSeat: 15,
+  specialtyPrice: 15,
+  currency: 'USD',
+  seatsIncluded: 3,
+  maxActivePatients: 150,
+  storageGB: 10,
+  monthlyElectronicInvoicesLimit: 50,
+  includedSpecialties: 2,
+  trialDays: 14,
+  modules: ['core.agenda', 'core.patients', 'core.admin', 'core.billing'],
+  clinicsCount: 1,
+  ...overrides,
+});
+
+const plans: PlatformPlan[] = [
+  plan({}),
+  plan({ id: 'plan_clinic_pro', code: 'CLINIC_PRO', name: 'Clínica Pro', basePrice: 199 }),
+  plan({ id: 'plan_clinic_old', code: 'CLINIC_OLD', name: 'Clínica Antiguo', archivedAt: '2026-01-01T00:00:00.000Z' }),
+  plan({ id: 'plan_personal_basic', code: 'PERSONAL_BASIC', name: 'Personal Básico', tenantType: TenantType.PERSONAL }),
+];
 
 const detail: PlatformTenantDetail = {
   tenant: {
@@ -50,26 +82,31 @@ const detail: PlatformTenantDetail = {
   },
   master: { id: 'u-1', firstName: 'Rosa', lastName: 'Paz', email: 'rosa@sol.com', mustChangePassword: false },
   subscription: {
-    planType: 'CLINIC_BASIC',
+    plan: { id: 'plan_clinic_basic', code: 'CLINIC_BASIC', name: 'Clínica Básico' },
     status: 'ACTIVE',
     trialEndsAt: null,
     currentPeriodStart: '2026-01-10T00:00:00.000Z',
     currentPeriodEnd: null,
-    seatsPsychologistsMax: 5,
-    maxActivePatients: 100,
     basePrice: 49,
-    includedSpecialties: 2,
+    pricePerSeat: 15,
     specialtyPrice: 15,
     currency: 'USD',
+    seatsPsychologistsMax: 5,
+    maxActivePatients: 100,
+    storageGB: 40,
+    monthlyElectronicInvoicesLimit: 50,
+    includedSpecialties: 2,
+    overriddenFields: ['basePrice', 'seatsPsychologistsMax', 'maxActivePatients', 'storageGB'],
+    monthlyTotal: 49,
   },
   usage: { seatsPsychologistsUsed: 3, activePatientsCount: 42, monthlyNotificationsSent: 17 },
   specialties: [{ id: 's1', code: 'PSYCHOLOGY', name: 'Psicología' }],
   modules: [{ key: 'psychology.assessments', enabled: true }],
   sections: [
-    { key: 'core.agenda', name: 'Agenda', enabled: true },
-    { key: 'core.patients', name: 'Pacientes', enabled: true },
-    { key: 'core.admin', name: 'Actividades', enabled: false },
-    { key: 'core.billing', name: 'Facturación', enabled: false },
+    { key: 'core.agenda', name: 'Agenda', enabled: true, source: 'PLAN' },
+    { key: 'core.patients', name: 'Pacientes', enabled: true, source: 'PLAN' },
+    { key: 'core.admin', name: 'Actividades', enabled: false, source: 'OVERRIDE' },
+    { key: 'core.billing', name: 'Facturación', enabled: false, source: 'OVERRIDE' },
   ],
 };
 
@@ -102,6 +139,8 @@ beforeEach(() => {
   vi.mocked(platformApi.getSectionCatalog).mockResolvedValue(catalog);
   vi.mocked(platformApi.updateTenant).mockResolvedValue(detail);
   vi.mocked(platformApi.changePlan).mockResolvedValue(detail);
+  vi.mocked(platformApi.setPlanOverrides).mockResolvedValue(detail);
+  vi.mocked(platformApi.listPlans).mockResolvedValue(plans);
   vi.mocked(platformApi.suspendTenant).mockResolvedValue(suspended);
   vi.mocked(platformApi.reactivateTenant).mockResolvedValue(detail);
   vi.mocked(platformApi.setSections).mockResolvedValue(detail);
@@ -142,6 +181,9 @@ describe('TenantDetail', () => {
     expect(screen.getByText('Al día')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Suspender' })).toBeTruthy();
     expect(screen.getByText('42 de 100')).toBeTruthy();
+    // Four values set apart from the plan, and the modules turned off for this clinic.
+    expect(screen.getAllByText('Ajustado')).toHaveLength(4);
+    expect(screen.getAllByText('Ajuste')).toHaveLength(2);
   });
 
   it('saves the account data', async () => {
@@ -160,52 +202,51 @@ describe('TenantDetail', () => {
     );
   });
 
-  it('requires a reason to change the plan and sends the new limits', async () => {
+  it('requires a reason to change the plan and sends the plan and its trial', async () => {
     renderDetail();
     await ready();
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar plan' }));
-    type('Plan', 'CLINIC_PRO');
-    type('Cupos de profesionales', '10');
-    type('Pacientes activos máximos', '300');
+    await screen.findByRole('option', { name: /Clínica Pro/ });
+    type('Plan', 'plan_clinic_pro');
+    type('Días de prueba', '30');
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar cambio' }));
     expect(await screen.findByText('Indica el motivo del cambio')).toBeTruthy();
     expect(platformApi.changePlan).not.toHaveBeenCalled();
 
-    type('Motivo del cambio', 'Pagó el plan anual');
+    type('Motivo del cambio', 'Prueba del plan Pro');
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar cambio' }));
     await waitFor(() =>
       expect(platformApi.changePlan).toHaveBeenCalledWith('t-1', {
-        planType: 'CLINIC_PRO',
-        seatsPsychologistsMax: 10,
-        maxActivePatients: 300,
-        reason: 'Pagó el plan anual',
+        planId: 'plan_clinic_pro',
+        trialDays: 30,
+        reason: 'Prueba del plan Pro',
       }),
     );
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Cambiar plan' })).toBeNull());
   });
 
-  it('only offers the plans of the clinic type', async () => {
+  it('only offers the plans of the clinic type that are not archived', async () => {
     renderDetail();
     await ready();
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar plan' }));
+    await screen.findByRole('option', { name: /Clínica Pro/ });
     const options = within(screen.getByLabelText('Plan')).getAllByRole('option').map((option) => option.getAttribute('value'));
-    expect(options).toEqual(['TRIAL', 'CLINIC_BASIC', 'CLINIC_PRO', 'CLINIC_ENTERPRISE']);
+    expect(options).toEqual(['plan_clinic_basic', 'plan_clinic_pro']);
   });
 
-  it('shows the PLAN_BELOW_USAGE message and leaves the plan unchanged', async () => {
+  it('shows the API message and leaves the plan unchanged when the change is refused', async () => {
     const error: ApiError = {
       status: 409,
-      code: 'PLAN_BELOW_USAGE',
-      message: 'El consultorio usa más cupos de profesionales de los que permite el nuevo plan.',
-      details: { seatsPsychologistsUsed: 3, seatsPsychologistsMax: 2 },
+      code: 'PLAN_ARCHIVED',
+      message: 'El plan está archivado y no se puede asignar.',
     };
     vi.mocked(platformApi.changePlan).mockRejectedValue(error);
     renderDetail();
     await ready();
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar plan' }));
-    type('Plan', 'CLINIC_PRO');
-    type('Cupos de profesionales', '2');
-    type('Motivo del cambio', 'Reducción');
+    await screen.findByRole('option', { name: /Clínica Pro/ });
+    type('Plan', 'plan_clinic_pro');
+    type('Motivo del cambio', 'Cambio');
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar cambio' }));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain(error.message);
@@ -213,6 +254,46 @@ describe('TenantDetail', () => {
     expect(screen.getByRole('heading', { name: 'Cambiar plan' })).toBeTruthy();
     expect(screen.getAllByText('Clínica Básico').length).toBeGreaterThan(0);
     expect(client.getQueryData(QUERY_KEYS.PLATFORM_TENANT('t-1'))).toEqual(detail);
+  });
+
+  it('sets a value for the clinic and puts another back on the plan', async () => {
+    renderDetail();
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Ajustar valores' }));
+    const row = (label: string) => within(screen.getByRole('group', { name: label }));
+
+    // Pacientes activos already has its own value: change it. Almacenamiento goes back to the plan.
+    const valueOf = (label: string, value: string) =>
+      fireEvent.change(row(label).getByRole('spinbutton'), { target: { value } });
+    valueOf('Pacientes activos', '320');
+    fireEvent.click(row('Almacenamiento (GB)').getByLabelText('Del plan'));
+    // Facturas follows the plan: give it its own value.
+    fireEvent.click(row('Facturas electrónicas al mes').getByLabelText('Del plan'));
+    valueOf('Facturas electrónicas al mes', '80');
+    type('Motivo del ajuste', 'Acuerdo comercial');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
+
+    await waitFor(() =>
+      expect(platformApi.setPlanOverrides).toHaveBeenCalledWith('t-1', {
+        values: { maxActivePatients: 320, monthlyElectronicInvoicesLimit: 80 },
+        reset: ['storageGB'],
+        reason: 'Acuerdo comercial',
+      }),
+    );
+  });
+
+  it('puts the modules back on the plan', async () => {
+    renderDetail();
+    await ready();
+    fireEvent.click(await screen.findByRole('button', { name: 'Volver al plan' }));
+    await waitFor(() =>
+      expect(platformApi.setSections).toHaveBeenCalledWith('t-1', [
+        'core.agenda',
+        'core.patients',
+        'core.admin',
+        'core.billing',
+      ]),
+    );
   });
 
   it('enables Guardar cambios only when the section selection differs and sends the full list', async () => {

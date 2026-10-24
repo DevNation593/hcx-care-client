@@ -6,7 +6,13 @@ import { TenantType, type PlatformTenantRow } from '@/types';
 import { TenantsTable } from './tenants-table';
 
 vi.mock('@/lib/api/endpoints', () => ({
-  platformApi: { listTenants: vi.fn() },
+  platformApi: {
+    listTenants: vi.fn(),
+    listPlans: vi.fn(async () => [
+      { id: 'plan_clinic_pro', code: 'CLINIC_PRO', name: 'Clínica Pro', tenantType: 'CLINIC' },
+      { id: 'plan_personal_basic', code: 'PERSONAL_BASIC', name: 'Personal Básico', tenantType: 'PERSONAL' },
+    ]),
+  },
 }));
 
 const row = (overrides: Partial<PlatformTenantRow> = {}): PlatformTenantRow => ({
@@ -16,7 +22,7 @@ const row = (overrides: Partial<PlatformTenantRow> = {}): PlatformTenantRow => (
   isActive: true,
   createdAt: '2026-09-01T00:00:00.000Z',
   master: { firstName: 'Rosa', lastName: 'Paz', email: 'rosa@sol.com' },
-  planType: 'CLINIC_PRO',
+  plan: { id: 'plan_clinic_pro', code: 'CLINIC_PRO', name: 'Clínica Pro' },
   status: 'ACTIVE',
   seatsPsychologistsUsed: 2,
   seatsPsychologistsMax: 5,
@@ -55,7 +61,7 @@ describe('TenantsTable', () => {
     vi.mocked(platformApi.listTenants).mockResolvedValue(
       page([
         row(),
-        row({ id: 't-2', name: 'Centro Luna', status: 'PAST_DUE', planType: 'PERSONAL_BASIC' }),
+        row({ id: 't-2', name: 'Centro Luna', status: 'PAST_DUE', plan: { id: 'plan_personal_basic', code: 'PERSONAL_BASIC', name: 'Personal Básico' } }),
       ]),
     );
     renderTable();
@@ -97,16 +103,17 @@ describe('TenantsTable', () => {
     fireEvent.change(screen.getByLabelText('Buscar consultorio'), { target: { value: 'sol' } });
     await waitFor(() => expect(lastParams()).toMatchObject({ search: 'sol', page: 1 }));
 
-    fireEvent.change(screen.getByLabelText('Plan'), { target: { value: 'CLINIC_PRO' } });
+    await screen.findByRole('option', { name: 'Clínica Pro' });
+    fireEvent.change(screen.getByLabelText('Plan'), { target: { value: 'plan_clinic_pro' } });
     await waitFor(() =>
-      expect(lastParams()).toMatchObject({ search: 'sol', planType: 'CLINIC_PRO', page: 1 }),
+      expect(lastParams()).toMatchObject({ search: 'sol', planId: 'plan_clinic_pro', page: 1 }),
     );
 
     fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'PAST_DUE' } });
     await waitFor(() =>
       expect(lastParams()).toMatchObject({
         search: 'sol',
-        planType: 'CLINIC_PRO',
+        planId: 'plan_clinic_pro',
         status: 'PAST_DUE',
         page: 1,
       }),

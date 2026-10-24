@@ -1,13 +1,25 @@
-import type { ApiPlanType, ApiSubscriptionStatus, SubscriptionPayment } from '@/types';
+import { TenantType, type ApiSubscriptionStatus, type PlanValueField, type SubscriptionPayment } from '@/types';
 
-export const PLAN_LABELS: Record<ApiPlanType, string> = {
-  TRIAL: 'Prueba',
-  PERSONAL_BASIC: 'Personal Básico',
-  PERSONAL_PRO: 'Personal Pro',
-  CLINIC_BASIC: 'Clínica Básico',
-  CLINIC_PRO: 'Clínica Pro',
-  CLINIC_ENTERPRISE: 'Clínica Enterprise',
+export const TENANT_TYPE_LABELS: Record<TenantType, string> = {
+  [TenantType.PERSONAL]: 'Personal',
+  [TenantType.CLINIC]: 'Clínica',
 };
+
+/** How the panel names each value a plan gives a clinic. */
+export const PLAN_VALUE_LABELS: Record<PlanValueField, string> = {
+  basePrice: 'Precio mensual',
+  pricePerSeat: 'Precio por profesional adicional',
+  specialtyPrice: 'Precio por especialidad adicional',
+  currency: 'Moneda',
+  seatsPsychologistsMax: 'Profesionales',
+  maxActivePatients: 'Pacientes activos',
+  storageGB: 'Almacenamiento (GB)',
+  monthlyElectronicInvoicesLimit: 'Facturas electrónicas al mes',
+  includedSpecialties: 'Especialidades incluidas',
+};
+
+export const formatMoney = (amount: number, currency = 'USD') =>
+  new Intl.NumberFormat('es-EC', { style: 'currency', currency }).format(amount);
 
 export const SUBSCRIPTION_STATUS_LABELS: Record<ApiSubscriptionStatus, string> = {
   TRIALING: 'En prueba',
@@ -30,7 +42,7 @@ export function tenantStatusLabel(tenant: {
 }
 
 export const PAYMENT_KIND_LABELS: Record<SubscriptionPayment['kind'], string> = {
-  PLAN_UPGRADE: 'Mejora de plan',
+  PLAN_UPGRADE: 'Mejora de plan (anterior)',
   RENEWAL: 'Renovación',
 };
 

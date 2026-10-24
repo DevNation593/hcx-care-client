@@ -8,9 +8,12 @@ import type {
   ChangePlatformPlanInput,
   CreatePlatformTenantInput,
   PlatformPayment,
+  PlatformPlan,
+  PlatformPlanInput,
   PlatformTenantDetail,
   PlatformTenantListParams,
   SectionKey,
+  SetPlanOverridesInput,
   SubscriptionPayment,
   UpdatePlatformTenantInput,
 } from '@/types';
@@ -86,6 +89,51 @@ export function useChangeTenantPlan(id: string) {
   });
 }
 
+export function useSetPlanOverrides(id: string) {
+  const invalidate = useInvalidateTenant(id);
+  return useMutation<PlatformTenantDetail, ApiError, SetPlanOverridesInput>({
+    mutationFn: (input) => platformApi.setPlanOverrides(id, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function usePlatformPlans() {
+  return useQuery<PlatformPlan[], ApiError>({
+    queryKey: QUERY_KEYS.PLATFORM_PLANS,
+    queryFn: () => platformApi.listPlans(),
+  });
+}
+
+/** Editing a plan changes every clinic on it, so every clinic view refreshes too (prefix match). */
+function useInvalidatePlans() {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PLATFORM_PLANS });
+    void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PLATFORM_TENANTS });
+    void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PLATFORM_SUMMARY });
+  };
+}
+
+export function useSavePlatformPlan() {
+  const invalidate = useInvalidatePlans();
+  return useMutation<PlatformPlan, ApiError, { id?: string; input: PlatformPlanInput }>({
+    mutationFn: ({ id, input }) => {
+      if (!id) return platformApi.createPlan(input);
+      const { code: _code, ...changes } = input;
+      return platformApi.updatePlan(id, changes);
+    },
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetPlanArchived() {
+  const invalidate = useInvalidatePlans();
+  return useMutation<PlatformPlan, ApiError, { id: string; archived: boolean }>({
+    mutationFn: ({ id, archived }) => platformApi.setPlanArchived(id, archived),
+    onSuccess: invalidate,
+  });
+}
+
 export function useSuspendTenant(id: string) {
   const invalidate = useInvalidateTenant(id);
   return useMutation<PlatformTenantDetail, ApiError, string>({
@@ -132,8 +180,8 @@ export function usePlatformPayments(status: SubscriptionPayment['status'] | '') 
 }
 
 /**
- * A resolved payment changes the payment lists and the summary counters, and a confirmed upgrade
- * can change a clinic's plan, so the clinic list and every clinic detail (prefix match) refresh too.
+ * A resolved payment changes the payment lists and the summary counters, and can reactivate a
+ * clinic, so the clinic list and every clinic detail (prefix match) refresh too.
  */
 function useInvalidatePayments() {
   const queryClient = useQueryClient();
