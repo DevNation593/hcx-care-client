@@ -74,7 +74,7 @@ describe('plan presentation', () => {
       pricePerExtraSeat: 12,
       seatsIncluded: 10,
       maxActivePatients: 500,
-      storageGB: 5,
+      storageGB: 25,
       includedSpecialties: 3,
     });
     expect(views.CLINIC_PRO.modules).toContain('Cifrado de datos clínicos');
@@ -89,8 +89,14 @@ describe('plan presentation', () => {
     });
   });
 
+  it('gives every plan in the catalog a finite storage quota', () => {
+    expect(views.TRIAL.storageGB).toBe(1);
+    expect(views.PERSONAL_BASIC.storageGB).toBe(2);
+  });
+
   it('shows no storage where the plan has none', () => {
-    expect(views.PERSONAL_BASIC.storageGB).toBeNull();
+    const basic = catalog.plans.find((entry) => entry.planType === 'PERSONAL_BASIC')!;
+    expect(toPlanView({ ...basic, storageGB: 0 }).storageGB).toBeNull();
   });
 
   it('orders plans for upgrades and names them by group', () => {
