@@ -15,7 +15,7 @@ const summary: Summary = {
   pendingPayments: { count: 5, amount: 250, currency: 'USD' },
   trialsEndingSoon: [{ id: 't-1', name: 'Clínica Sol', trialEndsAt: '2026-10-05T00:00:00.000Z' }],
   recentTenants: [
-    { id: 't-2', name: 'Centro Luna', planType: 'CLINIC_PRO', createdAt: '2026-09-30T00:00:00.000Z' },
+    { id: 't-2', name: 'Centro Luna', planName: 'Clínica Pro', createdAt: '2026-09-30T00:00:00.000Z' },
   ],
 };
 

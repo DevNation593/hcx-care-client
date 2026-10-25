@@ -3,30 +3,57 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { platformApi, specialtyCatalogApi } from '@/lib/api/endpoints';
 import { ROUTES } from '@/lib/constants';
-import { TenantType, type PlatformTenantDetail, type SectionCatalog } from '@/types';
+import { TenantType, type PlatformPlan, type PlatformTenantDetail, type SectionCatalog, type SectionKey } from '@/types';
 import { CreateTenantForm } from './create-tenant-form';
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 vi.mock('@/lib/api/endpoints', () => ({
-  platformApi: { getSectionCatalog: vi.fn(), createTenant: vi.fn() },
+  platformApi: { getSectionCatalog: vi.fn(), listPlans: vi.fn(), createTenant: vi.fn() },
   specialtyCatalogApi: { list: vi.fn() },
 }));
 
 const catalog: SectionCatalog = {
   sections: [
-    { key: 'core.calendar', name: 'Agenda', requires: [] },
+    { key: 'core.agenda', name: 'Agenda', requires: [] },
     { key: 'core.patients', name: 'Pacientes', requires: [] },
-    { key: 'core.tasks', name: 'Actividades', requires: ['core.patients'] },
+    { key: 'core.admin', name: 'Actividades', requires: ['core.patients'] },
     { key: 'core.billing', name: 'Facturación', requires: [] },
   ],
-  defaults: [
-    { planType: 'TRIAL', tenantType: TenantType.CLINIC, sections: ['core.calendar', 'core.patients'] },
-    { planType: 'CLINIC_PRO', tenantType: TenantType.CLINIC, sections: ['core.calendar', 'core.patients', 'core.tasks', 'core.billing'] },
-    { planType: 'TRIAL', tenantType: TenantType.PERSONAL, sections: ['core.calendar'] },
-    { planType: 'PERSONAL_PRO', tenantType: TenantType.PERSONAL, sections: ['core.calendar', 'core.patients'] },
-  ],
+  nonHealthSpecialtyCodes: [],
 };
+
+const plan = (id: string, tenantType: TenantType, modules: SectionKey[], extra: Partial<PlatformPlan> = {}): PlatformPlan => ({
+  id,
+  code: id.toUpperCase(),
+  name: id,
+  description: null,
+  tenantType,
+  sortOrder: 0,
+  archivedAt: null,
+  basePrice: 50,
+  pricePerSeat: 0,
+  specialtyPrice: 15,
+  currency: 'USD',
+  seatsIncluded: 3,
+  maxActivePatients: 100,
+  storageGB: 5,
+  monthlyElectronicInvoicesLimit: 50,
+  includedSpecialties: 1,
+  trialDays: 14,
+  modules,
+  clinicsCount: 0,
+  ...extra,
+});
+
+const plans: PlatformPlan[] = [
+  plan('plan_clinic_basic', TenantType.CLINIC, ['core.agenda', 'core.patients']),
+  plan('plan_clinic_pro', TenantType.CLINIC, ['core.agenda', 'core.patients', 'core.admin', 'core.billing'], { trialDays: 0 }),
+  plan('plan_clinic_same', TenantType.CLINIC, ['core.billing', 'core.admin', 'core.patients', 'core.agenda']),
+  plan('plan_clinic_old', TenantType.CLINIC, ['core.agenda'], { archivedAt: '2026-01-01T00:00:00.000Z' }),
+  plan('plan_personal_basic', TenantType.PERSONAL, ['core.agenda']),
+  plan('plan_personal_pro', TenantType.PERSONAL, ['core.agenda', 'core.patients']),
+];
 
 const specialties = [
   { id: 's1', code: 'PSICOLOGIA', name: 'Psicología', description: null, modules: [] },
@@ -70,35 +97,38 @@ async function fillRequired() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(platformApi.getSectionCatalog).mockResolvedValue(catalog);
+  vi.mocked(platformApi.listPlans).mockResolvedValue(plans);
   vi.mocked(specialtyCatalogApi.list).mockResolvedValue(specialties);
   vi.mocked(platformApi.createTenant).mockResolvedValue(detail);
 });
 
 describe('CreateTenantForm', () => {
-  it('preselects the sections of the plan and tenant type from the catalog', async () => {
+  it('preselects the modules of the first plan of the tenant type, and its trial days', async () => {
     renderForm();
     await ready();
     expect(checked('Pacientes')).toBe(true);
     expect(checked('Actividades')).toBe(false);
     expect(checked('Facturación')).toBe(false);
+    expect((screen.getByLabelText('Días de prueba') as HTMLInputElement).value).toBe('14');
   });
 
-  it('offers only the plans that match the tenant type', async () => {
+  it('offers only the plans that match the tenant type and are not archived', async () => {
     renderForm();
     await ready();
     const plans = () =>
       within(screen.getByLabelText('Plan')).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
-    expect(plans()).toEqual(['TRIAL', 'CLINIC_BASIC', 'CLINIC_PRO', 'CLINIC_ENTERPRISE']);
+    expect(plans()).toEqual(['plan_clinic_basic', 'plan_clinic_pro', 'plan_clinic_same']);
     type('Tipo de consultorio', 'PERSONAL');
-    expect(plans()).toEqual(['TRIAL', 'PERSONAL_BASIC', 'PERSONAL_PRO']);
+    expect(plans()).toEqual(['plan_personal_basic', 'plan_personal_pro']);
   });
 
   it('updates the preselection when the plan changes and no box was touched', async () => {
     renderForm();
     await ready();
-    type('Plan', 'CLINIC_PRO');
+    type('Plan', 'plan_clinic_pro');
     await waitFor(() => expect(checked('Facturación')).toBe(true));
     expect(checked('Actividades')).toBe(true);
+    expect((screen.getByLabelText('Días de prueba') as HTMLInputElement).value).toBe('0');
     expect(screen.queryByRole('button', { name: 'Reemplazar selección' })).not.toBeInTheDocument();
   });
 
@@ -106,14 +136,14 @@ describe('CreateTenantForm', () => {
     renderForm();
     await ready();
     fireEvent.click(screen.getByLabelText('Facturación'));
-    type('Plan', 'CLINIC_PRO');
+    type('Plan', 'plan_clinic_pro');
     expect(await screen.findByRole('button', { name: 'Reemplazar selección' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Conservar mi selección' }));
     expect(screen.queryByRole('button', { name: 'Reemplazar selección' })).not.toBeInTheDocument();
     expect(checked('Facturación')).toBe(true);
     expect(checked('Actividades')).toBe(false);
 
-    type('Plan', 'TRIAL');
+    type('Plan', 'plan_clinic_basic');
     fireEvent.click(await screen.findByRole('button', { name: 'Reemplazar selección' }));
     await waitFor(() => expect(checked('Facturación')).toBe(false));
     expect(checked('Agenda')).toBe(true);
@@ -121,25 +151,14 @@ describe('CreateTenantForm', () => {
   });
 
   it('does not ask to replace the selection when the plan defaults hold the same keys in another order', async () => {
-    vi.mocked(platformApi.getSectionCatalog).mockResolvedValue({
-      ...catalog,
-      defaults: [
-        ...catalog.defaults,
-        {
-          planType: 'CLINIC_ENTERPRISE',
-          tenantType: TenantType.CLINIC,
-          sections: ['core.billing', 'core.tasks', 'core.patients', 'core.calendar'],
-        },
-      ],
-    });
     renderForm();
     await ready();
-    type('Plan', 'CLINIC_PRO');
+    type('Plan', 'plan_clinic_pro');
     await waitFor(() => expect(checked('Facturación')).toBe(true));
     // Toggle by hand: the selection is now "edited" but holds the same keys.
     fireEvent.click(screen.getByLabelText('Facturación'));
     fireEvent.click(screen.getByLabelText('Facturación'));
-    type('Plan', 'CLINIC_ENTERPRISE');
+    type('Plan', 'plan_clinic_same');
     expect(screen.queryByRole('button', { name: 'Reemplazar selección' })).not.toBeInTheDocument();
     expect(checked('Facturación')).toBe(true);
   });
@@ -184,9 +203,23 @@ describe('CreateTenantForm', () => {
       masterLastName: 'Paz',
       masterEmail: 'rosa@sol.com',
       temporaryPassword: 'Temporal-123',
-      planType: 'TRIAL',
+      planId: 'plan_clinic_basic',
+      trialDays: 14,
       specialtyCodes: ['PSICOLOGIA'],
-      sections: ['core.calendar', 'core.patients'],
+    });
+  });
+
+  it('sends the modules only once they were edited by hand, and the trial days typed', async () => {
+    renderForm();
+    await fillRequired();
+    fireEvent.click(screen.getByLabelText('Facturación'));
+    type('Días de prueba', '0');
+    fireEvent.click(screen.getByRole('button', { name: 'Crear consultorio' }));
+    await waitFor(() => expect(platformApi.createTenant).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(platformApi.createTenant).mock.calls[0][0]).toMatchObject({
+      planId: 'plan_clinic_basic',
+      trialDays: 0,
+      sections: ['core.agenda', 'core.patients', 'core.billing'],
     });
   });
 
@@ -237,21 +270,17 @@ describe('CreateTenantForm with an aesthetic specialty', () => {
   const healthCatalog: SectionCatalog = {
     sections: [
       { key: 'core.patients', name: 'Pacientes', requires: [] },
-      { key: 'core.clinicalNotes', name: 'Notas clínicas', requires: ['core.patients'], healthOnly: true },
-      { key: 'core.specialties', name: 'Módulos clínicos', requires: ['core.patients'] },
-    ],
-    defaults: [
-      {
-        planType: 'TRIAL',
-        tenantType: TenantType.CLINIC,
-        sections: ['core.patients', 'core.clinicalNotes', 'core.specialties'],
-      },
+      { key: 'core.clinical.notes', name: 'Notas clínicas', requires: ['core.patients'], healthOnly: true },
+      { key: 'core.clinical.specialties', name: 'Módulos clínicos', requires: ['core.patients'] },
     ],
     nonHealthSpecialtyCodes: ['AESTHETICS'],
   };
 
   beforeEach(() => {
     vi.mocked(platformApi.getSectionCatalog).mockResolvedValue(healthCatalog);
+    vi.mocked(platformApi.listPlans).mockResolvedValue([
+      plan('plan_clinic_basic', TenantType.CLINIC, ['core.patients', 'core.clinical.notes', 'core.clinical.specialties']),
+    ]);
     vi.mocked(specialtyCatalogApi.list).mockResolvedValue([
       { id: 'a', code: 'AESTHETICS', name: 'Estética', description: null, modules: [] },
       { id: 'g', code: 'GENERAL_MEDICINE', name: 'Medicina General', description: null, modules: [] },
@@ -295,7 +324,7 @@ describe('CreateTenantForm with an aesthetic specialty', () => {
     await waitFor(() => expect(platformApi.createTenant).toHaveBeenCalledTimes(1));
     expect(vi.mocked(platformApi.createTenant).mock.calls[0][0]).toMatchObject({
       specialtyCodes: ['AESTHETICS'],
-      sections: expect.arrayContaining(['core.clinicalNotes']),
+      sections: expect.arrayContaining(['core.clinical.notes']),
     });
   });
 });

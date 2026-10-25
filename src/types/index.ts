@@ -13,15 +13,39 @@ export enum UserRole {
   PACIENTE = 'PACIENTE',
 }
 
-export type SectionKey =
-  | 'core.calendar'
-  | 'core.patients'
-  | 'core.tasks'
-  | 'core.clinicalNotes'
-  | 'core.specialties'
-  | 'core.billing'
-  | 'core.team'
-  | 'core.storage';
+/** Modules and their submodules: a key with three segments belongs to the module its first two name. */
+export const SECTION_KEYS = [
+  'core.agenda',
+  'core.agenda.calendar',
+  'core.agenda.tasks',
+  'core.agenda.notifications',
+  'core.patients',
+  'core.patients.records',
+  'core.patients.team',
+  'core.patients.files',
+  'core.clinical',
+  'core.clinical.notes',
+  'core.clinical.nextSession',
+  'core.clinical.timeline',
+  'core.clinical.specialties',
+  'core.clinical.forms',
+  'core.clinical.templates',
+  'core.treatments',
+  'core.treatments.catalog',
+  'core.treatments.sessions',
+  'core.treatments.consents',
+  'core.billing',
+  'core.billing.profiles',
+  'core.billing.orders',
+  'core.billing.cash',
+  'core.billing.invoicing',
+  'core.admin',
+  'core.admin.team',
+  'core.admin.branches',
+  'core.admin.reports',
+] as const;
+
+export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export enum TenantType {
   PERSONAL = 'PERSONAL',
@@ -158,8 +182,8 @@ export interface Subscription {
   id: string;
   tenantId: string;
   plan: Plan;
-  /** The plan as the API names it; `plan.planType` only keeps the tier. */
-  apiPlanType?: ApiPlanType;
+  /** The plan code as the API names it; `plan.planType` only keeps the tier. */
+  apiPlanType?: string;
   status: SubscriptionStatus;
   trialEndsAt: string | null;
   currentPeriodStart: string;
@@ -868,42 +892,77 @@ export interface ApiError {
 // SUBSCRIPTION & BILLING
 // ==========================================
 
-/** Plan identifiers exactly as the API uses them. */
-export type ApiPlanType =
-  | 'TRIAL'
-  | 'PERSONAL_BASIC'
-  | 'PERSONAL_PRO'
-  | 'CLINIC_BASIC'
-  | 'CLINIC_PRO'
-  | 'CLINIC_ENTERPRISE';
+/** A plan as other records name it. */
+export interface PlanSummary {
+  id: string;
+  code: string;
+  name: string;
+}
 
-/** One plan of `GET /subscription/plans`: the only source of prices and limits. */
-export interface PlanCatalogEntry {
-  planType: ApiPlanType;
+/** Subscription values a plan gives; the platform can set any of them for one clinic. */
+export type PlanValueField =
+  | 'basePrice'
+  | 'pricePerSeat'
+  | 'specialtyPrice'
+  | 'currency'
+  | 'seatsPsychologistsMax'
+  | 'maxActivePatients'
+  | 'storageGB'
+  | 'monthlyElectronicInvoicesLimit'
+  | 'includedSpecialties';
+
+/** A plan the platform administrator sells (`GET /platform/plans`). */
+export interface PlatformPlan {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  tenantType: TenantType;
+  sortOrder: number;
+  archivedAt: string | null;
   basePrice: number;
   pricePerSeat: number;
+  specialtyPrice: number;
+  currency: string;
   seatsIncluded: number;
   maxActivePatients: number;
   storageGB: number;
-  monthlyNotificationsLimit: number;
-  includedModules: string[];
+  monthlyElectronicInvoicesLimit: number;
   includedSpecialties: number;
-  specialtyPricePerMonth: number;
+  trialDays: number;
+  modules: SectionKey[];
+  clinicsCount: number;
 }
 
-export interface PlanCatalog {
-  plans: PlanCatalogEntry[];
-  modulePricing: Record<string, number>;
+/** What creating or editing a plan sends; the code cannot change once created. */
+export interface PlatformPlanInput {
+  code?: string;
+  name: string;
+  description?: string;
+  tenantType: TenantType;
+  sortOrder?: number;
+  basePrice: number;
+  pricePerSeat: number;
+  specialtyPrice: number;
+  seatsIncluded: number;
+  maxActivePatients: number;
+  storageGB: number;
+  monthlyElectronicInvoicesLimit: number;
+  includedSpecialties: number;
+  trialDays: number;
+  modules: SectionKey[];
 }
 
-/** A charge of the subscription. A paid plan is enabled only after its payment is confirmed. */
+/** A charge of the subscription: the renewal of a period, or the first one after a trial. */
 export interface SubscriptionPayment {
   id: string;
   kind: 'PLAN_UPGRADE' | 'RENEWAL';
   status: 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELED' | 'EXPIRED';
   amount: number | string;
   currency: string;
-  targetPlan: ApiPlanType;
+  planId: string | null;
+  /** The plan as it was called when charged. */
+  planName: string;
   periodStart: string | null;
   periodEnd: string | null;
   expiresAt: string | null;
@@ -915,38 +974,11 @@ export type PlatformPayment = SubscriptionPayment & {
   tenant: { id: string; name: string; email: string };
 };
 
-export interface UpgradeRequest {
-  newPlan: ApiPlanType;
-}
-
-export interface UpgradeResponse {
-  success: boolean;
-  status: 'PENDING_PAYMENT';
-  currentPlan: ApiPlanType;
-  requestedPlan: ApiPlanType;
-  payment: SubscriptionPayment;
-  message: string;
-}
-
-export interface DowngradeRequest {
-  newPlan: ApiPlanType;
-}
-
 export interface ConstraintViolation {
   constraint: string;
   current: number;
   limit: number;
   action: string;
-}
-
-export interface DowngradeResponse {
-  success: boolean;
-  effectiveDate: string | null;
-  daysUntilChange: number;
-  currentPlan: ApiPlanType;
-  newPlan: ApiPlanType;
-  warnings: string[];
-  message: string;
 }
 
 export interface AddSeatRequest {
@@ -1083,7 +1115,7 @@ export interface PlatformSummary {
   subscriptions: { trialing: number; active: number; pastDue: number; blocked: number };
   pendingPayments: { count: number; amount: number; currency: string };
   trialsEndingSoon: { id: string; name: string; trialEndsAt: string }[];
-  recentTenants: { id: string; name: string; planType: ApiPlanType | null; createdAt: string }[];
+  recentTenants: { id: string; name: string; planName: string | null; createdAt: string }[];
 }
 
 export interface PlatformTenantRow {
@@ -1093,7 +1125,7 @@ export interface PlatformTenantRow {
   isActive: boolean;
   createdAt: string;
   master: { firstName: string; lastName: string; email: string } | null;
-  planType: ApiPlanType | null;
+  plan: PlanSummary | null;
   status: ApiSubscriptionStatus | null;
   seatsPsychologistsUsed: number;
   seatsPsychologistsMax: number;
@@ -1110,7 +1142,7 @@ export interface PlatformTenantList {
 
 export interface PlatformTenantListParams {
   search?: string;
-  planType?: ApiPlanType;
+  planId?: string;
   status?: ApiSubscriptionStatus;
   isActive?: boolean;
   page?: number;
@@ -1125,9 +1157,16 @@ export interface UpdatePlatformTenantInput {
 }
 
 export interface ChangePlatformPlanInput {
-  planType: ApiPlanType;
-  seatsPsychologistsMax?: number;
-  maxActivePatients?: number;
+  planId: string;
+  /** Days of trial on the new plan; without them the clinic starts paying it. */
+  trialDays?: number;
+  reason: string;
+}
+
+/** Values set for one clinic apart from its plan; `reset` puts them back on the plan. */
+export interface SetPlanOverridesInput {
+  values: Partial<Record<PlanValueField, number | string>>;
+  reset?: PlanValueField[];
   reason: string;
 }
 
@@ -1150,17 +1189,24 @@ export interface PlatformTenantDetail {
     mustChangePassword: boolean;
   } | null;
   subscription: {
-    planType: ApiPlanType;
+    plan: PlanSummary;
     status: ApiSubscriptionStatus;
     trialEndsAt: string | null;
     currentPeriodStart: string;
     currentPeriodEnd: string | null;
-    seatsPsychologistsMax: number;
-    maxActivePatients: number;
     basePrice: number;
-    includedSpecialties: number;
+    pricePerSeat: number;
     specialtyPrice: number;
     currency: string;
+    seatsPsychologistsMax: number;
+    maxActivePatients: number;
+    storageGB: number;
+    monthlyElectronicInvoicesLimit: number;
+    includedSpecialties: number;
+    /** Values set for this clinic apart from its plan. */
+    overriddenFields: PlanValueField[];
+    /** The plan price plus the specialties beyond the included ones. */
+    monthlyTotal: number;
   };
   usage: {
     seatsPsychologistsUsed: number;
@@ -1168,7 +1214,8 @@ export interface PlatformTenantDetail {
     monthlyNotificationsSent: number;
   };
   specialties: { id: string; code: string; name: string }[];
-  sections: { key: SectionKey; name: string; enabled: boolean }[];
+  /** `source`: PLAN follows the plan; OVERRIDE was set for this clinic alone. */
+  sections: { key: SectionKey; name: string; enabled: boolean; source: 'PLAN' | 'OVERRIDE' }[];
   modules: { key: string; enabled: boolean }[];
 }
 
@@ -1188,11 +1235,9 @@ export interface PlatformRolePermissions {
 }
 
 export interface SectionCatalog {
-  /** `healthOnly`: starts off in a clinic whose specialties are all non-health. */
-  sections: { key: SectionKey; name: string; requires: SectionKey[]; healthOnly?: boolean }[];
-  defaults: { planType: ApiPlanType; tenantType: TenantType; sections: SectionKey[] }[];
-  /** Specialties that are not health care (Estética). */
-  nonHealthSpecialtyCodes?: string[];
+  sections: { key: SectionKey; name: string; parent?: SectionKey; requires: SectionKey[]; healthOnly?: boolean }[];
+  /** Specialties whose clinics start without the health-only submodules. */
+  nonHealthSpecialtyCodes: string[];
 }
 
 export interface CreatePlatformTenantInput {
@@ -1207,7 +1252,9 @@ export interface CreatePlatformTenantInput {
   masterLastName: string;
   masterEmail: string;
   temporaryPassword: string;
-  planType: ApiPlanType;
+  planId: string;
+  /** Days of trial; the plan suggests its own and 0 starts a paid month. */
+  trialDays?: number;
   specialtyCodes: string[];
   sections?: SectionKey[];
 }

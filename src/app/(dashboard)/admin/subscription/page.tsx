@@ -17,7 +17,7 @@ import { Check, Users, HardDrive, Shield, Zap, Crown, AlertTriangle, Clock } fro
 import { formatDate } from '@/lib/utils';
 import { PlanTier, type FeatureFlags } from '@/types';
 import { getStatusDisplayName, getStatusColor, getPlanDisplayName } from '@/types/guards';
-import { PlanCatalogSection } from '@/features/subscription/plan-catalog-section';
+import { PlanPaymentsSection } from '@/features/subscription/plan-payments-section';
 
 // ==========================================
 // Subcomponents
@@ -104,7 +104,7 @@ function SubscriptionStatusBar({
       <Alert
         variant={daysLeft <= 3 ? 'destructive' : 'warning'}
         title={`Periodo de prueba: ${daysLeft} días restantes`}
-        description={`Tu periodo de prueba termina el ${formatDate(trialEndsAt, 'dd/MM/yyyy')}. Selecciona un plan para continuar sin interrupciones.`}
+        description={`Tu periodo de prueba termina el ${formatDate(trialEndsAt, 'dd/MM/yyyy')}. Te enviaremos el cobro del primer mes; contacta a soporte para registrar tu pago.`}
       />
     );
   }
@@ -134,7 +134,7 @@ function SubscriptionStatusBar({
       <Alert
         variant="destructive"
         title="Cuenta suspendida"
-        description="Tu cuenta está suspendida por falta de pago. Registra tu pago con soporte o solicita un plan para restaurar el acceso."
+        description="Tu cuenta está suspendida por falta de pago. Registra tu pago con soporte para restaurar el acceso."
       />
     );
   }
@@ -225,9 +225,9 @@ function SubscriptionPageContent() {
                 </div>
                 <div>
                   <CardTitle className="text-lg">
-                    Plan {PLAN_LABELS[currentPlanType] || getPlanDisplayName(currentPlanType)}
+                    Plan {currentPlan!.name || PLAN_LABELS[currentPlanType] || getPlanDisplayName(currentPlanType)}
                   </CardTitle>
-                  <CardDescription>{currentPlan!.description || 'Tu suscripción actual'}</CardDescription>
+                  <CardDescription>Tu suscripción actual</CardDescription>
                 </div>
               </div>
               <Badge variant={getStatusColor(subscription!.status)}>
@@ -272,7 +272,7 @@ function SubscriptionPageContent() {
         <Alert
           variant="warning"
           title="Sin plan activo"
-          description="No se encontró información de suscripción. Selecciona un plan a continuación para comenzar."
+          description="No se encontró información de suscripción. Contacta a soporte para que te asignen un plan."
         />
       )}
 
@@ -317,7 +317,7 @@ function SubscriptionPageContent() {
         )}
       </div>
 
-      <PlanCatalogSection />
+      <PlanPaymentsSection />
     </div>
   );
 }

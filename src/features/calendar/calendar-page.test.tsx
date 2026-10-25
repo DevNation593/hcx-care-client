@@ -52,8 +52,15 @@ vi.mock('@/hooks/useSpecialties', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/hooks/useSpecialties')>()),
   useTenantModules: () => ({
     data: [
-      'core.calendar', 'core.patients', 'core.tasks', 'core.clinicalNotes',
-      'core.specialties', 'core.billing', 'core.team', 'core.storage',
+      'core.agenda', 'core.agenda.calendar', 'core.agenda.tasks', 'core.agenda.notifications',
+      'core.patients', 'core.patients.records', 'core.patients.team', 'core.patients.files',
+      'core.clinical', 'core.clinical.notes', 'core.clinical.nextSession',
+      'core.clinical.timeline', 'core.clinical.specialties', 'core.clinical.forms',
+      'core.clinical.templates', 'core.treatments', 'core.treatments.catalog',
+      'core.treatments.sessions', 'core.treatments.consents', 'core.billing',
+      'core.billing.profiles', 'core.billing.orders', 'core.billing.cash',
+      'core.billing.invoicing', 'core.admin', 'core.admin.team', 'core.admin.branches',
+      'core.admin.reports',
     ].map((moduleKey) => ({ moduleKey, enabled: true })),
     isPending: false,
     isError: false,

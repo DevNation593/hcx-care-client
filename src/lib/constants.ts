@@ -36,6 +36,7 @@ export const ROUTES = {
   PLATFORM_TENANT_NEW: '/platform/tenants/new',
   PLATFORM_TENANT_DETAIL: (id: string) => `/platform/tenants/${id}`,
   PLATFORM_PAYMENTS: '/platform/payments',
+  PLATFORM_PLANS: '/platform/plans',
   
   // Onboarding
   ONBOARDING: '/onboarding',
@@ -76,6 +77,7 @@ export const API_ENDPOINTS = {
   PLATFORM_TENANT: (tenantId: string) => `/platform/tenants/${tenantId}`,
   PLATFORM_SECTION_CATALOG: '/platform/section-catalog',
   PLATFORM_PAYMENTS: '/platform/subscription-payments',
+  PLATFORM_PLANS: '/platform/plans',
   SPECIALTY_CATALOG: '/specialties',
   // Auth (public, no tenantId)
   LOGIN: '/auth/login',
@@ -225,9 +227,6 @@ export const API_ENDPOINTS = {
   // Subscription (tenant-scoped)
   SUBSCRIPTION: (tenantId: string) => `/tenants/${tenantId}/subscription`,
   SUBSCRIPTION_USAGE: (tenantId: string) => `/tenants/${tenantId}/subscription/usage`,
-  SUBSCRIPTION_UPGRADE: (tenantId: string) => `/tenants/${tenantId}/subscription/upgrade`,
-  SUBSCRIPTION_DOWNGRADE: (tenantId: string) => `/tenants/${tenantId}/subscription/downgrade`,
-  SUBSCRIPTION_PLANS: (tenantId: string) => `/tenants/${tenantId}/subscription/plans`,
   SUBSCRIPTION_PAYMENTS: (tenantId: string) => `/tenants/${tenantId}/subscription/payments`,
   BILLING_INVOICES: (tenantId: string) => `/tenants/${tenantId}/billing/invoices`,
   BILLING_INVOICE: (tenantId: string, invoiceId: string) => `/tenants/${tenantId}/billing/invoices/${invoiceId}`,
@@ -262,6 +261,7 @@ export const QUERY_KEYS = {
   PLATFORM_TENANT: (id: string) => ['platform', 'tenants', id],
   PLATFORM_SECTION_CATALOG: ['platform', 'section-catalog'],
   PLATFORM_PAYMENTS: ['platform', 'payments'],
+  PLATFORM_PLANS: ['platform', 'plans'],
   SPECIALTY_CATALOG: ['specialties', 'catalog'],
   // Auth
   ME: ['me'],
@@ -326,7 +326,6 @@ export const QUERY_KEYS = {
   DASHBOARD_STATS: ['dashboard', 'stats'],
   
   // Subscription
-  PLANS: ['plans'],
   SUBSCRIPTION: ['subscription'],
   SUBSCRIPTION_SCOPED: (tenantId: string) => ['subscription', 'tenant', tenantId],
   SUBSCRIPTION_USAGE: ['subscription', 'usage'],

@@ -4,7 +4,7 @@ import {
   isMinor,
   normalizeIdentification,
 } from '@/features/patients/patient-identity';
-import { UserRole, Gender, TaskStatus, TaskPriority, AppointmentStatus, TenantType, type CreatePlatformTenantInput } from '@/types';
+import { UserRole, Gender, TaskStatus, TaskPriority, AppointmentStatus, TenantType, SECTION_KEYS, type CreatePlatformTenantInput } from '@/types';
 import { PASSWORD_MIN_LENGTH } from '@/lib/constants';
 
 // ==========================================
@@ -48,11 +48,6 @@ const professionalProfileInputSchema = z.object({
 const onboardingEmail = z.string().trim().toLowerCase().email('Email inválido');
 const specialtyCode = z.string().trim().toUpperCase().min(1, 'Selecciona una especialidad');
 
-const sectionKeys = [
-  'core.calendar', 'core.patients', 'core.tasks', 'core.clinicalNotes',
-  'core.specialties', 'core.billing', 'core.team', 'core.storage',
-] as const;
-
 /** Platform panel: a clinic together with its account holder. The password is never trimmed. */
 export const createPlatformTenantSchema: z.ZodType<CreatePlatformTenantInput> = z.object({
   name: z.string().trim().min(1, 'Ingresa el nombre del consultorio'),
@@ -66,12 +61,11 @@ export const createPlatformTenantSchema: z.ZodType<CreatePlatformTenantInput> = 
   masterLastName: z.string().trim().min(1, 'Ingresa el apellido'),
   masterEmail: onboardingEmail,
   temporaryPassword: z.string().min(PASSWORD_MIN_LENGTH, `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`),
-  planType: z.enum(['TRIAL', 'PERSONAL_BASIC', 'PERSONAL_PRO', 'CLINIC_BASIC', 'CLINIC_PRO', 'CLINIC_ENTERPRISE']),
+  planId: z.string().min(1, 'Selecciona un plan'),
+  trialDays: z.number({ invalid_type_error: 'Ingresa los días de prueba' }).int('Ingresa un número entero').min(0, 'Ingresa 0 o más días').max(365, 'Hasta 365 días').optional(),
   specialtyCodes: z.array(specialtyCode).min(1, 'Selecciona al menos una especialidad'),
-  sections: z.array(z.enum(sectionKeys)).optional(),
+  sections: z.array(z.enum(SECTION_KEYS)).optional(),
 }).strict();
-
-const planTypes = ['TRIAL', 'PERSONAL_BASIC', 'PERSONAL_PRO', 'CLINIC_BASIC', 'CLINIC_PRO', 'CLINIC_ENTERPRISE'] as const;
 
 /** Platform panel: the account data of an existing clinic. Blank phone and address clear the value. */
 export const updatePlatformTenantSchema = z.object({
@@ -81,14 +75,36 @@ export const updatePlatformTenantSchema = z.object({
   address: z.string().trim(),
 }).strict();
 
-const optionalLimit = (message: string) => z.number({ invalid_type_error: message }).int(message).min(1, message).optional();
-
-/** Platform panel: plan change. The limits are optional overrides of the plan's own. */
+/** Platform panel: plan change, optionally as a trial of the new plan. */
 export const changePlatformPlanSchema = z.object({
-  planType: z.enum(planTypes),
-  seatsPsychologistsMax: optionalLimit('Ingresa un número entero mayor que cero'),
-  maxActivePatients: optionalLimit('Ingresa un número entero mayor que cero'),
+  planId: z.string().min(1, 'Selecciona un plan'),
+  trialDays: z.number({ invalid_type_error: 'Ingresa los días de prueba' }).int('Ingresa un número entero').min(1, 'Ingresa al menos 1 día').max(365, 'Hasta 365 días').optional(),
   reason: z.string().trim().min(1, 'Indica el motivo del cambio'),
+}).strict();
+
+const money = (label: string) =>
+  z.number({ required_error: `Ingresa ${label}`, invalid_type_error: `Ingresa ${label}` }).min(0, `${label} no puede ser negativo`)
+    .refine((value) => Math.round(value * 100) === value * 100, 'Usa hasta 2 decimales');
+const whole = (label: string, minimum: number) =>
+  z.number({ required_error: `Ingresa ${label}`, invalid_type_error: `Ingresa ${label}` }).int(`${label} debe ser un número entero`).min(minimum, `${label} debe ser al menos ${minimum}`);
+
+/** Platform panel: a plan. The code identifies it for good and is only sent when creating it. */
+export const platformPlanSchema = z.object({
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9_]{1,39}$/, 'Usa de 2 a 40 letras, números o _').optional(),
+  name: z.string().trim().min(1, 'Ingresa el nombre del plan').max(80, 'Hasta 80 caracteres'),
+  description: z.string().trim().max(300, 'Hasta 300 caracteres').optional(),
+  tenantType: z.nativeEnum(TenantType),
+  sortOrder: whole('el orden', 0).optional(),
+  basePrice: money('el precio'),
+  pricePerSeat: money('el precio por profesional'),
+  specialtyPrice: money('el precio por especialidad'),
+  seatsIncluded: whole('los profesionales', 1),
+  maxActivePatients: whole('los pacientes', 1),
+  storageGB: whole('el almacenamiento', 1),
+  monthlyElectronicInvoicesLimit: whole('las facturas', 0),
+  includedSpecialties: whole('las especialidades', 1),
+  trialDays: whole('los días de prueba', 0),
+  modules: z.array(z.enum(SECTION_KEYS)),
 }).strict();
 
 export const suspendReasonSchema = z.string().trim().min(1, 'Indica el motivo de la suspensión');

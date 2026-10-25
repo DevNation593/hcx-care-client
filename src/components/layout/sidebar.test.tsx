@@ -29,8 +29,14 @@ vi.mock('@/lib/api/endpoints', () => ({
 }));
 
 const SECTION_KEYS = [
-  'core.calendar', 'core.patients', 'core.tasks', 'core.clinicalNotes',
-  'core.specialties', 'core.billing', 'core.team', 'core.storage',
+  'core.agenda', 'core.agenda.calendar', 'core.agenda.tasks', 'core.agenda.notifications',
+  'core.patients', 'core.patients.records', 'core.patients.team', 'core.patients.files',
+  'core.clinical', 'core.clinical.notes', 'core.clinical.nextSession', 'core.clinical.timeline',
+  'core.clinical.specialties', 'core.clinical.forms', 'core.clinical.templates', 'core.treatments',
+  'core.treatments.catalog', 'core.treatments.sessions', 'core.treatments.consents',
+  'core.billing', 'core.billing.profiles', 'core.billing.orders', 'core.billing.cash',
+  'core.billing.invoicing', 'core.admin', 'core.admin.team', 'core.admin.branches',
+  'core.admin.reports',
 ] as const;
 
 function sectionRows(disabled: string[] = []): TenantModule[] {
@@ -155,7 +161,7 @@ describe('Sidebar modules and submodules', () => {
   });
 
   it('keeps a module with the submodules that remain when a section is off', async () => {
-    vi.mocked(tenantModulesApi.list).mockResolvedValue(sectionRows(['core.tasks']));
+    vi.mocked(tenantModulesApi.list).mockResolvedValue(sectionRows(['core.agenda.tasks']));
     renderSidebar();
     await screen.findByRole('link', { name: 'Equipo' });
 
@@ -335,16 +341,19 @@ describe('Sidebar administration section', () => {
 
 describe('Sidebar section visibility', () => {
   it.each([
-    ['Calendario', 'core.calendar'],
-    ['Pacientes', 'core.patients'],
-    ['Actividades', 'core.tasks'],
-    ['Módulos clínicos', 'core.specialties'],
-    ['Formularios', 'core.specialties'],
-    ['Tratamientos', 'core.specialties'],
-    ['Consentimientos', 'core.specialties'],
-    ['Facturación', 'core.billing'],
-    ['Equipo', 'core.team'],
-    ['Almacenamiento', 'core.storage'],
+    ['Calendario', 'core.agenda.calendar'],
+    ['Pacientes', 'core.patients.records'],
+    ['Actividades', 'core.agenda.tasks'],
+    ['Módulos clínicos', 'core.clinical.specialties'],
+    ['Formularios', 'core.clinical.forms'],
+    ['Tratamientos', 'core.treatments.catalog'],
+    ['Consentimientos', 'core.treatments.consents'],
+    ['Caja', 'core.billing.cash'],
+    ['Facturación', 'core.billing.invoicing'],
+    ['Equipo', 'core.admin.team'],
+    ['Reportes', 'core.admin.reports'],
+    ['Almacenamiento', 'core.patients.files'],
+    ['Calendario', 'core.agenda'],
   ])('hides %s when %s is off', async (name, key) => {
     vi.mocked(tenantModulesApi.list).mockResolvedValue(sectionRows([key]));
     renderSidebar();
@@ -357,9 +366,9 @@ describe('Sidebar section visibility', () => {
   });
 
   it('always shows Dashboard, Suscripción and Configuración to the account holder', async () => {
-    // Only core.team stays on, so its link proves the rows were applied.
+    // Only core.admin.team and its module stay on, so its link proves the rows were applied.
     vi.mocked(tenantModulesApi.list).mockResolvedValue(
-      sectionRows(SECTION_KEYS.filter((key) => key !== 'core.team')),
+      sectionRows(SECTION_KEYS.filter((key) => key !== 'core.admin.team' && key !== 'core.admin')),
     );
     renderSidebar();
     expect(await screen.findByRole('link', { name: 'Equipo' })).toBeInTheDocument();
@@ -370,7 +379,7 @@ describe('Sidebar section visibility', () => {
     }
   });
 
-  it('shows Equipo to a personal clinic when core.team is on', async () => {
+  it('shows Equipo to a personal clinic when core.admin.team is on', async () => {
     useAuthStore.setState({ tenant: { ...clinicTenant('tenant-a'), tenantType: TenantType.PERSONAL } });
     renderSidebar();
     expect(await screen.findByRole('link', { name: 'Equipo' })).toBeInTheDocument();

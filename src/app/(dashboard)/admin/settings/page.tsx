@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { type WorkingHours, type ReminderRule, type TenantSettings } from '@/types';
 import { BranchesManager } from '@/features/admin/branches/branches-manager';
+import { useSections } from '@/hooks/useSections';
 
 const DAYS_MAP: { key: keyof WorkingHours; label: string }[] = [
   { key: 'monday', label: 'Lunes' },
@@ -67,6 +68,7 @@ export default function AdminSettingsPage() {
   const user = useAuthStore((state) => state.user);
   const tenant = useAuthStore((state) => state.tenant);
   const { data: settings, isLoading } = useTenantSettings();
+  const { isEnabled } = useSections();
   const updateSettings = useUpdateTenantSettings();
 
   const [workingHours, setWorkingHours] = useState<WorkingHours>(
@@ -495,7 +497,7 @@ export default function AdminSettingsPage() {
         </CardContent>
       </Card>
 
-      <BranchesManager />
+      {isEnabled('core.admin.branches') && <BranchesManager />}
     </div>
   );
 }
