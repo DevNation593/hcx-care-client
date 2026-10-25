@@ -265,3 +265,66 @@ describe('CreateTenantForm', () => {
     expect(push).not.toHaveBeenCalled();
   });
 });
+
+describe('CreateTenantForm with an aesthetic specialty', () => {
+  const healthCatalog: SectionCatalog = {
+    sections: [
+      { key: 'core.patients', name: 'Pacientes', requires: [] },
+      { key: 'core.clinical.notes', name: 'Notas clínicas', requires: ['core.patients'], healthOnly: true },
+      { key: 'core.clinical.specialties', name: 'Módulos clínicos', requires: ['core.patients'] },
+    ],
+    nonHealthSpecialtyCodes: ['AESTHETICS'],
+  };
+
+  beforeEach(() => {
+    vi.mocked(platformApi.getSectionCatalog).mockResolvedValue(healthCatalog);
+    vi.mocked(platformApi.listPlans).mockResolvedValue([
+      plan('plan_clinic_basic', TenantType.CLINIC, ['core.patients', 'core.clinical.notes', 'core.clinical.specialties']),
+    ]);
+    vi.mocked(specialtyCatalogApi.list).mockResolvedValue([
+      { id: 'a', code: 'AESTHETICS', name: 'Estética', description: null, modules: [] },
+      { id: 'g', code: 'GENERAL_MEDICINE', name: 'Medicina General', description: null, modules: [] },
+    ]);
+  });
+
+  async function start() {
+    renderForm();
+    await screen.findByLabelText('Estética');
+    await waitFor(() => expect(checked('Notas clínicas')).toBe(true));
+  }
+
+  it('has no business kind control', async () => {
+    await start();
+    expect(screen.queryByLabelText('Tipo de negocio')).not.toBeInTheDocument();
+  });
+
+  it('unchecks clinical notes for an aesthetic-only clinic and checks them again with a health specialty', async () => {
+    await start();
+    fireEvent.click(screen.getByLabelText('Estética'));
+    await waitFor(() => expect(checked('Notas clínicas')).toBe(false));
+    expect(checked('Pacientes')).toBe(true);
+
+    fireEvent.click(screen.getByLabelText('Medicina General'));
+    await waitFor(() => expect(checked('Notas clínicas')).toBe(true));
+  });
+
+  it('keeps and sends clinical notes the admin checks again by hand', async () => {
+    await start();
+    type('Nombre del consultorio', 'Estudio Sol');
+    type('Correo del consultorio', 'info@estudio.com');
+    type('Nombre del titular', 'Rosa');
+    type('Apellido del titular', 'Paz');
+    type('Correo del titular', 'rosa@estudio.com');
+    type('Contraseña temporal', 'Temporal-123');
+    fireEvent.click(screen.getByLabelText('Estética'));
+    await waitFor(() => expect(checked('Notas clínicas')).toBe(false));
+    fireEvent.click(screen.getByLabelText('Notas clínicas'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Crear consultorio' }));
+    await waitFor(() => expect(platformApi.createTenant).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(platformApi.createTenant).mock.calls[0][0]).toMatchObject({
+      specialtyCodes: ['AESTHETICS'],
+      sections: expect.arrayContaining(['core.clinical.notes']),
+    });
+  });
+});

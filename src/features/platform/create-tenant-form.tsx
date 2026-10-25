@@ -121,8 +121,11 @@ export function CreateTenantForm() {
   function toggleSpecialty(code: string, checked: boolean) {
     const next = checked ? [...specialtyCodes, code] : specialtyCodes.filter((value) => value !== code);
     setValue('specialtyCodes', next, { shouldValidate: true });
-    // Health-only submodules depend on the specialties while the selection still follows the plan.
-    if (!sectionsEdited.current) setValue('sections', defaultsFor(planId, next));
+    // The specialties can change what the plan gives (an aesthetic-only clinic starts without
+    // the health-only submodules): follow it, or ask when the selection was edited by hand.
+    const defaults = defaultsFor(planId, next);
+    if (!sectionsEdited.current) applySections(defaults);
+    else if (!sameKeys(defaults, sections)) setPendingDefaults(defaults);
   }
 
   const submit = handleSubmit(async (values) => {
