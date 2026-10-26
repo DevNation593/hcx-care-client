@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatMoney } from '@/features/cash/money';
 import { useProduct } from '@/hooks/useInventory';
-import { formatDate } from '@/lib/utils';
+import { formatCalendarDate } from './calendar-date';
 import type { ProductSummary, StockLotView } from '@/types/inventory';
 import { AdjustLotForm } from './adjust-lot-form';
 
@@ -61,7 +61,7 @@ export function ProductDetailDialog({ product, onClose }: { product: ProductSumm
                             <span className="font-medium">Lote {lot.lotNumber ?? 'sin número'}</span>
                             {lot.expiresAt && (
                               <span className="text-muted-foreground">
-                                Vence {formatDate(lot.expiresAt, 'dd/MM/yyyy')}
+                                Vence {formatCalendarDate(lot.expiresAt)}
                               </span>
                             )}
                             {lot.expired && <Badge variant="destructive">Vencido</Badge>}

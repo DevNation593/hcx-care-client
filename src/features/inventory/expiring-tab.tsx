@@ -10,6 +10,7 @@ import { useBranches } from '@/hooks/useBranches';
 import { useInventoryReport } from '@/hooks/useInventory';
 import { formatMoney } from '@/features/cash/money';
 import type { ExpiringLot } from '@/types/inventory';
+import { formatCalendarDate } from './calendar-date';
 
 const SELECT_CLASS = 'mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-sm';
 const WINDOWS = [30, 60, 90] as const;
@@ -40,7 +41,7 @@ function LotsSection({ id, title, lots, empty }: { id: string; title: string; lo
                 <TableCell>{lot.product.name}</TableCell>
                 <TableCell>{lot.branch.name}</TableCell>
                 <TableCell>{lot.lotNumber ?? 'Sin lote'}</TableCell>
-                <TableCell>{new Date(lot.expiresAt).toLocaleDateString('es-EC', { timeZone: 'UTC' })}</TableCell>
+                <TableCell>{formatCalendarDate(lot.expiresAt)}</TableCell>
                 <TableCell>{lot.quantityOnHand}</TableCell>
                 <TableCell>{formatMoney(lot.value)}</TableCell>
               </TableRow>

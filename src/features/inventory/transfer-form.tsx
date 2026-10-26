@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useProduct } from '@/hooks/useInventory';
 import type { Branch } from '@/types/clinical';
 import type { CreateStockTransferInput, ProductSummary } from '@/types/inventory';
+import { formatCalendarDate } from './calendar-date';
 
 const MAX_LINES = 100;
 const SELECT_CLASS = 'mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-sm';
@@ -115,7 +116,7 @@ function LineRow({ id, index, fromBranchId, products, chosen, line, errors, canR
             {lots.map((lot) => (
               <option key={lot.id} value={lot.id}>
                 {lot.lotNumber ?? 'Sin número'}
-                {lot.expiresAt ? ` · vence ${lot.expiresAt.slice(0, 10)}` : ''} · disponible {lot.quantityOnHand}
+                {lot.expiresAt ? ` · vence ${formatCalendarDate(lot.expiresAt)}` : ''} · disponible {lot.quantityOnHand}
               </option>
             ))}
           </select>

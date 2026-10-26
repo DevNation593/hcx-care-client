@@ -45,7 +45,7 @@ const lots = [
     id: 'lot-1',
     branchId: 'b-1',
     lotNumber: 'L-001',
-    expiresAt: '2026-09-01T00:00:00.000Z',
+    expiresAt: '2026-11-15T00:00:00.000Z',
     unitCost: '10.00',
     quantityReceived: 12,
     quantityOnHand: 2,
@@ -213,5 +213,18 @@ describe('InventoryPage', () => {
     expect(within(lot).getByText(/Costo \$10\.00 · Recibido 12 · Disponible 2/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ajustar lote L-001' }));
     expect(screen.getByLabelText('Unidades a sumar o restar', { exact: false })).toBeInTheDocument();
+  });
+
+  it('shows the expiry as the calendar day it was stored, west of UTC too', () => {
+    const tz = process.env.TZ;
+    process.env.TZ = 'America/Guayaquil';
+    try {
+      render(<InventoryPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'Ver lotes de Protector solar' }));
+      expect(screen.getByText('Vence 15/11/2026')).toBeInTheDocument();
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
   });
 });
