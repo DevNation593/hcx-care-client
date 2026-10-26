@@ -6,6 +6,8 @@ import { useMyPermissions } from '@/hooks/usePermissions';
 import { isMasterRole } from '@/types/guards';
 import { useAuthStore } from '@/store/authStore';
 import { ProductsTab } from './products-tab';
+import { ReceiptsTab } from './receipts-tab';
+import { TransfersTab } from './transfers-tab';
 
 const TABS = [
   { id: 'products', label: 'Productos' },
@@ -48,6 +50,10 @@ export function InventoryPage() {
       </div>
       {tab === 'products' ? (
         <ProductsTab />
+      ) : tab === 'receipts' ? (
+        <ReceiptsTab />
+      ) : tab === 'transfers' ? (
+        <TransfersTab />
       ) : (
         <h2 className="text-lg font-semibold">{TABS.find((item) => item.id === tab)?.label}</h2>
       )}

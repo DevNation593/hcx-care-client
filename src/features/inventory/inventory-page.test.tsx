@@ -56,6 +56,49 @@ vi.mock('@/hooks/useInventory', () => ({
   useCreateProduct: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateProduct: () => ({ mutate: hooks.update, isPending: false }),
   useSetProductActive: () => ({ mutate: hooks.setActive, isPending: false }),
+  useStockReceipts: () => ({
+    data: {
+      items: [
+        {
+          id: 'r-1',
+          branch: { id: 'b-1', name: 'Principal' },
+          supplierName: 'Distribuidora Sol',
+          documentNumber: 'F-001',
+          receivedAt: '2026-10-01T10:00:00.000Z',
+          note: null,
+          createdBy: { id: 'me', firstName: 'Ana', lastName: 'Vega' },
+          lines: [{}],
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    },
+    isPending: false,
+    isError: false,
+  }),
+  useStockTransfers: () => ({
+    data: {
+      items: [
+        {
+          id: 't-1',
+          fromBranch: { id: 'b-1', name: 'Principal' },
+          toBranch: { id: 'b-2', name: 'Norte' },
+          note: null,
+          createdAt: '2026-10-02T10:00:00.000Z',
+          createdBy: { id: 'me', firstName: 'Ana', lastName: 'Vega' },
+          lines: [{}, {}],
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    },
+    isPending: false,
+    isError: false,
+  }),
+  useCreateStockReceipt: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateStockTransfer: () => ({ mutate: vi.fn(), isPending: false }),
   useAdjustLot: () => ({ mutate: hooks.adjust, isPending: false, error: hooks.adjustError }),
 }));
 
@@ -88,12 +131,18 @@ describe('InventoryPage', () => {
     expect(within(row).getByText('Norte: 9')).toBeInTheDocument();
   });
 
-  it('shows only the title on the other tabs', () => {
+  it('lists the receipts and the transfers on their tabs', () => {
     render(<InventoryPage />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Traslados' }));
-
-    expect(screen.getByRole('heading', { name: 'Traslados' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Entradas' }));
+    const receiptRow = screen.getByText('Distribuidora Sol').closest('tr') as HTMLElement;
+    expect(within(receiptRow).getByText('Principal')).toBeInTheDocument();
+    expect(within(receiptRow).getByText('Ana Vega')).toBeInTheDocument();
     expect(screen.queryByText('Protector solar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Traslados' }));
+    const transferRow = screen.getByText('Norte').closest('tr') as HTMLElement;
+    expect(within(transferRow).getByText('Principal')).toBeInTheDocument();
+    expect(within(transferRow).getByText('2')).toBeInTheDocument();
   });
 
   it('turns a product off with the boolean the API takes', () => {
