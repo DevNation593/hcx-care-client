@@ -123,6 +123,27 @@ import type {
   BillableSessionFilters,
   BillingEligibility,
 } from '@/types/cash';
+import type {
+  CreateProductInput,
+  CreateStockAdjustmentInput,
+  CreateStockReceiptInput,
+  CreateStockTransferInput,
+  InventoryReportKind,
+  InventoryReportMap,
+  InventoryReportParams,
+  ProductDetail,
+  ProductFilters,
+  ProductForSale,
+  ProductSummary,
+  StockLotView,
+  StockMovement,
+  StockMovementFilters,
+  StockReceipt,
+  StockReceiptFilters,
+  StockTransfer,
+  StockTransferFilters,
+  UpdateProductInput,
+} from '@/types/inventory';
 
 // ==========================================
 // HELPER: Get tenantId from auth store
@@ -702,6 +723,53 @@ export const ordersApi = {
   billableSessions: (filters?: BillableSessionFilters) =>
     apiClient.get<BillableSession[]>(API_ENDPOINTS.BILLABLE_SESSIONS(getTenantId()), {
       params: filters,
+    }),
+};
+
+export const productsApi = {
+  forSale: (branchId: string, search: string) =>
+    apiClient.get<ProductForSale[]>(API_ENDPOINTS.PRODUCTS_FOR_SALE(getTenantId()), {
+      params: { branchId, search },
+    }),
+  list: (filters?: ProductFilters) =>
+    apiClient.get<Paginated<ProductSummary>>(API_ENDPOINTS.PRODUCTS(getTenantId()), {
+      params: filters,
+    }),
+  get: (id: string) => apiClient.get<ProductDetail>(API_ENDPOINTS.PRODUCT(getTenantId(), id)),
+  create: (data: CreateProductInput) =>
+    apiClient.post<ProductDetail>(API_ENDPOINTS.PRODUCTS(getTenantId()), data),
+  update: (id: string, data: UpdateProductInput) =>
+    apiClient.patch<ProductDetail>(API_ENDPOINTS.PRODUCT(getTenantId(), id), data),
+  setActive: (id: string, isActive: boolean) =>
+    apiClient.patch<ProductDetail>(API_ENDPOINTS.PRODUCT_ACTIVE(getTenantId(), id), { isActive }),
+};
+
+export const inventoryApi = {
+  receipts: (filters?: StockReceiptFilters) =>
+    apiClient.get<Paginated<StockReceipt>>(API_ENDPOINTS.STOCK_RECEIPTS(getTenantId()), {
+      params: filters,
+    }),
+  receipt: (id: string) =>
+    apiClient.get<StockReceipt>(API_ENDPOINTS.STOCK_RECEIPT(getTenantId(), id)),
+  createReceipt: (data: CreateStockReceiptInput) =>
+    apiClient.post<StockReceipt>(API_ENDPOINTS.STOCK_RECEIPTS(getTenantId()), data),
+  adjustLot: (lotId: string, data: CreateStockAdjustmentInput) =>
+    apiClient.post<StockLotView>(API_ENDPOINTS.STOCK_LOT_ADJUSTMENTS(getTenantId(), lotId), data),
+  transfers: (filters?: StockTransferFilters) =>
+    apiClient.get<Paginated<StockTransfer>>(API_ENDPOINTS.STOCK_TRANSFERS(getTenantId()), {
+      params: filters,
+    }),
+  transfer: (id: string) =>
+    apiClient.get<StockTransfer>(API_ENDPOINTS.STOCK_TRANSFER(getTenantId(), id)),
+  createTransfer: (data: CreateStockTransferInput) =>
+    apiClient.post<StockTransfer>(API_ENDPOINTS.STOCK_TRANSFERS(getTenantId()), data),
+  movements: (filters?: StockMovementFilters) =>
+    apiClient.get<Paginated<StockMovement>>(API_ENDPOINTS.STOCK_MOVEMENTS(getTenantId()), {
+      params: filters,
+    }),
+  report: <K extends InventoryReportKind>(kind: K, params?: InventoryReportParams) =>
+    apiClient.get<InventoryReportMap[K]>(API_ENDPOINTS.INVENTORY_REPORT(getTenantId(), kind), {
+      params,
     }),
 };
 
