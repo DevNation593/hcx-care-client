@@ -727,9 +727,10 @@ export const ordersApi = {
 };
 
 export const productsApi = {
-  forSale: (branchId: string, search: string) =>
+  /** `barcode` is an exact match; `search` matches name and code. */
+  forSale: (branchId: string, search: string, barcode?: string) =>
     apiClient.get<ProductForSale[]>(API_ENDPOINTS.PRODUCTS_FOR_SALE(getTenantId()), {
-      params: { branchId, search },
+      params: { branchId, ...(search ? { search } : {}), ...(barcode ? { barcode } : {}) },
     }),
   list: (filters?: ProductFilters) =>
     apiClient.get<Paginated<ProductSummary>>(API_ENDPOINTS.PRODUCTS(getTenantId()), {

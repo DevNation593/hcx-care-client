@@ -18,13 +18,17 @@ import type {
   UpdateProductInput,
 } from '@/types/inventory';
 
-/** Products for the cash register: needs a branch (its stock) and something typed. */
-export function useProductsForSale(branchId: string | undefined, search: string) {
+/**
+ * Products for the cash register: needs a branch (its stock) and something typed, or an exact
+ * barcode.
+ */
+export function useProductsForSale(branchId: string | undefined, search: string, barcode?: string) {
   const term = search.trim();
+  const code = barcode?.trim() ?? '';
   return useQuery({
-    queryKey: [...QUERY_KEYS.PRODUCTS, 'for-sale', branchId ?? null, term],
-    queryFn: () => productsApi.forSale(branchId as string, term),
-    enabled: Boolean(branchId) && term.length > 0,
+    queryKey: [...QUERY_KEYS.PRODUCTS, 'for-sale', branchId ?? null, term, code],
+    queryFn: () => productsApi.forSale(branchId as string, term, code || undefined),
+    enabled: Boolean(branchId) && (term.length > 0 || code.length > 0),
   });
 }
 

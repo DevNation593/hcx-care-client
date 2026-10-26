@@ -47,6 +47,17 @@ describe('useProductsForSale', () => {
       params: { branchId: 'branch-1', search: 'prot' },
     });
   });
+
+  it('queries by exact barcode without a search text', async () => {
+    http.get.mockResolvedValue([{ id: 'product-1' }]);
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useProductsForSale('branch-1', '', ' 7501 '), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(http.get).toHaveBeenCalledWith('/tenants/tenant-1/products/for-sale', {
+      params: { branchId: 'branch-1', barcode: '7501' },
+    });
+  });
 });
 
 describe('useCreateStockReceipt', () => {
