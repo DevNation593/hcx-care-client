@@ -48,11 +48,19 @@ export function useBillableSessions(filters?: BillableSessionFilters) {
   });
 }
 
+/** Taking or returning units moves what the order picker and /inventory show as available. */
+function refreshStock(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PRODUCTS });
+  queryClient.invalidateQueries({ queryKey: QUERY_KEYS.INVENTORY_REPORTS });
+  queryClient.invalidateQueries({ queryKey: QUERY_KEYS.STOCK_MOVEMENTS });
+}
+
 function refreshOrder(queryClient: QueryClient, orderId: string) {
   queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDER(orderId) });
   queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDER_ELIGIBILITY(orderId) });
   queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDERS });
   queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BILLABLE_SESSIONS });
+  refreshStock(queryClient);
 }
 
 /** An order mutation: refreshes what the order feeds, and re-reads it on a stale version. */
@@ -79,6 +87,8 @@ function useOrderMutation<TInput>(
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDER(orderId) });
       }
       if (cash) queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ORDERS });
+      // The shown availability was stale: read the real one again.
+      if (error.code === 'INSUFFICIENT_STOCK') refreshStock(queryClient);
       toast.error(error.message);
     },
   });
