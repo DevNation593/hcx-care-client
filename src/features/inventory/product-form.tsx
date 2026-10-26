@@ -54,8 +54,9 @@ export function ProductForm({ product, hasLots = false, submitting, error, onSub
     onSubmit({
       code: code.trim(),
       name: name.trim(),
-      ...(category.trim() ? { category: category.trim() } : {}),
-      ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
+      // When editing, a blank is sent as '' so the API clears the field.
+      ...(product || category.trim() ? { category: category.trim() } : {}),
+      ...(product || barcode.trim() ? { barcode: barcode.trim() } : {}),
       price: centsToAmount(cents),
       taxRatePercent: Number(taxRate),
       tracksExpiry,

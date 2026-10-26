@@ -63,8 +63,9 @@ function EditProductDialog({ product, onClose }: { product: ProductSummary; onCl
     const changes: UpdateProductInput = {};
     if (data.code !== product.code) changes.code = data.code;
     if (data.name !== product.name) changes.name = data.name;
-    if (data.category !== undefined && data.category !== product.category) changes.category = data.category;
-    if (data.barcode !== undefined && data.barcode !== product.barcode) changes.barcode = data.barcode;
+    // null and '' are the same blank; an emptied field is sent as '' to clear it.
+    if ((data.category ?? '') !== (product.category ?? '')) changes.category = data.category ?? '';
+    if ((data.barcode ?? '') !== (product.barcode ?? '')) changes.barcode = data.barcode ?? '';
     if (data.price !== product.price) changes.price = data.price;
     if (data.taxRatePercent !== product.taxRatePercent) changes.taxRatePercent = data.taxRatePercent;
     if (data.tracksExpiry !== product.tracksExpiry) changes.tracksExpiry = data.tracksExpiry;

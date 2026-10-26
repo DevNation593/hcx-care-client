@@ -6,6 +6,7 @@ import { InventoryPage } from './inventory-page';
 const hooks = vi.hoisted(() => ({
   can: vi.fn(),
   adjust: vi.fn(),
+  update: vi.fn(),
   setActive: vi.fn(),
   adjustError: undefined as { message: string } | undefined,
 }));
@@ -16,8 +17,8 @@ const product = {
   id: 'p-1',
   code: 'PROT-01',
   name: 'Protector solar',
-  category: 'Piel',
-  barcode: null,
+  category: 'Piel' as string | null,
+  barcode: null as string | null,
   price: '25.00',
   taxRatePercent: 15,
   tracksExpiry: true,
@@ -53,7 +54,7 @@ vi.mock('@/hooks/useInventory', () => ({
   }),
   useProduct: () => ({ data: { ...product, lots }, isError: false }),
   useCreateProduct: () => ({ mutate: vi.fn(), isPending: false }),
-  useUpdateProduct: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateProduct: () => ({ mutate: hooks.update, isPending: false }),
   useSetProductActive: () => ({ mutate: hooks.setActive, isPending: false }),
   useAdjustLot: () => ({ mutate: hooks.adjust, isPending: false, error: hooks.adjustError }),
 }));
@@ -99,6 +100,29 @@ describe('InventoryPage', () => {
     render(<InventoryPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Desactivar Protector solar' }));
     expect(hooks.setActive).toHaveBeenCalledWith(false);
+  });
+
+  it('clears category and barcode on edit by sending empty strings, and nothing else', () => {
+    product.barcode = '7501234567890';
+    render(<InventoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Protector solar' }));
+    fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Código de barras'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    product.barcode = null;
+
+    expect(hooks.update).toHaveBeenCalledWith({ category: '', barcode: '' }, expect.anything());
+  });
+
+  it('does not send blank category or barcode that were already blank', () => {
+    product.category = null;
+    render(<InventoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Protector solar' }));
+    fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: 'Protector facial' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    product.category = 'Piel';
+
+    expect(hooks.update).toHaveBeenCalledWith({ name: 'Protector facial' }, expect.anything());
   });
 
   it('shows the lots with the expired mark and opens the adjustment', () => {
