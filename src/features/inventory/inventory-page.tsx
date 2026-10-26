@@ -1,0 +1,56 @@
+'use client';
+
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { useMyPermissions } from '@/hooks/usePermissions';
+import { isMasterRole } from '@/types/guards';
+import { useAuthStore } from '@/store/authStore';
+import { ProductsTab } from './products-tab';
+
+const TABS = [
+  { id: 'products', label: 'Productos' },
+  { id: 'receipts', label: 'Entradas' },
+  { id: 'transfers', label: 'Traslados' },
+  { id: 'expiring', label: 'Por vencer' },
+  { id: 'valuation', label: 'Valorización y margen' },
+] as const;
+
+type TabId = (typeof TABS)[number]['id'];
+
+export function InventoryPage() {
+  const user = useAuthStore((state) => state.user);
+  const { can } = useMyPermissions();
+  const [tab, setTab] = useState<TabId>('products');
+
+  if (!can('inventory.manage', !!user && isMasterRole(user.role))) {
+    return (
+      <p role="alert" className="text-sm text-muted-foreground">
+        No tienes permiso para administrar el inventario.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Inventario</h1>
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Secciones del inventario">
+        {TABS.map((item) => (
+          <Button
+            key={item.id}
+            role="tab"
+            aria-selected={tab === item.id}
+            variant={tab === item.id ? 'default' : 'outline'}
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}
+          </Button>
+        ))}
+      </div>
+      {tab === 'products' ? (
+        <ProductsTab />
+      ) : (
+        <h2 className="text-lg font-semibold">{TABS.find((item) => item.id === tab)?.label}</h2>
+      )}
+    </div>
+  );
+}

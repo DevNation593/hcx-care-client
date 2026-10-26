@@ -31,6 +31,7 @@ import {
   Syringe,
   FileSignature,
   Wallet,
+  Package,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -89,6 +90,7 @@ export function Sidebar() {
       ],
     },
     { name: 'Caja', href: '/cash', icon: Wallet, show: isEnabled('core.billing.cash') && can('billing.view', isMaster) },
+    { name: 'Inventario', href: '/inventory', icon: Package, show: isEnabled('core.billing.inventory') && can('inventory.manage', isMaster) },
     { name: 'Facturación', href: '/admin/billing', icon: FileText, show: isEnabled('core.billing.invoicing') && can('billing.view', isMaster) },
     {
       name: 'Administración',
