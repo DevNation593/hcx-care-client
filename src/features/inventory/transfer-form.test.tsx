@@ -130,4 +130,19 @@ describe('TransferForm', () => {
     render(<TransferForm branches={branches} products={products} error="Stock insuficiente" onSubmit={onSubmit} />);
     expect(screen.getByText('Stock insuficiente')).toBeInTheDocument();
   });
+
+  it('reports the product search and keeps the chosen product when the results change', () => {
+    const onProductSearch = vi.fn();
+    const props = { branches, onProductSearch, onSubmit };
+    const { rerender } = render(<TransferForm {...props} products={products} />);
+    pick(/^Sede de origen/, 'b-1');
+    pick('Buscar producto', 'pro');
+    expect(onProductSearch).toHaveBeenCalledWith('pro');
+
+    pick(/^Producto/, 'p-1');
+    const other = { ...products[0], id: 'p-9', code: 'X-9', name: 'Otro' };
+    rerender(<TransferForm {...props} products={[other]} />);
+    expect((screen.getByLabelText(/^Producto/) as HTMLSelectElement).value).toBe('p-1');
+    expect(optionTexts(/^Producto/)).toEqual(['Elige un producto', 'X-9 · Otro', 'PROT-01 · Protector solar']);
+  });
 });

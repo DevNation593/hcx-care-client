@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -8,18 +8,29 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Pagination } from '@/components/ui/pagination';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import type { ProductSummary } from '@/types/inventory';
 import { useBranches } from '@/hooks/useBranches';
 import { useCreateStockTransfer, useProducts, useStockTransfers } from '@/hooks/useInventory';
 import { TransferForm } from './transfer-form';
 
 const PAGE_SIZE = 20;
-// The API caps a page at 100 products; the form offers the first 100 active ones.
 const PRODUCT_OPTIONS = 100;
+const SEARCH_DELAY_MS = 250;
 
 function CreateTransferDialog({ onClose }: { onClose: () => void }) {
   const create = useCreateStockTransfer();
   const branches = useBranches();
-  const products = useProducts({ active: true, pageSize: PRODUCT_OPTIONS });
+  const [term, setTerm] = useState('');
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(term.trim()), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [term]);
+  const lastItems = useRef<ProductSummary[]>();
+  const products = useProducts({ search: search || undefined, active: true, pageSize: PRODUCT_OPTIONS });
+  // While a new search loads, the form keeps the previous results instead of unmounting.
+  if (products.data) lastItems.current = products.data.items;
+  const items = lastItems.current;
   const activeBranches = (branches.data ?? []).filter((branch) => branch.isActive);
 
   return (
@@ -36,12 +47,13 @@ function CreateTransferDialog({ onClose }: { onClose: () => void }) {
         </DialogHeader>
         {branches.isError || products.isError ? (
           <Alert variant="destructive" title="No se pudieron cargar las sedes o los productos" />
-        ) : branches.isPending || products.isPending ? (
+        ) : branches.isPending || !items ? (
           <Skeleton className="h-32 w-full" />
         ) : (
           <TransferForm
             branches={activeBranches}
-            products={products.data.items}
+            products={items}
+            onProductSearch={setTerm}
             submitting={create.isPending}
             error={create.error?.message}
             onSubmit={(data) => create.mutate(data, { onSuccess: onClose })}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/store/authStore';
 import { InventoryPage } from './inventory-page';
@@ -6,11 +6,19 @@ import { InventoryPage } from './inventory-page';
 const hooks = vi.hoisted(() => ({
   can: vi.fn(),
   adjust: vi.fn(),
+  productsQuery: vi.fn(),
   update: vi.fn(),
   setActive: vi.fn(),
   adjustError: undefined as { message: string } | undefined,
 }));
 
+vi.mock('@/hooks/useBranches', () => ({
+  useBranches: () => ({
+    data: [{ id: 'b-1', name: 'Principal', isActive: true }],
+    isPending: false,
+    isError: false,
+  }),
+}));
 vi.mock('@/hooks/usePermissions', () => ({ useMyPermissions: () => ({ can: hooks.can }) }));
 
 const product = {
@@ -47,11 +55,14 @@ const lots = [
 ];
 
 vi.mock('@/hooks/useInventory', () => ({
-  useProducts: () => ({
+  useProducts: (query: unknown) => {
+    hooks.productsQuery(query);
+    return {
     data: { items: [product], total: 1, page: 1, pageSize: 20 },
     isPending: false,
     isError: false,
-  }),
+    };
+  },
   useProduct: () => ({ data: { ...product, lots }, isError: false }),
   useCreateProduct: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateProduct: () => ({ mutate: hooks.update, isPending: false }),
@@ -143,6 +154,25 @@ describe('InventoryPage', () => {
     const transferRow = screen.getByText('Norte').closest('tr') as HTMLElement;
     expect(within(transferRow).getByText('Principal')).toBeInTheDocument();
     expect(within(transferRow).getByText('2')).toBeInTheDocument();
+  });
+
+  it('queries products by the debounced search typed in the receipt form', () => {
+    vi.useFakeTimers();
+    try {
+      render(<InventoryPage />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Entradas' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Registrar entrada' }));
+      expect(hooks.productsQuery).toHaveBeenLastCalledWith({ search: undefined, active: true, pageSize: 100 });
+
+      fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: ' crema ' } });
+      expect(hooks.productsQuery).not.toHaveBeenCalledWith(expect.objectContaining({ search: 'crema' }));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      expect(hooks.productsQuery).toHaveBeenLastCalledWith({ search: 'crema', active: true, pageSize: 100 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('turns a product off with the boolean the API takes', () => {

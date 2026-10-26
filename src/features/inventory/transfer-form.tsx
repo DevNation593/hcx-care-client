@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,10 @@ const SELECT_CLASS = 'mt-1 h-11 w-full rounded-md border border-input bg-backgro
 
 interface TransferFormProps {
   branches: Branch[];
+  /** Current results of the product search. */
   products: ProductSummary[];
+  /** Called with what is typed in the product search; the caller debounces and queries. */
+  onProductSearch?: (term: string) => void;
   submitting?: boolean;
   /** The `message` the API answered. */
   error?: string | null;
@@ -41,6 +44,8 @@ interface LineRowProps {
   index: number;
   fromBranchId: string;
   products: ProductSummary[];
+  /** The line's product, offered even when the current search left it out. */
+  chosen?: ProductSummary;
   line: LineState;
   errors: LineErrors;
   canRemove: boolean;
@@ -48,7 +53,7 @@ interface LineRowProps {
   onRemove: () => void;
 }
 
-function LineRow({ id, index, fromBranchId, products, line, errors, canRemove, onChange, onRemove }: LineRowProps) {
+function LineRow({ id, index, fromBranchId, products, chosen, line, errors, canRemove, onChange, onRemove }: LineRowProps) {
   const product = useProduct(line.productId);
   // Only sellable stock is offered: lots of the origin branch with a balance that have not expired.
   const lots = (product.data?.lots ?? []).filter(
@@ -84,7 +89,7 @@ function LineRow({ id, index, fromBranchId, products, line, errors, canRemove, o
             className={SELECT_CLASS}
           >
             <option value="">Elige un producto</option>
-            {products.map((item) => (
+            {(chosen && !products.some((item) => item.id === chosen.id) ? [...products, chosen] : products).map((item) => (
               <option key={item.id} value={item.id}>
                 {item.code} · {item.name}
               </option>
@@ -142,7 +147,10 @@ function LineRow({ id, index, fromBranchId, products, line, errors, canRemove, o
   );
 }
 
-export function TransferForm({ branches, products, submitting, error, onSubmit }: TransferFormProps) {
+export function TransferForm({ branches, products, onProductSearch, submitting, error, onSubmit }: TransferFormProps) {
+  // Every product seen so far, so a chosen one stays selectable after a new search drops it.
+  const seen = useRef(new Map<string, ProductSummary>());
+  for (const product of products) seen.current.set(product.id, product);
   const [fromBranchId, setFromBranchId] = useState('');
   const [toBranchId, setToBranchId] = useState('');
   const [note, setNote] = useState('');
@@ -263,6 +271,17 @@ export function TransferForm({ branches, products, submitting, error, onSubmit }
 
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold">Productos a trasladar</legend>
+        {onProductSearch && (
+          <div>
+            <Label htmlFor="transfer-product-search">Buscar producto</Label>
+            <Input
+              id="transfer-product-search"
+              className="h-11"
+              placeholder="Nombre o código"
+              onChange={(event) => onProductSearch(event.target.value)}
+            />
+          </div>
+        )}
         {!fromBranchId ? (
           <p className="text-sm text-muted-foreground">Elige la sede de origen para ver sus lotes.</p>
         ) : (
@@ -274,6 +293,7 @@ export function TransferForm({ branches, products, submitting, error, onSubmit }
                 index={index}
                 fromBranchId={fromBranchId}
                 products={originProducts}
+                chosen={line.productId ? seen.current.get(line.productId) : undefined}
                 line={line}
                 errors={lineErrors[line.key] ?? {}}
                 canRemove={lines.length > 1}

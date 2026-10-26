@@ -34,6 +34,8 @@ const setup = () => render(<ReceiptForm branches={branches} products={products} 
 
 beforeEach(() => vi.clearAllMocks());
 
+const GUANTES_ONLY = [products[1]];
+
 describe('ReceiptForm', () => {
   it('does not submit a product that tracks expiry without a date and flags that line', () => {
     setup();
@@ -91,5 +93,54 @@ describe('ReceiptForm', () => {
   it('shows the message the API answered', () => {
     render(<ReceiptForm branches={branches} products={products} error="Producto inactivo" onSubmit={onSubmit} />);
     expect(screen.getByText('Producto inactivo')).toBeInTheDocument();
+  });
+
+  it('sends the chosen day as local noon so the day does not shift with the time zone', () => {
+    setup();
+    type(/^Fecha de recepción/, '2026-10-26');
+    type(/^Producto/, 'p-2');
+    type(/^Cantidad/, '1');
+    type(/^Costo unitario/, '1');
+    submit();
+
+    const sent = onSubmit.mock.calls[0][0].receivedAt as string;
+    expect(sent).toBe(new Date(2026, 9, 26, 12).toISOString());
+    const back = new Date(sent);
+    expect([back.getFullYear(), back.getMonth(), back.getDate(), back.getHours()]).toEqual([2026, 9, 26, 12]);
+  });
+
+  it('reports the product search and keeps a chosen product after the results change', () => {
+    const onProductSearch = vi.fn();
+    const { rerender } = render(
+      <ReceiptForm branches={branches} products={products} onProductSearch={onProductSearch} onSubmit={onSubmit} />,
+    );
+    type('Buscar producto', 'gua');
+    expect(onProductSearch).toHaveBeenCalledWith('gua');
+
+    type(/^Producto/, 'p-1');
+    rerender(
+      <ReceiptForm branches={branches} products={GUANTES_ONLY} onProductSearch={onProductSearch} onSubmit={onSubmit} />,
+    );
+    expect(Array.from((screen.getByLabelText(/^Producto/) as HTMLSelectElement).options).map((o) => o.value)).toEqual([
+      '',
+      'p-2',
+      'p-1',
+    ]);
+    expect((screen.getByLabelText(/^Producto/) as HTMLSelectElement).value).toBe('p-1');
+  });
+
+  it('can choose a product that only appears in a later search', () => {
+    const later: ProductSummary = { ...products[1], id: 'p-300', code: 'ZZ-300', name: 'Mascarilla' };
+    const { rerender } = render(<ReceiptForm branches={branches} products={products} onSubmit={onSubmit} />);
+    rerender(<ReceiptForm branches={branches} products={[later]} onSubmit={onSubmit} />);
+    type(/^Producto/, 'p-300');
+    type(/^Cantidad/, '2');
+    type(/^Costo unitario/, '3');
+    submit();
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      branchId: 'b-1',
+      lines: [{ productId: 'p-300', quantity: 2, unitCost: '3.00' }],
+    });
   });
 });

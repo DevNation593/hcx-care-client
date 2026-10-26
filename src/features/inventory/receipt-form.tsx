@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,10 @@ const SELECT_CLASS = 'mt-1 h-11 w-full rounded-md border border-input bg-backgro
 
 interface ReceiptFormProps {
   branches: Branch[];
+  /** Current results of the product search. */
   products: ProductSummary[];
+  /** Called with what is typed in the product search; the caller debounces and queries. */
+  onProductSearch?: (term: string) => void;
   submitting?: boolean;
   /** The `message` the API answered. */
   error?: string | null;
@@ -43,7 +46,16 @@ const newLine = (key: number): LineState => ({
   expiresAt: '',
 });
 
-export function ReceiptForm({ branches, products, submitting, error, onSubmit }: ReceiptFormProps) {
+/** Local noon of a YYYY-MM-DD day as an ISO timestamp, so the day does not shift with the time zone. */
+function localNoon(day: string): string {
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(year, month - 1, date, 12).toISOString();
+}
+
+export function ReceiptForm({ branches, products, onProductSearch, submitting, error, onSubmit }: ReceiptFormProps) {
+  // Every product seen so far, so a chosen one stays selectable after a new search drops it.
+  const seen = useRef(new Map<string, ProductSummary>());
+  for (const product of products) seen.current.set(product.id, product);
   const [branchId, setBranchId] = useState(branches[0]?.id ?? '');
   const [supplierName, setSupplierName] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
@@ -64,7 +76,7 @@ export function ReceiptForm({ branches, products, submitting, error, onSubmit }:
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    const byId = new Map(products.map((product) => [product.id, product]));
+    const byId = seen.current;
     const found: Record<number, LineErrors> = {};
     const payload: CreateStockReceiptInput['lines'] = [];
 
@@ -104,7 +116,7 @@ export function ReceiptForm({ branches, products, submitting, error, onSubmit }:
       branchId,
       ...(supplierName.trim() ? { supplierName: supplierName.trim() } : {}),
       ...(documentNumber.trim() ? { documentNumber: documentNumber.trim() } : {}),
-      ...(receivedAt ? { receivedAt } : {}),
+      ...(receivedAt ? { receivedAt: localNoon(receivedAt) } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
       lines: payload,
     });
@@ -171,9 +183,20 @@ export function ReceiptForm({ branches, products, submitting, error, onSubmit }:
 
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold">Productos recibidos</legend>
+        {onProductSearch && (
+          <div>
+            <Label htmlFor="receipt-product-search">Buscar producto</Label>
+            <Input
+              id="receipt-product-search"
+              className="h-11"
+              placeholder="Nombre o código"
+              onChange={(event) => onProductSearch(event.target.value)}
+            />
+          </div>
+        )}
         {lines.map((line, index) => {
           const errors = lineErrors[line.key] ?? {};
-          const tracksExpiry = products.find((product) => product.id === line.productId)?.tracksExpiry ?? false;
+          const tracksExpiry = seen.current.get(line.productId)?.tracksExpiry ?? false;
           const id = `receipt-line-${line.key}`;
           return (
             <div key={line.key} className="space-y-3 rounded-md border border-input p-3">
@@ -204,7 +227,12 @@ export function ReceiptForm({ branches, products, submitting, error, onSubmit }:
                     className={SELECT_CLASS}
                   >
                     <option value="">Elige un producto</option>
-                    {products.map((product) => (
+                    {[
+                      ...products,
+                      ...(line.productId && !products.some((item) => item.id === line.productId)
+                        ? [seen.current.get(line.productId) as ProductSummary]
+                        : []),
+                    ].map((product) => (
                       <option key={product.id} value={product.id}>
                         {product.code} · {product.name}
                       </option>
