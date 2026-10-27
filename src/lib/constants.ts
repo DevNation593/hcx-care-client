@@ -43,6 +43,7 @@ export const ROUTES = {
   
   // Dashboard
   DASHBOARD: '/dashboard',
+  CASH: '/cash',
   
   // Calendar
   CALENDAR: '/calendar',

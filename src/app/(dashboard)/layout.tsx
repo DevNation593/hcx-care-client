@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
@@ -9,15 +9,22 @@ import { NotificationsPanel } from '@/components/layout/notifications-panel';
 import { useUIStore } from '@/store/uiStore';
 import { postLoginRoute } from '@/lib/post-login-route';
 import { ROUTES } from '@/lib/constants';
+import { isCashierPath } from '@/lib/cashier-routes';
+import { isCashierRole } from '@/types/guards';
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const user = useAuthStore((state) => state.user);
   // Anything other than the dashboard means this user does not belong in it.
   const homeRoute = user ? postLoginRoute(user) : ROUTES.DASHBOARD;
+  // A cashier belongs in the panel, but only on its allowed pages.
+  const isCashier = !!user && !user.mustChangePassword && isCashierRole(user.role);
+  const offLimits = isCashier && !isCashierPath(pathname);
+  const leavesPanel = isCashier ? offLimits : homeRoute !== ROUTES.DASHBOARD;
   const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed);
 
   useEffect(() => {
@@ -29,15 +36,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.replace('/login');
       return;
     }
-    if (homeRoute !== ROUTES.DASHBOARD) {
+    if (leavesPanel) {
       router.replace(homeRoute);
     }
-  }, [isAuthenticated, hasHydrated, homeRoute, router]);
+  }, [isAuthenticated, hasHydrated, homeRoute, leavesPanel, router]);
 
   if (!hasHydrated) {
     return null;
   }
-  if (!isAuthenticated || homeRoute !== ROUTES.DASHBOARD) {
+  if (!isAuthenticated || leavesPanel) {
     return null;
   }
 
