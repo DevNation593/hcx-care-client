@@ -179,7 +179,7 @@ export function TeamMemberDialog({
 
   const handleRoleChange = (role: AssignableTeamRole) => {
     setValues((current) =>
-      role === UserRole.ASISTENTE
+      role === UserRole.ASISTENTE || role === UserRole.CAJERO
         ? { ...current, role, specialtyId: '', professionalTitle: '', licenseNumber: '', bio: '' }
         : { ...current, role },
     );
@@ -426,6 +426,7 @@ export function TeamMemberDialog({
               >
                 <option value={UserRole.PROFESIONAL}>Profesional</option>
                 <option value={UserRole.ASISTENTE}>Asistente</option>
+                <option value={UserRole.CAJERO}>Cajero</option>
               </select>
               <p id="team-member-role-description" className="text-xs text-muted-foreground">
                 Los perfiles clínicos requieren una especialidad habilitada para el consultorio.
