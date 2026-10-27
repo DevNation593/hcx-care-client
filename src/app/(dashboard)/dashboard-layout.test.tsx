@@ -6,9 +6,10 @@ import DashboardLayout from './layout';
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 
+const route = vi.hoisted(() => ({ pathname: '/dashboard' }));
 vi.mock('next/navigation', () => ({
   useRouter: () => router,
-  usePathname: () => '/dashboard',
+  usePathname: () => route.pathname,
 }));
 vi.mock('@/components/layout/sidebar', () => ({ Sidebar: () => <nav /> }));
 vi.mock('@/components/layout/header', () => ({ Header: () => <header /> }));
@@ -23,6 +24,7 @@ const signIn = (user: Partial<User>) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  route.pathname = '/dashboard';
   useAuthStore.setState({ user: null, tenant: null, isAuthenticated: false, hasHydrated: true });
 });
 
@@ -39,6 +41,22 @@ describe('DashboardLayout routing', () => {
     render(<DashboardLayout><p>content</p></DashboardLayout>);
     expect(router.replace).toHaveBeenCalledWith('/change-password');
     expect(screen.queryByText('content')).not.toBeInTheDocument();
+  });
+
+  it.each(['/dashboard', '/patients/123'])('sends a CAJERO on %s to /cash', (pathname) => {
+    route.pathname = pathname;
+    signIn({ role: UserRole.CAJERO, mustChangePassword: false });
+    render(<DashboardLayout><p>content</p></DashboardLayout>);
+    expect(router.replace).toHaveBeenCalledWith('/cash');
+    expect(screen.queryByText('content')).not.toBeInTheDocument();
+  });
+
+  it.each(['/cash', '/inventory', '/admin/billing', '/profile'])('keeps a CAJERO on %s', (pathname) => {
+    route.pathname = pathname;
+    signIn({ role: UserRole.CAJERO, mustChangePassword: false });
+    render(<DashboardLayout><p>content</p></DashboardLayout>);
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(screen.getByText('content')).toBeInTheDocument();
   });
 
   it('shows the dashboard to a regular user', () => {

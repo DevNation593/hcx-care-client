@@ -9,6 +9,7 @@ export enum UserRole {
   ADMIN = 'ADMIN',
   PROFESIONAL = 'PROFESIONAL',
   ASISTENTE = 'ASISTENTE',
+  CAJERO = 'CAJERO',
   SOPORTE = 'SOPORTE',
   PACIENTE = 'PACIENTE',
 }
@@ -38,6 +39,7 @@ export const SECTION_KEYS = [
   'core.billing.profiles',
   'core.billing.orders',
   'core.billing.cash',
+  'core.billing.inventory',
   'core.billing.invoicing',
   'core.admin',
   'core.admin.team',
@@ -455,9 +457,9 @@ export interface User {
 }
 
 /** Roles that appear in the clinic team list. */
-export type TenantTeamRole = UserRole.MASTER | UserRole.PROFESIONAL | UserRole.ASISTENTE;
+export type TenantTeamRole = UserRole.MASTER | UserRole.PROFESIONAL | UserRole.ASISTENTE | UserRole.CAJERO;
 /** Roles the account holder can give to a team member. MASTER is never assignable. */
-export type AssignableTeamRole = UserRole.PROFESIONAL | UserRole.ASISTENTE;
+export type AssignableTeamRole = UserRole.PROFESIONAL | UserRole.ASISTENTE | UserRole.CAJERO;
 
 export interface TenantTeamProfessionalProfileInput {
   specialtyId: string;
@@ -1219,7 +1221,7 @@ export interface PlatformTenantDetail {
   modules: { key: string; enabled: boolean }[];
 }
 
-export type ClinicRole = 'MASTER' | 'PROFESIONAL' | 'ASISTENTE';
+export type ClinicRole = 'MASTER' | 'PROFESIONAL' | 'ASISTENTE' | 'CAJERO';
 
 export interface PlatformRolePermissions {
   tenantId: string;

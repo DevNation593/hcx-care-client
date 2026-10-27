@@ -3,6 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserRole, type TenantSpecialty, type UpdateTenantUserInput, type User } from '@/types';
 import { TeamMemberDialog } from './team-member-dialog';
 
+const sections = vi.hoisted(() => ({ cash: true }));
+vi.mock('@/hooks/useSections', () => ({
+  useSections: () => ({ isEnabled: (key: string) => key !== 'core.billing.cash' || sections.cash }),
+}));
+
+beforeEach(() => {
+  sections.cash = true;
+});
+
 const psychology: TenantSpecialty = {
   id: 'specialty-psychology',
   code: 'PSYCHOLOGY',
@@ -107,13 +116,74 @@ describe('TeamMemberDialog', () => {
     expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('professionalProfile');
   });
 
-  it('offers only Profesional and Asistente when adding a member', () => {
+  it('offers Profesional, Asistente and Cajero when adding a member', () => {
+    renderDialog();
+    const options = Array.from(
+      (screen.getByLabelText('Rol') as HTMLSelectElement).options,
+    ).map((option) => option.value);
+    expect(options).toEqual([UserRole.PROFESIONAL, UserRole.ASISTENTE, UserRole.CAJERO]);
+    expect(screen.queryByLabelText('También atiende pacientes')).not.toBeInTheDocument();
+  });
+
+  it('does not offer Cajero when the clinic has no cash section', () => {
+    sections.cash = false;
     renderDialog();
     const options = Array.from(
       (screen.getByLabelText('Rol') as HTMLSelectElement).options,
     ).map((option) => option.value);
     expect(options).toEqual([UserRole.PROFESIONAL, UserRole.ASISTENTE]);
-    expect(screen.queryByLabelText('También atiende pacientes')).not.toBeInTheDocument();
+  });
+
+  it('keeps Cajero when editing an existing cashier even without the cash section', () => {
+    sections.cash = false;
+    renderDialog({
+      member: {
+        id: 'cashier-1', email: 'caro@example.com', firstName: 'Caro', lastName: 'Caja',
+        role: UserRole.CAJERO, tenantId: 'tenant-1', isActive: true,
+      } as User,
+    });
+    const select = screen.getByLabelText('Rol') as HTMLSelectElement;
+    expect(Array.from(select.options).map((option) => option.value)).toContain(UserRole.CAJERO);
+    expect(select).toHaveValue(UserRole.CAJERO);
+  });
+
+  it('only talks about clinical profiles under the Profesional role', () => {
+    renderDialog();
+    const helper = /perfiles clínicos requieren una especialidad/;
+    expect(screen.getByText(helper)).toBeInTheDocument();
+    chooseRole(UserRole.ASISTENTE);
+    expect(screen.queryByText(helper)).not.toBeInTheDocument();
+    chooseRole(UserRole.CAJERO);
+    expect(screen.queryByText(helper)).not.toBeInTheDocument();
+  });
+
+  it('clears hidden clinical fields and sends the cashier role without a profile', async () => {
+    const { onSubmit } = renderDialog();
+    fillIdentityAndPassword();
+    fireEvent.change(screen.getByLabelText('Especialidad'), { target: { value: psychology.id } });
+    fireEvent.change(screen.getByLabelText('Título profesional'), { target: { value: 'Psicóloga clínica' } });
+    chooseRole(UserRole.CAJERO);
+    expect(screen.queryByLabelText('Especialidad')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Crear miembro' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
+      email: 'ana@example.com',
+      password: 'Secret123',
+      firstName: 'Ana',
+      lastName: 'Vega',
+      role: UserRole.CAJERO,
+    }));
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('professionalProfile');
+  });
+
+  it('shows Cajero selected when editing an existing cashier', () => {
+    const cashier = {
+      id: 'cashier-1', email: 'caro@example.com', firstName: 'Caro', lastName: 'Caja',
+      role: UserRole.CAJERO, tenantId: 'tenant-1', isActive: true,
+    } as User;
+    renderDialog({ member: cashier });
+    expect(screen.getByLabelText('Rol')).toHaveValue(UserRole.CAJERO);
+    expect(screen.queryByLabelText('Especialidad')).not.toBeInTheDocument();
   });
 
   it('defaults a new member to Profesional', () => {
