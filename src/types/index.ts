@@ -38,6 +38,7 @@ export const SECTION_KEYS = [
   'core.billing.profiles',
   'core.billing.orders',
   'core.billing.cash',
+  'core.billing.inventory',
   'core.billing.invoicing',
   'core.admin',
   'core.admin.team',
