@@ -277,6 +277,28 @@ describe('Sidebar inventory entry', () => {
   });
 });
 
+describe('Sidebar for a cashier', () => {
+  it('lists only cash, billing and, once granted, inventory', async () => {
+    useAuthStore.setState({ user: { ...admin, role: UserRole.CAJERO } });
+    permissions.granted = ['billing.view'];
+    const { unmount } = renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Caja' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Facturación' })).toBeInTheDocument();
+    for (const name of ['Dashboard', 'Pacientes', 'Inventario']) {
+      expect(screen.queryByRole('link', { name })).not.toBeInTheDocument();
+    }
+    for (const name of ['Agenda', 'Clínica', 'Administración']) {
+      expect(screen.queryByText(name)).not.toBeInTheDocument();
+    }
+    unmount();
+
+    permissions.granted = ['billing.view', 'inventory.manage'];
+    renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Inventario' })).toBeInTheDocument();
+    permissions.granted = [];
+  });
+});
+
 describe('Sidebar tenant module visibility', () => {
   it('drops tenant A module access after switching to tenant B', async () => {
     renderSidebar();

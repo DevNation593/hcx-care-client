@@ -43,6 +43,7 @@ export const ROUTES = {
   
   // Dashboard
   DASHBOARD: '/dashboard',
+  CASH: '/cash',
   
   // Calendar
   CALENDAR: '/calendar',
@@ -375,6 +376,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
   [UserRole.PROFESIONAL]: 'Profesional',
   [UserRole.ASISTENTE]: 'Asistente',
+  [UserRole.CAJERO]: 'Cajero',
   [UserRole.SOPORTE]: 'Soporte',
   [UserRole.PACIENTE]: 'Paciente',
 };

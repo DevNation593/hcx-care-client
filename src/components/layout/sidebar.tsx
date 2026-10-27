@@ -8,7 +8,8 @@ import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { useSections } from '@/hooks/useSections';
 import { useMyPermissions } from '@/hooks/usePermissions';
-import { canManageUsers, canManageSubscription, isMasterRole } from '@/types/guards';
+import { CASHIER_PATHS } from '@/lib/cashier-routes';
+import { canManageUsers, canManageSubscription, isCashierRole, isMasterRole } from '@/types/guards';
 import {
   LayoutDashboard,
   Calendar,
@@ -53,6 +54,9 @@ interface NavModule {
 
 type NavEntry = NavItem | NavModule;
 
+// The cashier's own pages live in one list (the route guard uses it); /profile is not in the menu.
+const CASHIER_ENTRIES: string[] = CASHIER_PATHS.filter((path) => path !== '/profile');
+
 const isModule = (entry: NavEntry): entry is NavModule => 'items' in entry;
 
 export function Sidebar() {
@@ -67,9 +71,10 @@ export function Sidebar() {
   const managesUsers = !!user && canManageUsers(user);
   const managesSubscription = !!user && canManageSubscription(user);
   const isMaster = !!user && isMasterRole(user.role);
+  const isCashier = !!user && isCashierRole(user.role);
 
   const navigation: NavEntry[] = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, show: true },
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, show: !isCashier },
     {
       name: 'Agenda',
       icon: CalendarDays,
@@ -106,7 +111,9 @@ export function Sidebar() {
   ];
 
   // A module is listed only while it has a submodule to open.
+  // A cashier sees only the screens it may open.
   const visibleNavigation = navigation
+    .filter((entry) => !isCashier || (!isModule(entry) && CASHIER_ENTRIES.includes(entry.href)))
     .map((entry) => (isModule(entry) ? { ...entry, items: entry.items.filter((item) => item.show) } : entry))
     .filter((entry) => (isModule(entry) ? entry.items.length > 0 : entry.show));
 

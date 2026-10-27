@@ -135,6 +135,7 @@ const tenantTeamMemberBaseFields = {
 const assignableTeamRole = z.union([
   z.literal(UserRole.PROFESIONAL),
   z.literal(UserRole.ASISTENTE),
+  z.literal(UserRole.CAJERO),
 ]);
 
 function refineTenantTeamMember(
@@ -147,9 +148,12 @@ function refineTenantTeamMember(
   if (data.role === UserRole.ASISTENTE && data.professionalProfile) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['professionalProfile'], message: 'El asistente no puede tener perfil clínico' });
   }
+  if (data.role === UserRole.CAJERO && data.professionalProfile) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['professionalProfile'], message: 'El cajero no puede tener perfil clínico' });
+  }
 }
 
-/** New members can only be professionals or assistants. */
+/** New members can only be professionals, assistants or cashiers. */
 export const tenantTeamMemberSchema = z.object({
   ...tenantTeamMemberBaseFields,
   role: assignableTeamRole,

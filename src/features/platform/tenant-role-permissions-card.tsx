@@ -11,6 +11,7 @@ const roles: { key: ClinicRole; name: string }[] = [
   { key: 'MASTER', name: 'Master' },
   { key: 'PROFESIONAL', name: 'Profesional' },
   { key: 'ASISTENTE', name: 'Asistente' },
+  { key: 'CAJERO', name: 'Cajero' },
 ];
 
 export function TenantRolePermissionsCard({ tenantId }: { tenantId: string }) {

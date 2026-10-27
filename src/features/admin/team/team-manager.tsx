@@ -34,6 +34,7 @@ const TEAM_USER_ROLES = new Set<UserRole>([
   UserRole.MASTER,
   UserRole.PROFESIONAL,
   UserRole.ASISTENTE,
+  UserRole.CAJERO,
 ]);
 
 function messageFrom(error: unknown, fallback: string): string {
