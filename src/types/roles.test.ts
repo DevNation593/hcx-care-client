@@ -10,6 +10,7 @@ import {
   canManageUsers,
   canRemovePatientTeamMember,
   hasActiveProfessionalProfile,
+  isCashierRole,
   isMasterRole,
   isPlatformAdmin,
   isProfessionalRole,
@@ -21,8 +22,12 @@ const ALL_ROLES = Object.values(UserRole);
 describe('role families', () => {
   it('has no legacy roles', () => {
     expect(ALL_ROLES.sort()).toEqual(
-      ['ADMIN', 'ASISTENTE', 'MASTER', 'PACIENTE', 'PROFESIONAL', 'SOPORTE'].sort(),
+      ['ADMIN', 'ASISTENTE', 'CAJERO', 'MASTER', 'PACIENTE', 'PROFESIONAL', 'SOPORTE'].sort(),
     );
+  });
+
+  it('classifies only CAJERO as the cashier', () => {
+    expect(ALL_ROLES.filter(isCashierRole)).toEqual([UserRole.CAJERO]);
   });
 
   it('classifies only MASTER as the account holder', () => {
@@ -43,6 +48,7 @@ describe('role families', () => {
       ADMIN: 'Administrador',
       PROFESIONAL: 'Profesional',
       ASISTENTE: 'Asistente',
+      CAJERO: 'Cajero',
       SOPORTE: 'Soporte',
       PACIENTE: 'Paciente',
     });

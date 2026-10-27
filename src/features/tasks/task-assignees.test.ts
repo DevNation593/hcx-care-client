@@ -24,6 +24,11 @@ describe('assignableUsers', () => {
     expect(assignableUsers(clinic, user('admin-1', role))).toEqual(clinic);
   });
 
+  it.each([UserRole.MASTER, UserRole.ASISTENTE])('never offers a cashier to %s', (role) => {
+    const withCashier = [...clinic, user('cash-1', UserRole.CAJERO)];
+    expect(assignableUsers(withCashier, user('admin-1', role))).toEqual(clinic);
+  });
+
   it('offers nobody without a session or a loaded list', () => {
     expect(assignableUsers(undefined, null)).toEqual([]);
     expect(assignableUsers(undefined, user('admin-1', UserRole.MASTER))).toEqual([]);

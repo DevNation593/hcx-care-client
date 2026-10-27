@@ -9,10 +9,17 @@ describe('postLoginRoute', () => {
     }
   });
 
+  it('sends a CAJERO to /cash', () => {
+    expect(postLoginRoute({ role: UserRole.CAJERO, mustChangePassword: false })).toBe('/cash');
+    expect(postLoginRoute({ role: UserRole.CAJERO })).toBe('/cash');
+  });
+
   it('sends ADMIN to /platform and everyone else to /dashboard', () => {
     expect(postLoginRoute({ role: UserRole.ADMIN, mustChangePassword: false })).toBe('/platform');
     expect(postLoginRoute({ role: UserRole.ADMIN })).toBe('/platform');
-    for (const role of Object.values(UserRole).filter((r) => r !== UserRole.ADMIN)) {
+    for (const role of Object.values(UserRole).filter(
+      (r) => r !== UserRole.ADMIN && r !== UserRole.CAJERO,
+    )) {
       expect(postLoginRoute({ role, mustChangePassword: false })).toBe('/dashboard');
       expect(postLoginRoute({ role })).toBe('/dashboard');
     }

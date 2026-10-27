@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render as rtlRender, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ordersApi, productsApi } from '@/lib/api/endpoints';
 import type { Order } from '@/types/cash';
 import { OrderDetail } from './order-detail';
 
@@ -23,14 +24,20 @@ const hooks = vi.hoisted(() => ({
   billable: { data: [] as unknown[] },
   patientProfiles: { data: [] as unknown[], isPending: false },
   createProfile: vi.fn(),
+  inventory: true,
+  toastError: vi.fn(),
 }));
 
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: hooks.toastError } }));
+vi.mock('@/hooks/useSections', () => ({ useSections: () => ({ isEnabled: () => hooks.inventory }) }));
+
 vi.mock('@/hooks/usePermissions', () => ({ useMyPermissions: () => ({ can: hooks.can }) }));
-vi.mock('@/hooks/useOrders', () => ({
+vi.mock('@/hooks/useOrders', async (importOriginal) => ({
+  // The real add-item mutation, so the API error reaches the user through its own toast.
+  useAddOrderItem: (await importOriginal<typeof import('@/hooks/useOrders')>()).useAddOrderItem,
   useOrder: () => hooks.order,
   useOrderEligibility: () => hooks.eligibility,
   useBillableSessions: () => hooks.billable,
-  useAddOrderItem: () => ({ mutateAsync: hooks.addItem, isPending: false }),
   useRemoveOrderItem: () => ({ mutateAsync: hooks.removeItem, isPending: false }),
   useUpdateOrderItem: () => ({ mutateAsync: hooks.updateItem, isPending: false }),
   useSetOrderBillingProfile: () => ({ mutateAsync: hooks.setProfile, isPending: false }),
@@ -109,6 +116,7 @@ function setOrder(order: Order) {
 beforeEach(() => {
   vi.clearAllMocks();
   hooks.can.mockReturnValue(true);
+  hooks.inventory = true;
   hooks.eligibility = { data: { eligible: false, missing: ['BILLING_PROFILE'], items: [] } };
   hooks.billable = { data: [] };
   hooks.patientProfiles = { data: [linked], isPending: false };
@@ -140,6 +148,30 @@ describe('OrderDetail', () => {
 
     expect(screen.queryByRole('button', { name: 'Concepto libre' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Agregar sesión' })).toBeInTheDocument();
+  });
+
+  it('shows the API message when a product has no stock left', async () => {
+    const whey = { id: 'prod-1', code: 'WHEY', name: 'Proteína', barcode: '7501', price: '25.00', taxRatePercent: 15, available: 5 };
+    vi.spyOn(productsApi, 'forSale').mockResolvedValue([whey]);
+    const message = 'Solo hay 1 unidades disponibles en esta sede.';
+    const addItem = vi
+      .spyOn(ordersApi, 'addItem')
+      .mockRejectedValue({ statusCode: 409, code: 'INSUFFICIENT_STOCK', message });
+    render(<OrderDetail orderId="o-1" />);
+
+    fireEvent.change(screen.getByLabelText('Buscar producto o código de barras'), { target: { value: 'prot' } });
+    fireEvent.change(await screen.findByLabelText('Cantidad de Proteína'), { target: { value: '2' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Agregar Proteína' })));
+
+    expect(addItem).toHaveBeenCalledWith('o-1', { version: 3, kind: 'PRODUCT', productId: 'prod-1', quantity: '2' });
+    expect(hooks.toastError).toHaveBeenCalledWith(message);
+  });
+
+  it('has no product search without the inventory section', () => {
+    hooks.inventory = false;
+    render(<OrderDetail orderId="o-1" />);
+
+    expect(screen.queryByLabelText('Buscar producto o código de barras')).not.toBeInTheDocument();
   });
 
   it('prefills the payment amount with the balance', () => {

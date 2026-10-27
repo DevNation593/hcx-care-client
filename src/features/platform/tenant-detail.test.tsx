@@ -337,6 +337,15 @@ describe('TenantDetail', () => {
     await waitFor(() => expect(platformApi.setRolePermissions).toHaveBeenCalledWith('t-1', 'ASISTENTE', ['billing.view']));
   });
 
+  it('lists the Cajero role in the per-role permissions card', async () => {
+    renderDetail();
+    await ready();
+    const select = screen.getByLabelText('Rol del consultorio') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toContain('Cajero');
+    fireEvent.change(select, { target: { value: 'CAJERO' } });
+    await waitFor(() => expect(platformApi.getRolePermissions).toHaveBeenCalledWith('t-1', 'CAJERO'));
+  });
+
   it('lets the owner assign clinical specialties and toggle their modules', async () => {
     renderDetail();
     await ready();

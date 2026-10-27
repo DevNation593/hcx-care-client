@@ -35,7 +35,7 @@ const SECTION_KEYS = [
   'core.clinical.specialties', 'core.clinical.forms', 'core.clinical.templates', 'core.treatments',
   'core.treatments.catalog', 'core.treatments.sessions', 'core.treatments.consents',
   'core.billing', 'core.billing.profiles', 'core.billing.orders', 'core.billing.cash',
-  'core.billing.invoicing', 'core.admin', 'core.admin.team', 'core.admin.branches',
+  'core.billing.inventory', 'core.billing.invoicing', 'core.admin', 'core.admin.team', 'core.admin.branches',
   'core.admin.reports',
 ] as const;
 
@@ -257,6 +257,48 @@ describe('Sidebar cash entry', () => {
   });
 });
 
+describe('Sidebar inventory entry', () => {
+  it('is shown to the master', async () => {
+    renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Inventario' })).toHaveAttribute('href', '/inventory');
+  });
+
+  it('is hidden to an assistant without inventory.manage and shown with it', async () => {
+    useAuthStore.setState({ user: { ...admin, role: UserRole.ASISTENTE } });
+    const { unmount } = renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Inventario' })).not.toBeInTheDocument();
+    unmount();
+
+    permissions.granted = ['inventory.manage'];
+    renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Inventario' })).toBeInTheDocument();
+    permissions.granted = [];
+  });
+});
+
+describe('Sidebar for a cashier', () => {
+  it('lists only cash, billing and, once granted, inventory', async () => {
+    useAuthStore.setState({ user: { ...admin, role: UserRole.CAJERO } });
+    permissions.granted = ['billing.view'];
+    const { unmount } = renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Caja' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Facturación' })).toBeInTheDocument();
+    for (const name of ['Dashboard', 'Pacientes', 'Inventario']) {
+      expect(screen.queryByRole('link', { name })).not.toBeInTheDocument();
+    }
+    for (const name of ['Agenda', 'Clínica', 'Administración']) {
+      expect(screen.queryByText(name)).not.toBeInTheDocument();
+    }
+    unmount();
+
+    permissions.granted = ['billing.view', 'inventory.manage'];
+    renderSidebar();
+    expect(await screen.findByRole('link', { name: 'Inventario' })).toBeInTheDocument();
+    permissions.granted = [];
+  });
+});
+
 describe('Sidebar tenant module visibility', () => {
   it('drops tenant A module access after switching to tenant B', async () => {
     renderSidebar();
@@ -349,6 +391,7 @@ describe('Sidebar section visibility', () => {
     ['Tratamientos', 'core.treatments.catalog'],
     ['Consentimientos', 'core.treatments.consents'],
     ['Caja', 'core.billing.cash'],
+    ['Inventario', 'core.billing.inventory'],
     ['Facturación', 'core.billing.invoicing'],
     ['Equipo', 'core.admin.team'],
     ['Reportes', 'core.admin.reports'],

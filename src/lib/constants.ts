@@ -43,6 +43,7 @@ export const ROUTES = {
   
   // Dashboard
   DASHBOARD: '/dashboard',
+  CASH: '/cash',
   
   // Calendar
   CALENDAR: '/calendar',
@@ -162,6 +163,19 @@ export const API_ENDPOINTS = {
     `/tenants/${tenantId}/orders/${id}/billing-eligibility`,
   PAYMENT_REFUND: (tenantId: string, id: string) => `/tenants/${tenantId}/payments/${id}/refund`,
   BILLABLE_SESSIONS: (tenantId: string) => `/tenants/${tenantId}/treatment-sessions/billable`,
+  PRODUCTS: (tenantId: string) => `/tenants/${tenantId}/products`,
+  PRODUCTS_FOR_SALE: (tenantId: string) => `/tenants/${tenantId}/products/for-sale`,
+  PRODUCT: (tenantId: string, id: string) => `/tenants/${tenantId}/products/${id}`,
+  PRODUCT_ACTIVE: (tenantId: string, id: string) => `/tenants/${tenantId}/products/${id}/active`,
+  STOCK_RECEIPTS: (tenantId: string) => `/tenants/${tenantId}/stock-receipts`,
+  STOCK_RECEIPT: (tenantId: string, id: string) => `/tenants/${tenantId}/stock-receipts/${id}`,
+  STOCK_LOT_ADJUSTMENTS: (tenantId: string, lotId: string) =>
+    `/tenants/${tenantId}/stock-lots/${lotId}/adjustments`,
+  STOCK_TRANSFERS: (tenantId: string) => `/tenants/${tenantId}/stock-transfers`,
+  STOCK_TRANSFER: (tenantId: string, id: string) => `/tenants/${tenantId}/stock-transfers/${id}`,
+  STOCK_MOVEMENTS: (tenantId: string) => `/tenants/${tenantId}/stock-movements`,
+  INVENTORY_REPORT: (tenantId: string, kind: string) =>
+    `/tenants/${tenantId}/inventory/reports/${kind}`,
   CONSENT_TEMPLATES: (tenantId: string) => `/tenants/${tenantId}/consent-templates`,
   CONSENT_TEMPLATE: (tenantId: string, id: string) =>
     `/tenants/${tenantId}/consent-templates/${id}`,
@@ -295,6 +309,12 @@ export const QUERY_KEYS = {
   ORDER: (id: string) => ['orders', id],
   ORDER_ELIGIBILITY: (id: string) => ['orders', id, 'eligibility'],
   BILLABLE_SESSIONS: ['billable-sessions'],
+  PRODUCTS: ['products'],
+  PRODUCT: (id: string) => ['products', id],
+  STOCK_RECEIPTS: ['stock-receipts'],
+  STOCK_TRANSFERS: ['stock-transfers'],
+  STOCK_MOVEMENTS: ['stock-movements'],
+  INVENTORY_REPORTS: ['inventory-reports'],
   CONSENT_TEMPLATES: ['consent-templates'],
   CONSENT_TEMPLATE: (id: string) => ['consent-templates', id],
   PATIENT_TREATMENT_SESSIONS: (patientId: string) => ['patients', patientId, 'treatment-sessions'],
@@ -356,6 +376,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
   [UserRole.PROFESIONAL]: 'Profesional',
   [UserRole.ASISTENTE]: 'Asistente',
+  [UserRole.CAJERO]: 'Cajero',
   [UserRole.SOPORTE]: 'Soporte',
   [UserRole.PACIENTE]: 'Paciente',
 };

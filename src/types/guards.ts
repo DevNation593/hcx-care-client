@@ -28,6 +28,11 @@ export function isPlatformAdmin(user: Pick<User, 'role'>): boolean {
   return user.role === UserRole.ADMIN;
 }
 
+/** The cashier: bills and manages the cash register, with no clinical access. */
+export function isCashierRole(role: UserRole): boolean {
+  return role === UserRole.CAJERO;
+}
+
 export function isProfessionalRole(role: UserRole): boolean {
   return role === UserRole.PROFESIONAL;
 }

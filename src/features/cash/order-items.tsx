@@ -12,9 +12,11 @@ import {
   useUpdateOrderItem,
 } from '@/hooks/useOrders';
 import { useMyPermissions } from '@/hooks/usePermissions';
+import { useSections } from '@/hooks/useSections';
 import type { ApiError } from '@/types';
 import type { Order, OrderItem } from '@/types/cash';
 import { centsToAmount, formatMoney, parseCents } from './money';
+import { ProductPicker } from './product-picker';
 
 interface OrderItemsProps {
   order: Order;
@@ -194,6 +196,7 @@ function DiscountEditor({
 
 export function OrderItems({ order, lockedReason, onConflict }: OrderItemsProps) {
   const { can } = useMyPermissions();
+  const { isEnabled } = useSections();
   const canEdit = can('billing.create');
   const canAdjust = can('billing.adjust');
   const addItem = useAddOrderItem(order.id);
@@ -201,6 +204,7 @@ export function OrderItems({ order, lockedReason, onConflict }: OrderItemsProps)
   const updateItem = useUpdateOrderItem(order.id);
   const [panel, setPanel] = useState<'session' | 'free' | null>(null);
   const locked = lockedReason !== null;
+  const inventoryOn = isEnabled('core.billing.inventory');
 
   // The hooks already toast the server's message; a stale version also shows the order notice.
   const run = async (action: () => Promise<unknown>): Promise<boolean> => {
@@ -301,6 +305,22 @@ export function OrderItems({ order, lockedReason, onConflict }: OrderItemsProps)
           onAdd={async (treatmentSessionId) => {
             await run(() =>
               addItem.mutateAsync({ version: order.version, kind: 'TREATMENT_SESSION', treatmentSessionId }),
+            );
+          }}
+        />
+      )}
+      {!locked && canEdit && inventoryOn && (
+        <ProductPicker
+          branchId={order.branchId}
+          disabled={locked}
+          onAdd={async (productId, quantity) => {
+            await run(() =>
+              addItem.mutateAsync({
+                version: order.version,
+                kind: 'PRODUCT',
+                productId,
+                quantity: String(quantity),
+              }),
             );
           }}
         />

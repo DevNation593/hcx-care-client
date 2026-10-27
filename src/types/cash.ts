@@ -143,7 +143,7 @@ export interface CloseCashRegisterInput {
 // ==========================================
 
 export type OrderStatus = 'OPEN' | 'PAID' | 'INVOICED' | 'CANCELLED';
-export type OrderItemKind = 'TREATMENT_SESSION' | 'FREE';
+export type OrderItemKind = 'TREATMENT_SESSION' | 'FREE' | 'PRODUCT';
 export type PaymentStatus = 'RECORDED' | 'REFUNDED';
 
 interface PersonName {
@@ -156,6 +156,7 @@ export interface OrderItem {
   id: string;
   kind: OrderItemKind;
   treatmentSessionId: string | null;
+  productId: string | null;
   patient: PersonName | null;
   description: string;
   quantity: string;
@@ -223,6 +224,8 @@ export interface AddOrderItemInput {
   kind: OrderItemKind;
   /** TREATMENT_SESSION only. */
   treatmentSessionId?: string;
+  /** PRODUCT only; `quantity` is the units sold. */
+  productId?: string;
   /** FREE only. */
   description?: string;
   quantity?: string;
