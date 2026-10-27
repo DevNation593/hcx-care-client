@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { tenantTeamMemberSchema, tenantTeamMemberUpdateSchema } from '@/lib/validations/schemas';
+import { useSections } from '@/hooks/useSections';
 import { ROLE_LABELS } from '@/lib/constants';
 import { isMasterRole } from '@/types/guards';
 import {
@@ -134,6 +135,9 @@ export function TeamMemberDialog({
   const isEditing = !!member;
   const isSaving = pending || submitting;
   const isMaster = !!member && isMasterRole(member.role);
+  const { isEnabled } = useSections();
+  // An existing cashier keeps its option so the select can show it.
+  const offersCashier = isEnabled('core.billing.cash') || member?.role === UserRole.CAJERO;
 
   useEffect(() => {
     memberRef.current = member;
@@ -422,15 +426,17 @@ export function TeamMemberDialog({
                 value={values.role}
                 onChange={(event) => handleRoleChange(event.target.value as AssignableTeamRole)}
                 disabled={isSaving}
-                aria-describedby="team-member-role-description"
+                aria-describedby={values.role === UserRole.PROFESIONAL ? 'team-member-role-description' : undefined}
               >
                 <option value={UserRole.PROFESIONAL}>Profesional</option>
                 <option value={UserRole.ASISTENTE}>Asistente</option>
-                <option value={UserRole.CAJERO}>Cajero</option>
+                {offersCashier && <option value={UserRole.CAJERO}>Cajero</option>}
               </select>
-              <p id="team-member-role-description" className="text-xs text-muted-foreground">
-                Los perfiles clínicos requieren una especialidad habilitada para el consultorio.
-              </p>
+              {values.role === UserRole.PROFESIONAL && (
+                <p id="team-member-role-description" className="text-xs text-muted-foreground">
+                  Los perfiles clínicos requieren una especialidad habilitada para el consultorio.
+                </p>
+              )}
             </div>
           )}
 

@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { useSections } from '@/hooks/useSections';
 import { useMyPermissions } from '@/hooks/usePermissions';
+import { CASHIER_PATHS } from '@/lib/cashier-routes';
 import { canManageUsers, canManageSubscription, isCashierRole, isMasterRole } from '@/types/guards';
 import {
   LayoutDashboard,
@@ -53,7 +54,8 @@ interface NavModule {
 
 type NavEntry = NavItem | NavModule;
 
-const CASHIER_ENTRIES: string[] = ['/cash', '/inventory', '/admin/billing'];
+// The cashier's own pages live in one list (the route guard uses it); /profile is not in the menu.
+const CASHIER_ENTRIES: string[] = CASHIER_PATHS.filter((path) => path !== '/profile');
 
 const isModule = (entry: NavEntry): entry is NavModule => 'items' in entry;
 
