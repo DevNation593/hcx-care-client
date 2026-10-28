@@ -16,6 +16,7 @@ export const PLAN_VALUE_LABELS: Record<PlanValueField, string> = {
   storageGB: 'Almacenamiento (GB)',
   monthlyElectronicInvoicesLimit: 'Facturas electrónicas al mes',
   includedSpecialties: 'Especialidades incluidas',
+  maxBranches: 'Sedes activas',
 };
 
 export const formatMoney = (amount: number, currency = 'USD') =>

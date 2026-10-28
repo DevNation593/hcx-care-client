@@ -29,6 +29,7 @@ const VALUE_FIELDS: PlanValueField[] = [
   'storageGB',
   'monthlyElectronicInvoicesLimit',
   'includedSpecialties',
+  'maxBranches',
 ];
 const MONEY_FIELDS: PlanValueField[] = ['basePrice', 'pricePerSeat', 'specialtyPrice'];
 

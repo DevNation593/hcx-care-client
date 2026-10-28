@@ -4,26 +4,20 @@ export interface ImageAsset {
   alt: string;
 }
 
-export type PlanAudience = 'individual' | 'business';
-
-export const PLAN_AUDIENCE_LABELS: Record<PlanAudience, string> = {
-  individual: 'Individual',
-  business: 'Empresarial',
-};
-
 export interface Plan {
   id: string;
-  /** Short name shown inside its group; both groups have a "Básico" and a "Pro". */
   name: string;
-  audience: PlanAudience;
+  /** Who the plan is for. */
   summary: string;
-  /** USD per month; null means custom pricing. */
+  /** USD per month before VAT; null means custom pricing, and so do the null limits. */
   priceMonthly: number | null;
   pricePerExtraSeat: number | null;
   seatsIncluded: number | null;
+  maxBranches: number | null;
+  monthlyInvoices: number | null;
   maxActivePatients: number | null;
   storageGB: number | null;
-  monthlyNotifications: number | null;
+  includedSpecialties: number | null;
   highlighted?: boolean;
 }
 
@@ -80,11 +74,6 @@ export function hasWhatsappNumber(value: string): boolean {
   return /\d/.test(value);
 }
 
-/** Unambiguous plan name, e.g. "Empresarial Básico". */
-export function planFullName(plan: Plan): string {
-  return `${PLAN_AUDIENCE_LABELS[plan.audience]} ${plan.name}`;
-}
-
 export function resolveContactChannel(contact: ContactInfo): 'whatsapp' | 'email' | 'none' {
   if (hasWhatsappNumber(contact.whatsappNumber)) return 'whatsapp';
   if (contact.email.trim()) return 'email';
@@ -130,22 +119,20 @@ export const site: SiteContent = {
     { title: 'Recordatorios', description: 'Avisos automáticos antes de cada cita.' },
     { title: 'Facturación electrónica', description: 'Emisión de comprobantes electrónicos desde el consultorio.' },
   ],
-  // Mirrors api/src/subscription/subscription-pricing.ts. Update both together.
-  // The API's trial period is not a plan on offer, so it is not published here. The individual
-  // custom plan is agreed with sales and has no entry in the API catalog.
+  // Mirrors the plans on offer in api/src/plans/default-plans.ts. Update both together.
+  // The archived plans and the trial period are not on offer, so they are not published here.
   plans: [
-    { id: 'personal-basic', name: 'Básico', audience: 'individual', summary: 'Para un profesional independiente.', priceMonthly: 29, pricePerExtraSeat: null, seatsIncluded: 1, maxActivePatients: 50, storageGB: 2, monthlyNotifications: 300 },
-    { id: 'personal-pro', name: 'Pro', audience: 'individual', summary: 'Para una consulta individual en crecimiento.', priceMonthly: 59, pricePerExtraSeat: null, seatsIncluded: 1, maxActivePatients: 200, storageGB: 5, monthlyNotifications: 1000, highlighted: true },
-    { id: 'personal-custom', name: 'Personalizado', audience: 'individual', summary: 'Para profesionales con necesidades a medida.', priceMonthly: null, pricePerExtraSeat: null, seatsIncluded: null, maxActivePatients: null, storageGB: null, monthlyNotifications: null },
-    { id: 'clinic-basic', name: 'Básico', audience: 'business', summary: 'Para equipos pequeños.', priceMonthly: 99, pricePerExtraSeat: 15, seatsIncluded: 3, maxActivePatients: 150, storageGB: 10, monthlyNotifications: 500, highlighted: true },
-    { id: 'clinic-pro', name: 'Pro', audience: 'business', summary: 'Para clínicas con varias especialidades.', priceMonthly: 199, pricePerExtraSeat: 12, seatsIncluded: 10, maxActivePatients: 500, storageGB: 25, monthlyNotifications: 2000 },
-    { id: 'enterprise', name: 'Personalizado', audience: 'business', summary: 'Para redes de clínicas con necesidades a medida.', priceMonthly: null, pricePerExtraSeat: null, seatsIncluded: null, maxActivePatients: null, storageGB: null, monthlyNotifications: null },
+    { id: 'esencial', name: 'Esencial', summary: 'Consultorios independientes.', priceMonthly: 24.9, pricePerExtraSeat: null, seatsIncluded: 1, maxBranches: 1, monthlyInvoices: 30, maxActivePatients: 100, storageGB: 3, includedSpecialties: 1 },
+    { id: 'profesional', name: 'Profesional', summary: 'Consultorios con equipo.', priceMonthly: 44.9, pricePerExtraSeat: 14, seatsIncluded: 3, maxBranches: 1, monthlyInvoices: 100, maxActivePatients: 300, storageGB: 10, includedSpecialties: 2, highlighted: true },
+    { id: 'centro', name: 'Centro', summary: 'Centros multiespecialidad.', priceMonthly: 79.9, pricePerExtraSeat: 12, seatsIncluded: 6, maxBranches: 2, monthlyInvoices: 300, maxActivePatients: 600, storageGB: 25, includedSpecialties: 3 },
+    { id: 'clinica', name: 'Clínica', summary: 'Clínicas pequeñas y medianas.', priceMonthly: 149.9, pricePerExtraSeat: 10, seatsIncluded: 15, maxBranches: 5, monthlyInvoices: 1000, maxActivePatients: 1500, storageGB: 60, includedSpecialties: 5 },
+    { id: 'personalizado', name: 'Personalizado', summary: 'Redes de clínicas con necesidades a medida.', priceMonthly: null, pricePerExtraSeat: null, seatsIncluded: null, maxBranches: null, monthlyInvoices: null, maxActivePatients: null, storageGB: null, includedSpecialties: null },
   ],
   faq: [
     { question: '¿Para qué tipo de consultorio sirve?', answer: 'Para profesionales independientes y clínicas con una o varias especialidades de salud, como psicología o nutrición.' },
     { question: '¿Puedo conocerlo antes de contratar?', answer: 'Sí. Solicita una demo guiada y te mostramos la plataforma con el flujo de tu consultorio antes de que elijas un plan.' },
     { question: '¿Quién puede ver las notas clínicas?', answer: 'Solo los roles clínicos autorizados de tu consultorio. El personal administrativo gestiona agenda y pacientes sin acceder a las notas.' },
-    { question: '¿Cómo se cobran los usuarios adicionales?', answer: 'Los planes de clínica incluyen un número de usuarios y cada usuario adicional tiene un costo mensual fijo indicado en la tabla de planes.' },
+    { question: '¿Cómo se cobran los profesionales adicionales?', answer: 'Cada plan incluye un número de profesionales. Desde el plan Profesional puedes sumar más con el costo mensual indicado en cada plan. Los precios no incluyen IVA.' },
     { question: '¿Qué pasa con mis datos si cancelo?', answer: 'Tus datos te pertenecen. Consulta la política de tratamiento de datos para conocer plazos de conservación y cómo solicitarlos.' },
   ],
   reviews: [],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeBaseUrl, planFullName, resolveContactChannel, site } from './site';
+import { normalizeBaseUrl, resolveContactChannel, site } from './site';
 
 describe('site content', () => {
   it('has exactly five frequently asked questions with text', () => {
@@ -10,25 +10,17 @@ describe('site content', () => {
     }
   });
 
-  it('publishes the plan prices charged by the API', () => {
+  it('publishes the plans on offer in the API with their prices and limits', () => {
     const summary = site.plans.map((plan) => [
-      plan.name, plan.priceMonthly, plan.pricePerExtraSeat, plan.seatsIncluded,
+      plan.name, plan.priceMonthly, plan.pricePerExtraSeat, plan.seatsIncluded, plan.maxBranches, plan.monthlyInvoices,
     ]);
     expect(summary).toEqual([
-      ['Básico', 29, null, 1],
-      ['Pro', 59, null, 1],
-      ['Personalizado', null, null, null],
-      ['Básico', 99, 15, 3],
-      ['Pro', 199, 12, 10],
-      ['Personalizado', null, null, null],
+      ['Esencial', 24.9, null, 1, 1, 30],
+      ['Profesional', 44.9, 14, 3, 1, 100],
+      ['Centro', 79.9, 12, 6, 2, 300],
+      ['Clínica', 149.9, 10, 15, 5, 1000],
+      ['Personalizado', null, null, null, null, null],
     ]);
-  });
-
-  it('splits the plans into three individual and three business plans', () => {
-    const names = (audience: string) =>
-      site.plans.filter((plan) => plan.audience === audience).map((plan) => plan.name);
-    expect(names('individual')).toEqual(['Básico', 'Pro', 'Personalizado']);
-    expect(names('business')).toEqual(['Básico', 'Pro', 'Personalizado']);
   });
 
   it('offers no free plan', () => {
@@ -41,18 +33,12 @@ describe('site content', () => {
     expect(site.legal.companyName).toBe('DEVNATION TECHNOLOGIES S.A.S.');
   });
 
-  it('highlights exactly one plan per group', () => {
-    for (const audience of ['individual', 'business']) {
-      expect(site.plans.filter((plan) => plan.audience === audience && plan.highlighted)).toHaveLength(1);
-    }
+  it('highlights exactly one plan', () => {
+    expect(site.plans.filter((plan) => plan.highlighted).map((plan) => plan.name)).toEqual(['Profesional']);
   });
 
-  it('gives every plan a distinct full name', () => {
-    const fullNames = site.plans.map(planFullName);
-    expect(fullNames).toEqual([
-      'Individual Básico', 'Individual Pro', 'Individual Personalizado',
-      'Empresarial Básico', 'Empresarial Pro', 'Empresarial Personalizado',
-    ]);
+  it('gives every plan a distinct name', () => {
+    expect(new Set(site.plans.map((plan) => plan.name)).size).toBe(site.plans.length);
   });
 
   it('ships without invented real-world content', () => {

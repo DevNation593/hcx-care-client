@@ -40,6 +40,7 @@ const pro: PlatformPlan = {
   storageGB: 25,
   monthlyElectronicInvoicesLimit: 50,
   includedSpecialties: 3,
+  maxBranches: 2,
   trialDays: 14,
   modules: ['core.agenda', 'core.patients'],
   clinicsCount: 4,
@@ -109,6 +110,7 @@ describe('PlansManager', () => {
     type('Precio mensual (USD)', '149.5');
     type('Pacientes activos', '300');
     type('Almacenamiento (GB)', '15');
+    type('Sedes activas', '3');
     fireEvent.click(screen.getByRole('button', { name: 'Crear plan' }));
 
     await waitFor(() => expect(platformApi.createPlan).toHaveBeenCalledTimes(1));
@@ -125,6 +127,7 @@ describe('PlansManager', () => {
       storageGB: 15,
       monthlyElectronicInvoicesLimit: 50,
       includedSpecialties: 1,
+      maxBranches: 3,
       trialDays: 14,
       modules: ['core.agenda', 'core.patients'],
     });
@@ -155,7 +158,7 @@ describe('PlansManager', () => {
     await waitFor(() => expect(platformApi.updatePlan).toHaveBeenCalledTimes(1));
     const [id, input] = vi.mocked(platformApi.updatePlan).mock.calls[0];
     expect(id).toBe('plan_clinic_pro');
-    expect(input).toMatchObject({ basePrice: 189, maxActivePatients: 500 });
+    expect(input).toMatchObject({ basePrice: 189, maxActivePatients: 500, maxBranches: 2 });
     expect(input).not.toHaveProperty('code');
   });
 

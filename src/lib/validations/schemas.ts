@@ -103,6 +103,7 @@ export const platformPlanSchema = z.object({
   storageGB: whole('el almacenamiento', 1),
   monthlyElectronicInvoicesLimit: whole('las facturas', 0),
   includedSpecialties: whole('las especialidades', 1),
+  maxBranches: whole('las sedes', 1),
   trialDays: whole('los días de prueba', 0),
   modules: z.array(z.enum(SECTION_KEYS)),
 }).strict();
