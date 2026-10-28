@@ -20,6 +20,7 @@ type NumberField =
   | 'storageGB'
   | 'monthlyElectronicInvoicesLimit'
   | 'includedSpecialties'
+  | 'maxBranches'
   | 'trialDays'
   | 'sortOrder';
 
@@ -32,6 +33,7 @@ const NUMBER_FIELDS: { name: NumberField; label: string; step?: string }[] = [
   { name: 'storageGB', label: 'Almacenamiento (GB)' },
   { name: 'monthlyElectronicInvoicesLimit', label: 'Facturas electrónicas al mes' },
   { name: 'includedSpecialties', label: 'Especialidades incluidas' },
+  { name: 'maxBranches', label: 'Sedes activas' },
   { name: 'trialDays', label: 'Días de prueba sugeridos' },
   { name: 'sortOrder', label: 'Orden en las listas' },
 ];
@@ -45,6 +47,7 @@ const blank: Record<NumberField, string> = {
   storageGB: '',
   monthlyElectronicInvoicesLimit: '50',
   includedSpecialties: '1',
+  maxBranches: '1',
   trialDays: '14',
   sortOrder: '0',
 };

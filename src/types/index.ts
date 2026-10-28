@@ -911,7 +911,8 @@ export type PlanValueField =
   | 'maxActivePatients'
   | 'storageGB'
   | 'monthlyElectronicInvoicesLimit'
-  | 'includedSpecialties';
+  | 'includedSpecialties'
+  | 'maxBranches';
 
 /** A plan the platform administrator sells (`GET /platform/plans`). */
 export interface PlatformPlan {
@@ -931,6 +932,7 @@ export interface PlatformPlan {
   storageGB: number;
   monthlyElectronicInvoicesLimit: number;
   includedSpecialties: number;
+  maxBranches: number;
   trialDays: number;
   modules: SectionKey[];
   clinicsCount: number;
@@ -951,6 +953,7 @@ export interface PlatformPlanInput {
   storageGB: number;
   monthlyElectronicInvoicesLimit: number;
   includedSpecialties: number;
+  maxBranches: number;
   trialDays: number;
   modules: SectionKey[];
 }
@@ -1205,6 +1208,7 @@ export interface PlatformTenantDetail {
     storageGB: number;
     monthlyElectronicInvoicesLimit: number;
     includedSpecialties: number;
+    maxBranches: number;
     /** Values set for this clinic apart from its plan. */
     overriddenFields: PlanValueField[];
     /** The plan price plus the specialties beyond the included ones. */
