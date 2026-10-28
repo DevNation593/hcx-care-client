@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { planFullName, site, type Faq, type SiteContent } from '@/content/site';
+import { site, type Faq, type SiteContent } from '@/content/site';
 
 export type PageKey =
   | 'home' | 'plans' | 'howItWorks' | 'caseStudies' | 'about' | 'contact'
@@ -16,7 +16,7 @@ interface PageInfo {
 
 export const PAGES: Record<PageKey, PageInfo> = {
   home: { path: '/', label: 'Inicio', kind: 'public', title: 'Software para consultorios de salud', description: 'Gestiona citas por especialidad, historias clínicas, equipo tratante y facturación electrónica de tu consultorio desde una sola plataforma.' },
-  plans: { path: '/planes', label: 'Planes', kind: 'public', title: 'Planes y precios para profesionales y clínicas', description: 'Compara los planes para profesionales independientes y clínicas: usuarios incluidos, pacientes activos y precio mensual en USD.' },
+  plans: { path: '/planes', label: 'Planes', kind: 'public', title: 'Planes y precios para profesionales y clínicas', description: 'Compara los planes para consultorios independientes y clínicas: profesionales, sedes, comprobantes electrónicos al mes y precio mensual en USD.' },
   howItWorks: { path: '/como-funciona', label: 'Cómo funciona', kind: 'public', title: 'Cómo funciona la plataforma paso a paso', description: 'Del alta del consultorio a la facturación: conoce en cinco pasos cómo se organiza el trabajo diario en la plataforma.' },
   caseStudies: { path: '/casos-de-exito', label: 'Casos de éxito', kind: 'public', title: 'Casos de éxito de consultorios que usan la plataforma', description: 'Resultados de consultorios y clínicas que organizaron su agenda y su atención con la plataforma.' },
   about: { path: '/nosotros', label: 'Nosotros', kind: 'public', title: 'Sobre la plataforma y su propósito', description: 'Por qué construimos la plataforma y para quién: profesionales y consultorios de salud que quieren menos administración.' },
@@ -67,7 +67,7 @@ export function buildMetadata(key: PageKey, content: SiteContent = site): Metada
 export function softwareApplicationLd(content: SiteContent = site) {
   const offers = content.plans
     .filter((plan) => plan.priceMonthly !== null)
-    .map((plan) => ({ '@type': 'Offer', name: planFullName(plan), price: String(plan.priceMonthly), priceCurrency: 'USD' }));
+    .map((plan) => ({ '@type': 'Offer', name: plan.name, price: plan.priceMonthly!.toFixed(2), priceCurrency: 'USD' }));
   const reviews = content.reviews;
   const average = reviews.reduce((sum, review) => sum + review.rating, 0) / (reviews.length || 1);
   return {

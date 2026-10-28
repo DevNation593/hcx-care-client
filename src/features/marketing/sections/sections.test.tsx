@@ -6,8 +6,8 @@ import { CaseStudies } from './case-studies';
 import { FaqSection } from './faq';
 import { Hero } from './hero';
 import { LocationSection } from './location';
-import { PlanGroups } from './plan-groups';
-import { formatPlanPrice } from './plans';
+import { PlanLadder } from './plan-ladder';
+import { formatMoney, formatPlanPrice } from './plans';
 import { Reviews } from './reviews';
 import { Team } from './team';
 
@@ -29,85 +29,60 @@ describe('Hero', () => {
   });
 });
 
-describe('PlanGroups', () => {
-  it('formats prices', () => {
-    expect(formatPlanPrice(site.plans[0])).toBe('$29');
-    expect(formatPlanPrice(site.plans[2])).toBe('A medida');
-    expect(formatPlanPrice(site.plans[5])).toBe('A medida');
+describe('PlanLadder', () => {
+  it('formats prices with cents only when there are any', () => {
+    expect(formatPlanPrice(site.plans[0])).toBe('$24,90');
+    expect(formatPlanPrice(site.plans[4])).toBe('A medida');
+    expect(formatMoney(14)).toBe('$14');
   });
 
-  it('opens on the individual plans', () => {
-    render(<PlanGroups plans={site.plans} />);
-    expect(screen.getByRole('tab', { name: 'Individual' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'Empresarial' })).toHaveAttribute('aria-selected', 'false');
-
-    const panel = screen.getByRole('tabpanel', { name: 'Individual' });
-    expect(within(panel).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual([
-      'Individual Básico', 'Individual Pro', 'Individual Personalizado',
+  it('lists the four priced plans in order, then the custom one', () => {
+    render(<PlanLadder plans={site.plans} />);
+    expect(screen.getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual([
+      'Esencial', 'Profesional', 'Centro', 'Clínica', 'Personalizado',
     ]);
-    expect(within(panel).getByText('$29')).toBeInTheDocument();
-    const custom = within(panel).getByRole('article', { name: 'Individual Personalizado' });
+    expect(screen.getByText(/más IVA/)).toBeInTheDocument();
+    const custom = screen.getByRole('article', { name: 'Personalizado' });
     expect(custom).toHaveTextContent('A medida');
     expect(within(custom).getByRole('link', { name: 'Hablar con ventas' })).toHaveAttribute('href', '/contacto');
   });
 
-  it('switches to the business plans with their limits and extra-seat price', () => {
-    render(<PlanGroups plans={site.plans} />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Empresarial' }));
+  it('shows professionals, branches and invoices of each plan', () => {
+    render(<PlanLadder plans={site.plans} />);
+    const esencial = screen.getByRole('article', { name: 'Esencial' });
+    expect(within(esencial).getByText('$24,90')).toBeInTheDocument();
+    expect(within(esencial).getByText('al mes + IVA')).toBeInTheDocument();
+    expect(within(esencial).getByText('1 profesional')).toBeInTheDocument();
+    expect(within(esencial).getByText('1 sede')).toBeInTheDocument();
+    expect(within(esencial).getByText('30 comprobantes electrónicos al mes')).toBeInTheDocument();
+    expect(within(esencial).queryByText(/por profesional adicional/)).not.toBeInTheDocument();
 
-    expect(screen.getByRole('tab', { name: 'Empresarial' })).toHaveAttribute('aria-selected', 'true');
-    const card = screen.getByRole('article', { name: 'Empresarial Básico' });
-    expect(within(card).getByText('$99')).toBeInTheDocument();
-    expect(within(card).getByText('3 usuarios incluidos')).toBeInTheDocument();
-    expect(within(card).getByText('$15 por usuario adicional')).toBeInTheDocument();
-    expect(within(card).getByText('Hasta 150 pacientes activos')).toBeInTheDocument();
-    expect(screen.queryByRole('article', { name: 'Individual Básico' })).not.toBeInTheDocument();
-    expect(screen.getByRole('article', { name: 'Empresarial Personalizado' })).toHaveTextContent('A medida');
+    const clinica = screen.getByRole('article', { name: 'Clínica' });
+    expect(within(clinica).getByText('$149,90')).toBeInTheDocument();
+    expect(within(clinica).getByText('15 profesionales')).toBeInTheDocument();
+    expect(within(clinica).getByText('5 sedes')).toBeInTheDocument();
+    expect(within(clinica).getByText('1.000 comprobantes electrónicos al mes')).toBeInTheDocument();
+    expect(within(clinica).getByText('Hasta 1.500 pacientes activos')).toBeInTheDocument();
+    expect(within(clinica).getByText('$10 por profesional adicional')).toBeInTheDocument();
   });
 
-  it('keeps both groups in the page so search engines can read every plan', () => {
-    const { container } = render(<PlanGroups plans={site.plans} />);
-    expect(container.querySelectorAll('article')).toHaveLength(6);
-    expect(screen.getAllByRole('article')).toHaveLength(3);
-  });
-
-  it('marks the most chosen plan once per group', () => {
-    render(<PlanGroups plans={site.plans} />);
-    // Only the visible group's cards are exposed; the other panel is hidden.
-    const marked = () => screen.getAllByRole('article')
+  it('marks the most chosen plan once', () => {
+    render(<PlanLadder plans={site.plans} />);
+    const marked = screen.getAllByRole('article')
       .filter((card) => within(card).queryByText('Más elegido'))
       .map((card) => card.getAttribute('aria-label'));
-    expect(marked()).toEqual(['Individual Pro']);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Empresarial' }));
-    expect(marked()).toEqual(['Empresarial Básico']);
-  });
-
-  it('moves between the tabs with the arrow keys', () => {
-    render(<PlanGroups plans={site.plans} />);
-    const individual = screen.getByRole('tab', { name: 'Individual' });
-    individual.focus();
-
-    fireEvent.keyDown(individual, { key: 'ArrowRight' });
-    const business = screen.getByRole('tab', { name: 'Empresarial' });
-    expect(business).toHaveAttribute('aria-selected', 'true');
-    expect(business).toHaveFocus();
-
-    fireEvent.keyDown(business, { key: 'ArrowLeft' });
-    expect(individual).toHaveAttribute('aria-selected', 'true');
-    expect(individual).toHaveFocus();
+    expect(marked).toEqual(['Profesional']);
   });
 
   it('labels each instance separately when rendered twice', () => {
     render(
       <>
-        <PlanGroups plans={site.plans} heading="Planes" />
-        <PlanGroups plans={site.plans} heading="Otra vez" />
+        <PlanLadder plans={site.plans} heading="Planes" />
+        <PlanLadder plans={site.plans} heading="Otra vez" />
       </>,
     );
     expect(screen.getByRole('region', { name: 'Planes' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Otra vez' })).toBeInTheDocument();
-    expect(screen.getAllByRole('tabpanel')).toHaveLength(2);
   });
 });
 
