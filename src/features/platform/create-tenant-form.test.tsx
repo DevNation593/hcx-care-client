@@ -40,6 +40,7 @@ const plan = (id: string, tenantType: TenantType, modules: SectionKey[], extra: 
   storageGB: 5,
   monthlyElectronicInvoicesLimit: 50,
   includedSpecialties: 1,
+  maxBranches: 1,
   trialDays: 14,
   modules,
   clinicsCount: 0,

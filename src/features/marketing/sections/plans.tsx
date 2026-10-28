@@ -1,27 +1,39 @@
 import Link from 'next/link';
 import { Check } from 'lucide-react';
-import { planFullName, type Plan } from '@/content/site';
+import type { Plan } from '@/content/site';
 
-export function formatPlanPrice(plan: Plan): string {
-  return plan.priceMonthly === null ? 'A medida' : `$${plan.priceMonthly}`;
+/** "$24,90", "$14": cents only when there are any, with the comma used in Ecuador. */
+export function formatMoney(amount: number): string {
+  return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2).replace('.', ',')}`;
 }
 
-function limits(plan: Plan): string[] {
+/** "1.000": thousands grouped the way the price sheet reads. */
+const formatCount = (value: number) => String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+const plural = (count: number, one: string, many: string) => `${formatCount(count)} ${count === 1 ? one : many}`;
+
+export function formatPlanPrice(plan: Plan): string {
+  return plan.priceMonthly === null ? 'A medida' : formatMoney(plan.priceMonthly);
+}
+
+export function planLimits(plan: Plan): string[] {
   const lines: string[] = [];
-  if (plan.seatsIncluded !== null) lines.push(plan.seatsIncluded === 1 ? '1 usuario incluido' : `${plan.seatsIncluded} usuarios incluidos`);
-  if (plan.maxActivePatients !== null) lines.push(`Hasta ${plan.maxActivePatients} pacientes activos`);
+  if (plan.seatsIncluded !== null) lines.push(plural(plan.seatsIncluded, 'profesional', 'profesionales'));
+  if (plan.maxBranches !== null) lines.push(plural(plan.maxBranches, 'sede', 'sedes'));
+  if (plan.monthlyInvoices !== null) lines.push(`${formatCount(plan.monthlyInvoices)} comprobantes electrónicos al mes`);
+  if (plan.maxActivePatients !== null) lines.push(`Hasta ${formatCount(plan.maxActivePatients)} pacientes activos`);
   if (plan.storageGB !== null) lines.push(`${plan.storageGB} GB de almacenamiento`);
-  if (plan.monthlyNotifications !== null) lines.push(`${plan.monthlyNotifications} notificaciones al mes`);
-  if (lines.length === 0) lines.push('Usuarios, pacientes y almacenamiento según tu operación');
+  if (plan.includedSpecialties !== null) {
+    lines.push(plural(plan.includedSpecialties, 'especialidad incluida', 'especialidades incluidas'));
+  }
+  if (lines.length === 0) lines.push('Profesionales, sedes y comprobantes según tu operación');
   return lines;
 }
 
 export function PlanCard({ plan }: { plan: Plan }) {
-  const hasFixedPrice = plan.priceMonthly !== null;
   return (
     <article
-      // Two groups share short names ("Básico", "Pro"), so the card is labelled with the full one.
-      aria-label={planFullName(plan)}
+      aria-label={plan.name}
       className={`relative flex flex-col rounded-xl border bg-background p-6 ${plan.highlighted ? 'border-primary shadow-lg ring-1 ring-primary' : ''}`}
     >
       {plan.highlighted && (
@@ -30,16 +42,17 @@ export function PlanCard({ plan }: { plan: Plan }) {
         </span>
       )}
       <h3 className="text-lg font-semibold">{plan.name}</h3>
-      <p className="mt-1 text-sm text-muted-foreground">{plan.summary}</p>
+      {/* Fixed heights keep the prices and the limits of every card on the same lines. */}
+      <p className="mt-1 text-sm text-muted-foreground lg:min-h-10">{plan.summary}</p>
       <p className="mt-5">
         <span className="text-4xl font-bold tracking-tight">{formatPlanPrice(plan)}</span>
-        {hasFixedPrice && <span className="text-sm text-muted-foreground"> USD/mes</span>}
       </p>
-      {plan.pricePerExtraSeat !== null && (
-        <p className="mt-1 text-sm text-muted-foreground">${plan.pricePerExtraSeat} por usuario adicional</p>
-      )}
-      <ul className="mt-5 flex-1 space-y-2 text-sm">
-        {limits(plan).map((line) => (
+      <p className="mt-1 text-sm text-muted-foreground">al mes + IVA</p>
+      <p className="mt-1 text-sm text-muted-foreground lg:min-h-10">
+        {plan.pricePerExtraSeat !== null && `${formatMoney(plan.pricePerExtraSeat)} por profesional adicional`}
+      </p>
+      <ul className="mt-5 flex-1 space-y-2 border-t pt-5 text-sm">
+        {planLimits(plan).map((line) => (
           <li key={line} className="flex items-start gap-2">
             <Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <span>{line}</span>
@@ -54,7 +67,30 @@ export function PlanCard({ plan }: { plan: Plan }) {
             : 'border hover:bg-accent'
         }`}
       >
-        {plan.priceMonthly === null ? 'Hablar con ventas' : 'Solicitar demo'}
+        Solicitar demo
+      </Link>
+    </article>
+  );
+}
+
+/** A plan without a fixed price: a band under the ladder that leads to sales. */
+export function CustomPlanBand({ plan }: { plan: Plan }) {
+  return (
+    <article
+      aria-label={plan.name}
+      className="flex flex-col gap-4 rounded-xl border bg-muted/40 p-6 md:flex-row md:items-center md:justify-between"
+    >
+      <div>
+        <h3 className="text-lg font-semibold">
+          {plan.name} <span className="font-normal text-muted-foreground">· A medida</span>
+        </h3>
+        <p className="mt-1 text-sm text-muted-foreground">{plan.summary} {planLimits(plan).join(' · ')}.</p>
+      </div>
+      <Link
+        href="/contacto"
+        className="inline-flex h-10 shrink-0 items-center justify-center rounded-md border bg-background px-4 text-sm font-medium hover:bg-accent"
+      >
+        Hablar con ventas
       </Link>
     </article>
   );
