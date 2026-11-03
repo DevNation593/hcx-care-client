@@ -51,7 +51,7 @@ function BillingPageContent() {
             Consulta el historial de comprobantes electrónicos de este consultorio.
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Genera facturas desde las órdenes pagadas en Caja.
+            Emite facturas desde las órdenes pagadas en Caja.
           </p>
         </div>
       </div>

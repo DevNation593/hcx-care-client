@@ -555,7 +555,18 @@ describe('InvoiceRequestPanel', () => {
     mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
     await screen.findByText('Autorizada');
     expect(screen.queryByText(/Enviada por correo/)).not.toBeInTheDocument();
-    expect(screen.queryByText(new RegExp(['emi', 'te-facil'].join(''), 'i'))).not.toBeInTheDocument();
+  });
+  it('does not mention the former provider', async () => {
+    latest = receipt({
+      status: 'REJECTED',
+      lastError: { code: 'SRI_REJECTED', message: 'El SRI rechazó la factura.' },
+    });
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? latest : { items: [latest], total: 1 },
+    );
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    await screen.findByText('El SRI rechazó la factura.');
+    expect(document.body).not.toHaveTextContent(/emite[\s-]?f[aá]cil|emitefacil/i);
   });
   it('shows state without emission controls to a view-only user', async () => {
     state.create = false;

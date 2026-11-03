@@ -565,7 +565,7 @@ function TestCard({ issuer }: { issuer: InvoicingIssuer | null }) {
         <CardTitle>Probar</CardTitle>
         <CardDescription>
           Comprueba la firma guardada y que los servicios del SRI del ambiente elegido respondan. No
-          genera ni guarda nada.
+          emite ni guarda nada.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
