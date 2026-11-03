@@ -12,8 +12,7 @@ import { requireTenantId, useTenantId } from './useTenantScope';
 
 export const invoicingKeys = {
   all: (tenantId: string | null) => ['tenant', tenantId, 'invoicing'] as const,
-  connection: (tenantId: string | null) => [...invoicingKeys.all(tenantId), 'connection'] as const,
-  options: (tenantId: string | null) => [...invoicingKeys.all(tenantId), 'options'] as const,
+  issuer: (tenantId: string | null) => [...invoicingKeys.all(tenantId), 'issuer'] as const,
 };
 export function useInvoicingPermissions() {
   const user = useAuthStore((state) => state.user);
@@ -26,7 +25,6 @@ export function invoiceNeedsPolling(request?: InvoiceRequest) {
     !request ||
     request.status === 'REQUESTED' ||
     request.status === 'PROCESSING' ||
-    request.requiresReconciliation ||
     (request.status === 'AUTHORIZED' && (!request.artifacts.xml || !request.artifacts.ride))
   );
 }
@@ -74,18 +72,16 @@ export function useInvoiceRequest(id?: string) {
     refetchInterval: (query) => (invoiceNeedsPolling(query.state.data) ? 5000 : false),
   });
   const status = query.data?.status;
-  const uncertain = query.data?.requiresReconciliation;
   const orderId = query.data?.orderId;
   useEffect(() => {
     if (
       view &&
       orderId &&
-      !uncertain &&
       (status === 'AUTHORIZED' || status === 'REJECTED' || status === 'FAILED')
     ) {
       refreshInvoiceOrder(client, orderId);
     }
-  }, [client, id, view, status, uncertain, orderId]);
+  }, [client, id, view, status, orderId]);
   return query;
 }
 export function useRequestInvoice(orderId: string) {
