@@ -109,7 +109,7 @@ export const site: SiteContent = {
     { title: 'Registra a tus pacientes', description: 'Crea la ficha de cada paciente y asígnale su equipo tratante.' },
     { title: 'Agenda por especialidad', description: 'Programa citas eligiendo paciente, especialidad y profesional; el sistema evita choques de horario.' },
     { title: 'Atiende y documenta', description: 'Registra notas clínicas, planes de sesión y actividades de seguimiento.' },
-    { title: 'Factura y da seguimiento', description: 'Emite facturas electrónicas y envía recordatorios automáticos de las citas.' },
+    { title: 'Factura y da seguimiento', description: 'Genera facturas electrónicas y envía recordatorios automáticos de las citas.' },
   ],
   modules: [
     { title: 'Agenda multiespecialidad', description: 'Calendario por profesional y especialidad con control de conflictos y horario laboral.' },

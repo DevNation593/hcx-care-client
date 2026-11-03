@@ -45,6 +45,9 @@ export function InvoiceSummary({
       {request.status === 'AUTHORIZED' && (
         <p>Factura autorizada. La anulación no está disponible en HCX.</p>
       )}
+      {(request.status === 'REQUESTED' || request.status === 'PROCESSING') && (
+        <p className="text-muted-foreground">Esperando al SRI</p>
+      )}
       {request.number && <p>Número: {request.number}</p>}
       {request.accessKey && <p className="break-all">Clave de acceso: {request.accessKey}</p>}
       {request.authorizationNumber && (
@@ -53,18 +56,18 @@ export function InvoiceSummary({
       {request.authorizedAt && (
         <p>Fecha de autorización: {new Date(request.authorizedAt).toLocaleString('es-EC')}</p>
       )}
+      {request.emailedAt && (
+        <p>
+          Enviada por correo el{' '}
+          {new Date(request.emailedAt).toLocaleString('es-EC', { timeZone: 'America/Guayaquil' })}
+        </p>
+      )}
       {canView && request.lastError && (
         <Alert variant="destructive">
           <p>{request.lastError.message}</p>
-          {request.lastError.code === 'CUSTOMER_SYNC_REQUIRED' && (
-            <p>Corrige los datos fiscales del receptor en emite-facil.</p>
-          )}
-          {request.lastError.code === 'SIGNATURE_FAILED' && (
-            <p>Corrige la firma y reintenta el mismo documento en emite-facil.</p>
-          )}
           {request.lastError.messages?.map((message, index) => (
             <p key={index}>
-              {[message.identifier, message.message, message.additionalInfo, message.type]
+              {[message.identifier, message.message, message.additionalInfo]
                 .filter(Boolean)
                 .join(' · ')}
             </p>

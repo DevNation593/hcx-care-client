@@ -479,9 +479,83 @@ describe('InvoiceRequestPanel', () => {
     expect(await screen.findByText('Rechazo fiscal real')).toBeInTheDocument();
     expect(
       screen.getByText(
-        '43 · Identificación del comprador inválida · Revisar identificación fiscal · ERROR',
+        '43 · Identificación del comprador inválida · Revisar identificación fiscal',
       ),
     ).toBeInTheDocument();
+  });
+  it('shows the SRI messages of a rejected invoice and offers to reissue', async () => {
+    latest = receipt({
+      status: 'REJECTED',
+      lastError: {
+        code: 'SRI_REJECTED',
+        message: 'El SRI rechazó la factura.',
+        messages: [
+          { identifier: '35', message: 'Documento devuelto', additionalInfo: null, type: 'ERROR' },
+        ],
+      },
+    });
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? latest : { items: [latest], total: 1 },
+    );
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    expect(await screen.findByText('35 · Documento devuelto')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Volver a emitir' })).toBeEnabled();
+  });
+  it('offers to reissue a rejected invoice even when the SRI messages are hidden', async () => {
+    state.view = false;
+    vi.mocked(apiClient.post).mockResolvedValue(receipt({ status: 'REJECTED' }));
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />, UserRole.ASISTENTE);
+    fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' }));
+    expect(await screen.findByRole('button', { name: 'Volver a emitir' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it('shows a processing invoice as waiting for the SRI and keeps polling', async () => {
+    vi.useFakeTimers();
+    latest = receipt({ status: 'PROCESSING' });
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' })));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByText('Esperando al SRI')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Volver a emitir' })).not.toBeInTheDocument();
+    const before = vi.mocked(apiClient.get).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(before);
+  });
+  it('shows the Spanish message of a failed invoice', async () => {
+    latest = receipt({
+      status: 'FAILED',
+      lastError: { code: 'SRI_TIMEOUT', message: 'El SRI no respondió a tiempo.' },
+    });
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? latest : { items: [latest], total: 1 },
+    );
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    expect(await screen.findByText('El SRI no respondió a tiempo.')).toBeInTheDocument();
+  });
+  it('shows that the invoice was emailed, in Ecuador time, and nothing when it was not', async () => {
+    latest = receipt({ status: 'AUTHORIZED', emailedAt: '2026-10-17T03:30:00Z' });
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? latest : { items: [latest], total: 1 },
+    );
+    const { unmount } = mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    const when = new Date('2026-10-17T03:30:00Z').toLocaleString('es-EC', {
+      timeZone: 'America/Guayaquil',
+    });
+    expect(await screen.findByText(`Enviada por correo el ${when}`)).toBeInTheDocument();
+    expect(when).toContain('16');
+    unmount();
+    latest = receipt({ status: 'AUTHORIZED', emailedAt: null });
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    await screen.findByText('Autorizada');
+    expect(screen.queryByText(/Enviada por correo/)).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(['emi', 'te-facil'].join(''), 'i'))).not.toBeInTheDocument();
   });
   it('shows state without emission controls to a view-only user', async () => {
     state.create = false;
