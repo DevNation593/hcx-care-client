@@ -383,7 +383,8 @@ function BranchPoint({
   const [establishment, setEstablishment] = useState(saved?.establishmentCode ?? '');
   const [point, setPoint] = useState(saved?.emissionPointCode ?? '');
   const [address, setAddress] = useState(saved?.establishmentAddress ?? '');
-  const [sequential, setSequential] = useState(saved ? String(saved.nextSequential) : '');
+  const [sequential, setSequential] = useState('');
+  // Only a value the user typed is sent: the cached current number can be stale.
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -410,7 +411,7 @@ function BranchPoint({
         ...(sequential ? { nextSequential: number } : {}),
       });
       onSaved(result);
-      setSequential(String(result.nextSequential));
+      setSequential('');
       setMessage('Punto guardado');
     } catch (error) {
       setError(errorMessage(error, 'No se pudo guardar el punto.'));
@@ -463,6 +464,7 @@ function BranchPoint({
             type="number"
             min={1}
             max={999999999}
+            placeholder={saved ? `Siguiente: ${saved.nextSequential}` : '1'}
             value={sequential}
             error={errors.sequential}
             onChange={(event) => setSequential(event.target.value)}

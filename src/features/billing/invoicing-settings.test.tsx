@@ -296,10 +296,25 @@ describe('InvoicingSettings', () => {
     );
     vi.mocked(apiClient.put).mockRejectedValue({ message: 'Esa serie ya está asignada.' });
     mount();
-    expect(await screen.findByLabelText('Siguiente secuencial · Principal')).toHaveValue(42);
+    const sequential = await screen.findByLabelText('Siguiente secuencial · Principal');
+    expect(sequential).toHaveValue(null);
+    expect(sequential).toHaveAttribute('placeholder', 'Siguiente: 42');
     expect(screen.getByLabelText('Establecimiento · Principal')).toHaveValue('001');
     fireEvent.click(screen.getByRole('button', { name: 'Guardar punto · Principal' }));
     expect(await screen.findByText('Esa serie ya está asignada.')).toBeInTheDocument();
+    // Address-only save: the possibly stale cached sequential is not resent.
+    expect(vi.mocked(apiClient.put).mock.calls[0][1]).toEqual({
+      establishmentCode: '001',
+      emissionPointCode: '001',
+      establishmentAddress: 'Av. Matriz',
+    });
+    fireEvent.change(sequential, { target: { value: '50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar punto · Principal' }));
+    await waitFor(() =>
+      expect(vi.mocked(apiClient.put).mock.calls[1][1]).toEqual(
+        expect.objectContaining({ nextSequential: 50 }),
+      ),
+    );
   });
 
   it('shows the test result for certificate and SRI', async () => {
