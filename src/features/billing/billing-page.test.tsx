@@ -5,8 +5,8 @@ import BillingPage from '@/app/(dashboard)/admin/billing/page';
 import { useAuthStore } from '@/store/authStore';
 import { UserRole, type Invoice, type User } from '@/types';
 
-const api = vi.hoisted(() => ({ listInvoices: vi.fn(), connection: vi.fn(), list: vi.fn(), view: true }));
-vi.mock('@/lib/api/invoicing-api', () => ({ invoicingApi: { connection: api.connection, list: api.list } }));
+const api = vi.hoisted(() => ({ listInvoices: vi.fn(), issuer: vi.fn(), list: vi.fn(), view: true }));
+vi.mock('@/lib/api/invoicing-api', () => ({ invoicingApi: { issuer: api.issuer, list: api.list } }));
 vi.mock('@/hooks/usePermissions', () => ({ useMyPermissions: () => ({ can: () => api.view }) }));
 vi.mock('@/hooks/useBranches', () => ({ useBranches: () => ({ data: [] }) }));
 vi.mock('@/lib/api/endpoints', () => ({
@@ -51,7 +51,7 @@ function renderPage(role: UserRole = UserRole.MASTER) {
 beforeEach(() => {
   vi.clearAllMocks();
   api.listInvoices.mockResolvedValue([]);
-  api.connection.mockResolvedValue(null);
+  api.issuer.mockResolvedValue(null);
   api.list.mockResolvedValue({ items: [], total: 0 });
   api.view = true;
 });
@@ -86,7 +86,8 @@ describe('BillingPage history', () => {
   it('keeps history read-only and enables B2 configuration without Faktur controls', async () => {
     renderPage();
     expect(await screen.findByText('Aún no hay comprobantes emitidos.')).toBeInTheDocument();
-    expect(await screen.findByLabelText('API key')).toHaveValue('');
+    expect(await screen.findByLabelText('RUC')).toHaveValue('');
+    expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
     expect(screen.queryByText(/próximamente/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Configurar Faktur' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Emitir factura' })).not.toBeInTheDocument();
@@ -98,8 +99,8 @@ describe('BillingPage history', () => {
 it('does not mount MASTER settings for an assistant with billing access', async () => {
   renderPage(UserRole.ASISTENTE);
   await screen.findByText('Aún no hay comprobantes emitidos.');
-  expect(api.connection).not.toHaveBeenCalled();
-  expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
+  expect(api.issuer).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText('RUC')).not.toBeInTheDocument();
 });
 it('does not load invoice history without billing.view', () => {
   api.view = false;

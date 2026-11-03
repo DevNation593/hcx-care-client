@@ -1,30 +1,32 @@
 import { apiClient } from './client';
 import type {
-  ConnectionTest,
   EmissionPoint,
   InvoiceFilters,
   InvoicePage,
   InvoiceReceipt,
   InvoiceRequest,
-  InvoicingConnection,
-  InvoicingOptions,
-  SaveConnectionInput,
+  InvoicingIssuer,
+  IssuerTest,
+  SaveEmissionPointInput,
+  SaveIssuerInput,
 } from '@/types/invoicing';
 const root = (tenantId: string) => `/tenants/${tenantId}`;
 export const invoicingApi = {
-  connection: (tenantId: string) =>
-    apiClient.get<InvoicingConnection | null>(`${root(tenantId)}/invoicing/connection`),
-  test: (tenantId: string, apiKey?: string) =>
-    apiClient.post<ConnectionTest>(`${root(tenantId)}/invoicing/test`, apiKey ? { apiKey } : {}),
-  options: (tenantId: string) =>
-    apiClient.get<InvoicingOptions>(`${root(tenantId)}/invoicing/options`),
-  save: (tenantId: string, input: SaveConnectionInput) =>
-    apiClient.put<InvoicingConnection>(`${root(tenantId)}/invoicing/connection`, input),
-  savePoint: (
-    tenantId: string,
-    branchId: string,
-    input: { establishmentId: string; emissionPointId: string },
-  ) => apiClient.put<EmissionPoint>(`${root(tenantId)}/branches/${branchId}/emission-point`, input),
+  issuer: (tenantId: string) =>
+    apiClient.get<InvoicingIssuer | null>(`${root(tenantId)}/invoicing/issuer`),
+  saveIssuer: (tenantId: string, input: SaveIssuerInput) =>
+    apiClient.put<InvoicingIssuer>(`${root(tenantId)}/invoicing/issuer`, input),
+  uploadCertificate: (tenantId: string, file: File, password: string) => {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('password', password);
+    return apiClient.put<InvoicingIssuer>(`${root(tenantId)}/invoicing/issuer/certificate`, body, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  test: (tenantId: string) => apiClient.post<IssuerTest>(`${root(tenantId)}/invoicing/test`),
+  savePoint: (tenantId: string, branchId: string, input: SaveEmissionPointInput) =>
+    apiClient.put<EmissionPoint>(`${root(tenantId)}/branches/${branchId}/emission-point`, input),
   request: (tenantId: string, orderId: string, idempotencyKey: string) =>
     apiClient.post<InvoiceReceipt>(
       `${root(tenantId)}/orders/${orderId}/invoice-requests`,

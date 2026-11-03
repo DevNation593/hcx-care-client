@@ -42,11 +42,6 @@ export function InvoiceSummary({
       >
         {INVOICE_STATUS_LABELS[request.status]}
       </Badge>
-      {request.requiresReconciliation && (
-        <Alert variant="warning">
-          Conciliación pendiente: espera la confirmación antes de volver a emitir o devolver pagos.
-        </Alert>
-      )}
       {request.status === 'AUTHORIZED' && (
         <p>Factura autorizada. La anulación no está disponible en HCX.</p>
       )}
@@ -67,22 +62,12 @@ export function InvoiceSummary({
           {request.lastError.code === 'SIGNATURE_FAILED' && (
             <p>Corrige la firma y reintenta el mismo documento en emite-facil.</p>
           )}
-          {request.lastError.attempts?.map((attempt) => (
-            <div key={attempt.id} className="mt-2">
-              {attempt.sriStatus && (
-                <p>
-                  {attempt.operation === 'RECEPTION' ? 'Recepción' : 'Autorización'}:{' '}
-                  {attempt.sriStatus}
-                </p>
-              )}
-              {attempt.messages.map((message, index) => (
-                <p key={index}>
-                  {[message.identifier, message.message, message.additionalInfo, message.type]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
-              ))}
-            </div>
+          {request.lastError.messages?.map((message, index) => (
+            <p key={index}>
+              {[message.identifier, message.message, message.additionalInfo, message.type]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
           ))}
         </Alert>
       )}
