@@ -340,3 +340,50 @@ export const tenantSettingsSchema = z.object({
 });
 
 export type TenantSettingsFormData = z.infer<typeof tenantSettingsSchema>;
+
+// ==========================================
+// INVOICING SCHEMAS (same rules as the API's SaveIssuerDto and IssuerEmissionPointDto)
+// ==========================================
+
+const MAX_INVOICING_TEXT = 300;
+const requiredText = (missing: string, tooLong: string) =>
+  z.string().trim().min(1, missing).max(MAX_INVOICING_TEXT, tooLong);
+/** Blank means "not set" and is sent as null. */
+const optionalCode = (pattern: RegExp, message: string) =>
+  z.string().trim().refine((value) => !value || pattern.test(value), message).transform((value) => value || null);
+const seriesCode = z.string().trim().regex(/^(?!000)\d{3}$/, 'Debe tener tres dígitos (001); 000 no es válido.');
+const MAX_SEQUENTIAL = 999999999;
+const RIMPE_UNAVAILABLE = 'Selecciona un régimen RIMPE disponible.';
+
+export const issuerSchema = z.object({
+  ruc: z.string().trim().regex(/^\d{10}001$/, 'El RUC debe tener 13 dígitos y terminar en 001.'),
+  legalName: requiredText('Ingresa la razón social.', 'La razón social admite hasta 300 caracteres.'),
+  tradeName: z.string().trim().max(MAX_INVOICING_TEXT, 'El nombre comercial admite hasta 300 caracteres.').transform((value) => value || null),
+  headOfficeAddress: requiredText('Ingresa la dirección de la matriz.', 'La dirección de la matriz admite hasta 300 caracteres.'),
+  accountingRequired: z.boolean(),
+  specialTaxpayerCode: optionalCode(/^\d{3,13}$/, 'El código de contribuyente especial debe tener entre 3 y 13 dígitos.'),
+  withholdingAgentCode: optionalCode(/^\d{1,8}$/, 'El código de agente de retención debe tener hasta 8 dígitos.'),
+  // NEGOCIO_POPULAR passes the API DTO but the issuer save refuses it (not in the SRI XSD).
+  rimpeRegime: z
+    .enum(['NONE', 'EMPRENDEDOR', 'NEGOCIO_POPULAR'], { errorMap: () => ({ message: RIMPE_UNAVAILABLE }) })
+    .refine((value) => value !== 'NEGOCIO_POPULAR', RIMPE_UNAVAILABLE),
+  environment: z.enum(['1', '2'], { errorMap: () => ({ message: 'Selecciona el ambiente.' }) }),
+  active: z.boolean(),
+});
+
+/** The next sequential is sent only when the user typed one: the cached current number can be stale. */
+export const emissionPointSchema = z.object({
+  establishmentCode: seriesCode,
+  emissionPointCode: seriesCode,
+  establishmentAddress: requiredText('Ingresa la dirección del establecimiento.', 'La dirección del establecimiento admite hasta 300 caracteres.'),
+  nextSequential: z
+    .string()
+    .trim()
+    .refine((value) => !value || (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= MAX_SEQUENTIAL), 'Debe ser un entero entre 1 y 999999999.')
+    .transform((value) => (value ? Number(value) : undefined)),
+});
+
+export type IssuerFormValues = z.input<typeof issuerSchema>;
+export type IssuerFormData = z.output<typeof issuerSchema>;
+export type EmissionPointFormValues = z.input<typeof emissionPointSchema>;
+export type EmissionPointFormData = z.output<typeof emissionPointSchema>;
