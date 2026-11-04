@@ -95,7 +95,7 @@ function IssuerCard({
     watch,
     formState: { errors, isDirty, isSubmitting },
   } = useForm<IssuerFormValues, unknown, IssuerFormData>({
-    // zodResolver passes the parsed (transformed) values to onSubmit; its types only model the input.
+    // zodResolver gives the parsed (transformed) values to onSubmit; its types model only the input.
     resolver: zodResolver(issuerSchema) as Resolver<IssuerFormValues, unknown, IssuerFormData>,
     defaultValues: issuerFormValues(issuer),
   });
@@ -104,7 +104,10 @@ function IssuerCard({
   const [loadedRevision, setLoadedRevision] = useState(issuer?.revision);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const changedElsewhere = issuer?.revision !== loadedRevision;
+  // Revisions only grow, so only a newer one counts: right after a save the cache can still hold
+  // the older issuer for a render, and that must not reload the pre-save values.
+  const changedElsewhere =
+    !!issuer && (loadedRevision === undefined || issuer.revision > loadedRevision);
 
   const load = useCallback(
     (next: InvoicingIssuer | null) => {
@@ -150,102 +153,105 @@ function IssuerCard({
       </CardHeader>
       <CardContent>
         <form noValidate className="space-y-4" onSubmit={(event) => void save(event)}>
-          <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="issuer-ruc">RUC</Label>
-              <Input
-                id="issuer-ruc"
-                inputMode="numeric"
-                maxLength={13}
-                error={errors.ruc?.message}
-                {...register('ruc')}
-              />
+          {/* Locked while saving: edits typed now would be lost when the saved issuer loads. */}
+          <fieldset disabled={isSubmitting} className="min-w-0 space-y-4">
+            <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="issuer-ruc">RUC</Label>
+                <Input
+                  id="issuer-ruc"
+                  inputMode="numeric"
+                  maxLength={13}
+                  error={errors.ruc?.message}
+                  {...register('ruc')}
+                />
+              </div>
+              <div>
+                <Label htmlFor="issuer-legal">Razón social</Label>
+                <Input
+                  id="issuer-legal"
+                  maxLength={300}
+                  error={errors.legalName?.message}
+                  {...register('legalName')}
+                />
+              </div>
+              <div>
+                <Label htmlFor="issuer-trade">Nombre comercial</Label>
+                <Input
+                  id="issuer-trade"
+                  maxLength={300}
+                  error={errors.tradeName?.message}
+                  {...register('tradeName')}
+                />
+              </div>
+              <div>
+                <Label htmlFor="issuer-address">Dirección de la matriz</Label>
+                <Input
+                  id="issuer-address"
+                  maxLength={300}
+                  error={errors.headOfficeAddress?.message}
+                  {...register('headOfficeAddress')}
+                />
+              </div>
+              <div>
+                <Label htmlFor="issuer-special">Contribuyente especial (código)</Label>
+                <Input
+                  id="issuer-special"
+                  inputMode="numeric"
+                  maxLength={13}
+                  error={errors.specialTaxpayerCode?.message}
+                  {...register('specialTaxpayerCode')}
+                />
+              </div>
+              <div>
+                <Label htmlFor="issuer-withholding">Agente de retención (código)</Label>
+                <Input
+                  id="issuer-withholding"
+                  inputMode="numeric"
+                  maxLength={8}
+                  error={errors.withholdingAgentCode?.message}
+                  {...register('withholdingAgentCode')}
+                />
+              </div>
+              <div>
+                <Label htmlFor="issuer-rimpe">Régimen RIMPE</Label>
+                <select id="issuer-rimpe" className={selectClass} {...register('rimpeRegime')}>
+                  <option value="NONE">Ninguno</option>
+                  <option value="EMPRENDEDOR">Emprendedor</option>
+                  <option value="NEGOCIO_POPULAR" disabled>
+                    Negocio Popular · Aún no disponible
+                  </option>
+                </select>
+                {errors.rimpeRegime && (
+                  <p role="alert" className="mt-1 text-sm text-destructive">
+                    {errors.rimpeRegime.message}
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="issuer-environment">Ambiente</Label>
+                <select id="issuer-environment" className={selectClass} {...register('environment')}>
+                  <option value="1">Pruebas</option>
+                  <option value="2">Producción</option>
+                </select>
+                {errors.environment && (
+                  <p role="alert" className="mt-1 text-sm text-destructive">
+                    {errors.environment.message}
+                  </p>
+                )}
+              </div>
             </div>
-            <div>
-              <Label htmlFor="issuer-legal">Razón social</Label>
-              <Input
-                id="issuer-legal"
-                maxLength={300}
-                error={errors.legalName?.message}
-                {...register('legalName')}
-              />
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" {...register('accountingRequired')} />
+                Obligado a llevar contabilidad
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" {...register('active')} />
+                Emisor activo
+              </label>
             </div>
-            <div>
-              <Label htmlFor="issuer-trade">Nombre comercial</Label>
-              <Input
-                id="issuer-trade"
-                maxLength={300}
-                error={errors.tradeName?.message}
-                {...register('tradeName')}
-              />
-            </div>
-            <div>
-              <Label htmlFor="issuer-address">Dirección de la matriz</Label>
-              <Input
-                id="issuer-address"
-                maxLength={300}
-                error={errors.headOfficeAddress?.message}
-                {...register('headOfficeAddress')}
-              />
-            </div>
-            <div>
-              <Label htmlFor="issuer-special">Contribuyente especial (código)</Label>
-              <Input
-                id="issuer-special"
-                inputMode="numeric"
-                maxLength={13}
-                error={errors.specialTaxpayerCode?.message}
-                {...register('specialTaxpayerCode')}
-              />
-            </div>
-            <div>
-              <Label htmlFor="issuer-withholding">Agente de retención (código)</Label>
-              <Input
-                id="issuer-withholding"
-                inputMode="numeric"
-                maxLength={8}
-                error={errors.withholdingAgentCode?.message}
-                {...register('withholdingAgentCode')}
-              />
-            </div>
-            <div>
-              <Label htmlFor="issuer-rimpe">Régimen RIMPE</Label>
-              <select id="issuer-rimpe" className={selectClass} {...register('rimpeRegime')}>
-                <option value="NONE">Ninguno</option>
-                <option value="EMPRENDEDOR">Emprendedor</option>
-                <option value="NEGOCIO_POPULAR" disabled>
-                  Negocio Popular · Aún no disponible
-                </option>
-              </select>
-              {errors.rimpeRegime && (
-                <p role="alert" className="mt-1 text-sm text-destructive">
-                  {errors.rimpeRegime.message}
-                </p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="issuer-environment">Ambiente</Label>
-              <select id="issuer-environment" className={selectClass} {...register('environment')}>
-                <option value="1">Pruebas</option>
-                <option value="2">Producción</option>
-              </select>
-              {errors.environment && (
-                <p role="alert" className="mt-1 text-sm text-destructive">
-                  {errors.environment.message}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" {...register('accountingRequired')} />
-              Obligado a llevar contabilidad
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" {...register('active')} />
-              Emisor activo
-            </label>
-          </div>
+          </fieldset>
           {watch('environment') === '1' && (
             <p className="text-sm text-muted-foreground">
               En pruebas los comprobantes no tienen validez tributaria.
@@ -434,9 +440,13 @@ function BranchPoint({
     defaultValues: pointFormValues(saved),
   });
   const [loadedPoint, setLoadedPoint] = useState(() => pointSnapshot(saved));
+  // The point the cache held when this form last saved: right after the save it can still arrive
+  // for a render, and that must not reload the pre-save values.
+  const [supersededPoint, setSupersededPoint] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const changedElsewhere = pointSnapshot(saved) !== loadedPoint;
+  const incomingPoint = pointSnapshot(saved);
+  const changedElsewhere = incomingPoint !== loadedPoint && incomingPoint !== supersededPoint;
 
   const load = useCallback(
     (next?: EmissionPoint) => {
@@ -446,8 +456,9 @@ function BranchPoint({
     [reset],
   );
   useEffect(() => {
-    if (changedElsewhere && !isDirty) load(saved);
-  }, [changedElsewhere, isDirty, saved, load]);
+    if (incomingPoint === loadedPoint) setSupersededPoint(null);
+    else if (changedElsewhere && !isDirty) load(saved);
+  }, [incomingPoint, loadedPoint, changedElsewhere, isDirty, saved, load]);
 
   function reload() {
     load(saved);
@@ -456,6 +467,7 @@ function BranchPoint({
   }
   const save = handleSubmit(
     async ({ nextSequential, ...point }) => {
+      const before = pointSnapshot(saved);
       setMessage('');
       setError('');
       try {
@@ -463,6 +475,7 @@ function BranchPoint({
           ...point,
           ...(nextSequential !== undefined ? { nextSequential } : {}),
         });
+        setSupersededPoint(before);
         load(result);
         onSaved(result);
         setMessage('Punto guardado');
@@ -479,51 +492,53 @@ function BranchPoint({
       onSubmit={(event) => void save(event)}
     >
       <h3 className="font-medium">{branch.name}</h3>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <Label htmlFor={`est-${branch.id}`}>Establecimiento · {branch.name}</Label>
-          <Input
-            id={`est-${branch.id}`}
-            inputMode="numeric"
-            maxLength={3}
-            placeholder="001"
-            error={errors.establishmentCode?.message}
-            {...register('establishmentCode')}
-          />
+      <fieldset disabled={isSubmitting} className="min-w-0">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor={`est-${branch.id}`}>Establecimiento · {branch.name}</Label>
+            <Input
+              id={`est-${branch.id}`}
+              inputMode="numeric"
+              maxLength={3}
+              placeholder="001"
+              error={errors.establishmentCode?.message}
+              {...register('establishmentCode')}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`point-${branch.id}`}>Punto de emisión · {branch.name}</Label>
+            <Input
+              id={`point-${branch.id}`}
+              inputMode="numeric"
+              maxLength={3}
+              placeholder="001"
+              error={errors.emissionPointCode?.message}
+              {...register('emissionPointCode')}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`addr-${branch.id}`}>
+              Dirección del establecimiento · {branch.name}
+            </Label>
+            <Input
+              id={`addr-${branch.id}`}
+              maxLength={300}
+              error={errors.establishmentAddress?.message}
+              {...register('establishmentAddress')}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`seq-${branch.id}`}>Siguiente secuencial · {branch.name}</Label>
+            <Input
+              id={`seq-${branch.id}`}
+              inputMode="numeric"
+              placeholder={saved ? `Siguiente: ${saved.nextSequential}` : '1'}
+              error={errors.nextSequential?.message}
+              {...register('nextSequential')}
+            />
+          </div>
         </div>
-        <div>
-          <Label htmlFor={`point-${branch.id}`}>Punto de emisión · {branch.name}</Label>
-          <Input
-            id={`point-${branch.id}`}
-            inputMode="numeric"
-            maxLength={3}
-            placeholder="001"
-            error={errors.emissionPointCode?.message}
-            {...register('emissionPointCode')}
-          />
-        </div>
-        <div>
-          <Label htmlFor={`addr-${branch.id}`}>Dirección del establecimiento · {branch.name}</Label>
-          <Input
-            id={`addr-${branch.id}`}
-            maxLength={300}
-            error={errors.establishmentAddress?.message}
-            {...register('establishmentAddress')}
-          />
-        </div>
-        <div>
-          <Label htmlFor={`seq-${branch.id}`}>Siguiente secuencial · {branch.name}</Label>
-          <Input
-            id={`seq-${branch.id}`}
-            type="number"
-            min={1}
-            max={999999999}
-            placeholder={saved ? `Siguiente: ${saved.nextSequential}` : '1'}
-            error={errors.nextSequential?.message}
-            {...register('nextSequential')}
-          />
-        </div>
-      </div>
+      </fieldset>
       {changedElsewhere && isDirty && (
         <Alert variant="warning">
           Este punto cambió mientras lo editabas (en otra sesión). Recarga los datos actuales antes

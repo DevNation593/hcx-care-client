@@ -57,6 +57,30 @@ const testResult = {
   sriReachable: true,
 };
 
+/** Records every value the form writes into an input (user typing via fireEvent is not recorded). */
+function recordWrites(input: HTMLElement) {
+  const writes: string[] = [];
+  const own = Object.getOwnPropertyDescriptor(input, 'value');
+  const inherited = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!;
+  const target = own ?? inherited;
+  Object.defineProperty(input, 'value', {
+    configurable: true,
+    get() {
+      return target.get!.call(this);
+    },
+    set(value: string) {
+      writes.push(value);
+      target.set!.call(this, value);
+    },
+  });
+  return writes;
+}
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
+}
+
 let client: QueryClient;
 function mount(role: UserRole = UserRole.MASTER) {
   useAuthStore.setState({ user: { id: 'u1', role, tenantId: 't1' } as User });
@@ -331,6 +355,116 @@ describe('InvoicingSettings', () => {
     expect(screen.queryByText(/No se pudo verificar/)).not.toBeInTheDocument();
   });
 
+  it('never shows the pre-save issuer values while the saved issuer reaches the cache', async () => {
+    serve(issuer());
+    vi.mocked(apiClient.put).mockResolvedValue(issuer({ legalName: 'Clínica Editada', revision: 4 }));
+    mount();
+    const legalName = await screen.findByLabelText('Razón social');
+    const writes = recordWrites(legalName);
+    fireEvent.change(legalName, { target: { value: 'Clínica Editada' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
+    expect(await screen.findByText('Emisor guardado')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(client.getQueryData<InvoicingIssuer>(invoicingKeys.issuer('t1'))?.revision).toBe(4),
+    );
+    await act(() => new Promise((done) => setTimeout(done, 20)));
+    expect(legalName).toHaveValue('Clínica Editada');
+    expect(writes).not.toContain('Clínica Demo S.A.');
+  });
+
+  it('never blanks a new point while the saved point reaches the cache', async () => {
+    serve(issuer());
+    vi.mocked(apiClient.put).mockResolvedValue({
+      branchId: 'b1',
+      establishmentCode: '001',
+      emissionPointCode: '002',
+      establishmentAddress: 'Av. Sucursal 5',
+      nextSequential: 1,
+    });
+    mount();
+    const address = await screen.findByLabelText('Dirección del establecimiento · Principal');
+    const writes = recordWrites(address);
+    fireEvent.change(screen.getByLabelText('Establecimiento · Principal'), {
+      target: { value: '001' },
+    });
+    fireEvent.change(screen.getByLabelText('Punto de emisión · Principal'), {
+      target: { value: '002' },
+    });
+    fireEvent.change(address, { target: { value: 'Av. Sucursal 5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar punto · Principal' }));
+    expect(await screen.findByText('Punto guardado')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(client.getQueryData<InvoicingIssuer>(invoicingKeys.issuer('t1'))?.points).toHaveLength(
+        1,
+      ),
+    );
+    await act(() => new Promise((done) => setTimeout(done, 20)));
+    expect(address).toHaveValue('Av. Sucursal 5');
+    expect(writes).not.toContain('');
+    expect(screen.queryByText(/Este punto cambió/)).not.toBeInTheDocument();
+  });
+
+  it('locks the issuer fields while the save is in flight', async () => {
+    serve(issuer());
+    const answer = deferred<InvoicingIssuer>();
+    vi.mocked(apiClient.put).mockReturnValue(answer.promise);
+    mount();
+    await screen.findByDisplayValue('Clínica Demo S.A.');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
+    await waitFor(() => expect(screen.getByLabelText('Razón social')).toBeDisabled());
+    expect(screen.getByLabelText('Ambiente')).toBeDisabled();
+    expect(screen.getByLabelText('Emisor activo')).toBeDisabled();
+    await act(async () => answer.resolve(issuer({ revision: 4 })));
+    await waitFor(() => expect(screen.getByLabelText('Razón social')).toBeEnabled());
+    expect(screen.getByLabelText('Ambiente')).toBeEnabled();
+  });
+
+  it('locks the point fields while the save is in flight', async () => {
+    const saved = {
+      branchId: 'b1',
+      establishmentCode: '001',
+      emissionPointCode: '001',
+      establishmentAddress: 'Av. Matriz',
+      nextSequential: 42,
+    };
+    serve(issuer({ points: [saved] }));
+    const answer = deferred<typeof saved>();
+    vi.mocked(apiClient.put).mockReturnValue(answer.promise);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar punto · Principal' }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Dirección del establecimiento · Principal')).toBeDisabled(),
+    );
+    expect(screen.getByLabelText('Siguiente secuencial · Principal')).toBeDisabled();
+    await act(async () => answer.resolve(saved));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Dirección del establecimiento · Principal')).toBeEnabled(),
+    );
+  });
+
+  it('shows the field error for a next sequential that is not a number', async () => {
+    serve(
+      issuer({
+        points: [
+          {
+            branchId: 'b1',
+            establishmentCode: '001',
+            emissionPointCode: '001',
+            establishmentAddress: 'Av. Matriz',
+            nextSequential: 42,
+          },
+        ],
+      }),
+    );
+    mount();
+    const sequential = await screen.findByLabelText('Siguiente secuencial · Principal');
+    expect(sequential).toHaveAttribute('inputMode', 'numeric');
+    fireEvent.change(sequential, { target: { value: '--5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar punto · Principal' }));
+    expect(await screen.findByText('Debe ser un entero entre 1 y 999999999.')).toBeInTheDocument();
+    expect(apiClient.put).not.toHaveBeenCalled();
+  });
+
   it('saves a branch emission point with its next sequential and validates three digits', async () => {
     serve(issuer());
     vi.mocked(apiClient.put).mockResolvedValue({
@@ -392,7 +526,7 @@ describe('InvoicingSettings', () => {
     vi.mocked(apiClient.put).mockRejectedValue({ message: 'Esa serie ya está asignada.' });
     mount();
     const sequential = await screen.findByLabelText('Siguiente secuencial · Principal');
-    expect(sequential).toHaveValue(null);
+    expect(sequential).toHaveValue('');
     expect(sequential).toHaveAttribute('placeholder', 'Siguiente: 42');
     expect(screen.getByLabelText('Establecimiento · Principal')).toHaveValue('001');
     fireEvent.click(screen.getByRole('button', { name: 'Guardar punto · Principal' }));
