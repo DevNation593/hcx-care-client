@@ -1,6 +1,8 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm, type Resolver } from 'react-hook-form';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,22 +12,23 @@ import { useBranches } from '@/hooks/useBranches';
 import { invoicingKeys } from '@/hooks/useInvoicing';
 import { requireTenantId, useTenantId } from '@/hooks/useTenantScope';
 import { invoicingApi } from '@/lib/api/invoicing-api';
+import {
+  emissionPointSchema,
+  issuerSchema,
+  type EmissionPointFormData,
+  type EmissionPointFormValues,
+  type IssuerFormData,
+  type IssuerFormValues,
+} from '@/lib/validations/schemas';
 import { useAuthStore } from '@/store/authStore';
 import type { ApiError } from '@/types';
 import { isMasterRole } from '@/types/guards';
-import type {
-  EmissionPoint,
-  InvoicingEnvironment,
-  InvoicingIssuer,
-  IssuerTest,
-  RimpeRegime,
-} from '@/types/invoicing';
+import type { EmissionPoint, InvoicingIssuer, IssuerTest } from '@/types/invoicing';
 
 const selectClass = 'mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm';
 const MAX_CERTIFICATE_BYTES = 50 * 1024;
 const EXPIRY_WARNING_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const THREE_DIGITS = /^(?!000)\d{3}$/;
 
 const CERTIFICATE_ERRORS: Record<string, string> = {
   INVOICING_CERTIFICATE_REQUIRED: 'Sube la firma electrónica (.p12) del emisor con su contraseña.',
@@ -45,6 +48,38 @@ const CERTIFICATE_ERRORS: Record<string, string> = {
 const errorMessage = (error: unknown, fallback: string) =>
   (error as ApiError | undefined)?.message || fallback;
 
+const issuerFormValues = (issuer: InvoicingIssuer | null): IssuerFormValues => ({
+  ruc: issuer?.ruc ?? '',
+  legalName: issuer?.legalName ?? '',
+  tradeName: issuer?.tradeName ?? '',
+  headOfficeAddress: issuer?.headOfficeAddress ?? '',
+  accountingRequired: issuer?.accountingRequired ?? false,
+  specialTaxpayerCode: issuer?.specialTaxpayerCode ?? '',
+  withholdingAgentCode: issuer?.withholdingAgentCode ?? '',
+  rimpeRegime: issuer?.rimpeRegime ?? 'NONE',
+  environment: issuer?.environment ?? '1',
+  active: issuer?.active ?? true,
+});
+
+// The next sequential always starts blank: only a number the user types is sent.
+const pointFormValues = (point?: EmissionPoint): EmissionPointFormValues => ({
+  establishmentCode: point?.establishmentCode ?? '',
+  emissionPointCode: point?.emissionPointCode ?? '',
+  establishmentAddress: point?.establishmentAddress ?? '',
+  nextSequential: '',
+});
+/** The saved point fields the form edits; points have no revision of their own. */
+const pointSnapshot = (point?: EmissionPoint) =>
+  point
+    ? JSON.stringify([point.establishmentCode, point.emissionPointCode, point.establishmentAddress])
+    : '';
+
+/** A test result is only valid for the configuration it ran against. */
+const testedConfiguration = (issuer: InvoicingIssuer | null) =>
+  issuer
+    ? JSON.stringify([issuer.revision, issuer.certificate?.sha256 ?? null, issuer.environment])
+    : '';
+
 function IssuerCard({
   issuer,
   onSaved,
@@ -53,61 +88,58 @@ function IssuerCard({
   onSaved: (saved: InvoicingIssuer) => void;
 }) {
   const tenantId = useTenantId();
-  const [ruc, setRuc] = useState(issuer?.ruc ?? '');
-  const [legalName, setLegalName] = useState(issuer?.legalName ?? '');
-  const [tradeName, setTradeName] = useState(issuer?.tradeName ?? '');
-  const [address, setAddress] = useState(issuer?.headOfficeAddress ?? '');
-  const [accounting, setAccounting] = useState(issuer?.accountingRequired ?? false);
-  const [special, setSpecial] = useState(issuer?.specialTaxpayerCode ?? '');
-  const [withholding, setWithholding] = useState(issuer?.withholdingAgentCode ?? '');
-  const [rimpe, setRimpe] = useState<RimpeRegime>(issuer?.rimpeRegime ?? 'NONE');
-  const [environment, setEnvironment] = useState<InvoicingEnvironment>(issuer?.environment ?? '1');
-  const [active, setActive] = useState(issuer?.active ?? true);
-  const [pending, setPending] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors, isDirty, isSubmitting },
+  } = useForm<IssuerFormValues, unknown, IssuerFormData>({
+    // zodResolver passes the parsed (transformed) values to onSubmit; its types only model the input.
+    resolver: zodResolver(issuerSchema) as Resolver<IssuerFormValues, unknown, IssuerFormData>,
+    defaultValues: issuerFormValues(issuer),
+  });
+  // The form values and the revision they were loaded from are one snapshot: the revision is
+  // sent with them, so the API refuses to overwrite a configuration that changed meanwhile.
+  const [loadedRevision, setLoadedRevision] = useState(issuer?.revision);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const changedElsewhere = issuer?.revision !== loadedRevision;
 
-  function validate() {
-    if (!/^\d{10}001$/.test(ruc.trim())) return 'El RUC debe tener 13 dígitos y terminar en 001.';
-    if (!legalName.trim()) return 'Ingresa la razón social.';
-    if (!address.trim()) return 'Ingresa la dirección de la matriz.';
-    if (special.trim() && !/^\d{3,13}$/.test(special.trim()))
-      return 'El código de contribuyente especial debe tener entre 3 y 13 dígitos.';
-    if (withholding.trim() && !/^\d{1,8}$/.test(withholding.trim()))
-      return 'El código de agente de retención debe tener hasta 8 dígitos.';
-    return '';
-  }
-  async function save() {
+  const load = useCallback(
+    (next: InvoicingIssuer | null) => {
+      reset(issuerFormValues(next));
+      setLoadedRevision(next?.revision);
+    },
+    [reset],
+  );
+  useEffect(() => {
+    if (changedElsewhere && !isDirty) load(issuer);
+  }, [changedElsewhere, isDirty, issuer, load]);
+
+  function reload() {
+    load(issuer);
+    setError('');
     setMessage('');
-    const invalid = validate();
-    setError(invalid);
-    if (invalid) return;
-    setPending(true);
-    try {
-      const saved = await invoicingApi.saveIssuer(requireTenantId(tenantId), {
-        ruc: ruc.trim(),
-        legalName: legalName.trim(),
-        tradeName: tradeName.trim() || null,
-        headOfficeAddress: address.trim(),
-        accountingRequired: accounting,
-        specialTaxpayerCode: special.trim() || null,
-        withholdingAgentCode: withholding.trim() || null,
-        rimpeRegime: rimpe,
-        environment,
-        active,
-        ...(issuer ? { revision: issuer.revision } : {}),
-      });
-      onSaved(saved);
-      setRuc(saved.ruc);
-      setLegalName(saved.legalName);
-      setAddress(saved.headOfficeAddress);
-      setMessage('Emisor guardado');
-    } catch (error) {
-      setError(errorMessage(error, 'No se pudo guardar el emisor.'));
-    } finally {
-      setPending(false);
-    }
   }
+  const save = handleSubmit(
+    async (data) => {
+      setMessage('');
+      setError('');
+      try {
+        const saved = await invoicingApi.saveIssuer(requireTenantId(tenantId), {
+          ...data,
+          ...(loadedRevision !== undefined ? { revision: loadedRevision } : {}),
+        });
+        load(saved);
+        onSaved(saved);
+        setMessage('Emisor guardado');
+      } catch (error) {
+        setError(errorMessage(error, 'No se pudo guardar el emisor.'));
+      }
+    },
+    () => setMessage(''),
+  );
   return (
     <Card>
       <CardHeader>
@@ -116,125 +148,133 @@ function IssuerCard({
           Datos tributarios del consultorio tal como constan en el RUC del SRI.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="issuer-ruc">RUC</Label>
-            <Input
-              id="issuer-ruc"
-              inputMode="numeric"
-              maxLength={13}
-              value={ruc}
-              onChange={(event) => setRuc(event.target.value)}
-            />
+      <CardContent>
+        <form noValidate className="space-y-4" onSubmit={(event) => void save(event)}>
+          <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="issuer-ruc">RUC</Label>
+              <Input
+                id="issuer-ruc"
+                inputMode="numeric"
+                maxLength={13}
+                error={errors.ruc?.message}
+                {...register('ruc')}
+              />
+            </div>
+            <div>
+              <Label htmlFor="issuer-legal">Razón social</Label>
+              <Input
+                id="issuer-legal"
+                maxLength={300}
+                error={errors.legalName?.message}
+                {...register('legalName')}
+              />
+            </div>
+            <div>
+              <Label htmlFor="issuer-trade">Nombre comercial</Label>
+              <Input
+                id="issuer-trade"
+                maxLength={300}
+                error={errors.tradeName?.message}
+                {...register('tradeName')}
+              />
+            </div>
+            <div>
+              <Label htmlFor="issuer-address">Dirección de la matriz</Label>
+              <Input
+                id="issuer-address"
+                maxLength={300}
+                error={errors.headOfficeAddress?.message}
+                {...register('headOfficeAddress')}
+              />
+            </div>
+            <div>
+              <Label htmlFor="issuer-special">Contribuyente especial (código)</Label>
+              <Input
+                id="issuer-special"
+                inputMode="numeric"
+                maxLength={13}
+                error={errors.specialTaxpayerCode?.message}
+                {...register('specialTaxpayerCode')}
+              />
+            </div>
+            <div>
+              <Label htmlFor="issuer-withholding">Agente de retención (código)</Label>
+              <Input
+                id="issuer-withholding"
+                inputMode="numeric"
+                maxLength={8}
+                error={errors.withholdingAgentCode?.message}
+                {...register('withholdingAgentCode')}
+              />
+            </div>
+            <div>
+              <Label htmlFor="issuer-rimpe">Régimen RIMPE</Label>
+              <select id="issuer-rimpe" className={selectClass} {...register('rimpeRegime')}>
+                <option value="NONE">Ninguno</option>
+                <option value="EMPRENDEDOR">Emprendedor</option>
+                <option value="NEGOCIO_POPULAR" disabled>
+                  Negocio Popular · Aún no disponible
+                </option>
+              </select>
+              {errors.rimpeRegime && (
+                <p role="alert" className="mt-1 text-sm text-destructive">
+                  {errors.rimpeRegime.message}
+                </p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="issuer-environment">Ambiente</Label>
+              <select id="issuer-environment" className={selectClass} {...register('environment')}>
+                <option value="1">Pruebas</option>
+                <option value="2">Producción</option>
+              </select>
+              {errors.environment && (
+                <p role="alert" className="mt-1 text-sm text-destructive">
+                  {errors.environment.message}
+                </p>
+              )}
+            </div>
           </div>
-          <div>
-            <Label htmlFor="issuer-legal">Razón social</Label>
-            <Input
-              id="issuer-legal"
-              maxLength={300}
-              value={legalName}
-              onChange={(event) => setLegalName(event.target.value)}
-            />
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" {...register('accountingRequired')} />
+              Obligado a llevar contabilidad
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" {...register('active')} />
+              Emisor activo
+            </label>
           </div>
-          <div>
-            <Label htmlFor="issuer-trade">Nombre comercial</Label>
-            <Input
-              id="issuer-trade"
-              maxLength={300}
-              value={tradeName}
-              onChange={(event) => setTradeName(event.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="issuer-address">Dirección de la matriz</Label>
-            <Input
-              id="issuer-address"
-              maxLength={300}
-              value={address}
-              onChange={(event) => setAddress(event.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="issuer-special">Contribuyente especial (código)</Label>
-            <Input
-              id="issuer-special"
-              inputMode="numeric"
-              maxLength={13}
-              value={special}
-              onChange={(event) => setSpecial(event.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="issuer-withholding">Agente de retención (código)</Label>
-            <Input
-              id="issuer-withholding"
-              inputMode="numeric"
-              maxLength={8}
-              value={withholding}
-              onChange={(event) => setWithholding(event.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="issuer-rimpe">Régimen RIMPE</Label>
-            <select
-              id="issuer-rimpe"
-              className={selectClass}
-              value={rimpe}
-              onChange={(event) => setRimpe(event.target.value as RimpeRegime)}
-            >
-              <option value="NONE">Ninguno</option>
-              <option value="EMPRENDEDOR">Emprendedor</option>
-              <option value="NEGOCIO_POPULAR" disabled>
-                Negocio Popular · Aún no disponible
-              </option>
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="issuer-environment">Ambiente</Label>
-            <select
-              id="issuer-environment"
-              className={selectClass}
-              value={environment}
-              onChange={(event) => setEnvironment(event.target.value as InvoicingEnvironment)}
-            >
-              <option value="1">Pruebas</option>
-              <option value="2">Producción</option>
-            </select>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={accounting}
-              onChange={(event) => setAccounting(event.target.checked)}
-            />
-            Obligado a llevar contabilidad
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={(event) => setActive(event.target.checked)}
-            />
-            Emisor activo
-          </label>
-        </div>
-        {environment === '1' && (
-          <p className="text-sm text-muted-foreground">
-            En pruebas los comprobantes no tienen validez tributaria.
-          </p>
-        )}
-        <Button type="button" disabled={pending} onClick={() => void save()}>
-          Guardar emisor
-        </Button>
-        {message && (
-          <p role="status" className="text-sm">
-            {message}
-          </p>
-        )}
-        {error && <Alert variant="destructive">{error}</Alert>}
+          {watch('environment') === '1' && (
+            <p className="text-sm text-muted-foreground">
+              En pruebas los comprobantes no tienen validez tributaria.
+            </p>
+          )}
+          {changedElsewhere && isDirty && (
+            <Alert variant="warning">
+              La configuración del emisor cambió mientras editabas (en otra sesión o al subir la
+              firma). Recarga los datos actuales antes de guardar; tus cambios sin guardar se
+              descartarán.{' '}
+              <Button type="button" variant="link" onClick={reload}>
+                Recargar datos del emisor
+              </Button>
+            </Alert>
+          )}
+          <Button
+            type="submit"
+            // Without a loaded revision the API could not detect the conflict, so wait for a reload.
+            disabled={isSubmitting || (changedElsewhere && loadedRevision === undefined)}
+          >
+            Guardar emisor
+          </Button>
+          {message && (
+            <p role="status" className="text-sm">
+              {message}
+            </p>
+          )}
+          {error && <Alert variant="destructive">{error}</Alert>}
+        </form>
       </CardContent>
     </Card>
   );
@@ -380,47 +420,64 @@ function BranchPoint({
   onSaved: (point: EmissionPoint) => void;
 }) {
   const tenantId = useTenantId();
-  const [establishment, setEstablishment] = useState(saved?.establishmentCode ?? '');
-  const [point, setPoint] = useState(saved?.emissionPointCode ?? '');
-  const [address, setAddress] = useState(saved?.establishmentAddress ?? '');
-  const [sequential, setSequential] = useState('');
-  // Only a value the user typed is sent: the cached current number can be stale.
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isDirty, isSubmitting },
+  } = useForm<EmissionPointFormValues, unknown, EmissionPointFormData>({
+    resolver: zodResolver(emissionPointSchema) as Resolver<
+      EmissionPointFormValues,
+      unknown,
+      EmissionPointFormData
+    >,
+    defaultValues: pointFormValues(saved),
+  });
+  const [loadedPoint, setLoadedPoint] = useState(() => pointSnapshot(saved));
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [pending, setPending] = useState(false);
+  const changedElsewhere = pointSnapshot(saved) !== loadedPoint;
 
-  async function save() {
-    setMessage('');
+  const load = useCallback(
+    (next?: EmissionPoint) => {
+      reset(pointFormValues(next));
+      setLoadedPoint(pointSnapshot(next));
+    },
+    [reset],
+  );
+  useEffect(() => {
+    if (changedElsewhere && !isDirty) load(saved);
+  }, [changedElsewhere, isDirty, saved, load]);
+
+  function reload() {
+    load(saved);
     setError('');
-    const next: Record<string, string> = {};
-    if (!THREE_DIGITS.test(establishment)) next.establishment = 'Debe tener tres dígitos (001).';
-    if (!THREE_DIGITS.test(point)) next.point = 'Debe tener tres dígitos (001).';
-    if (!address.trim()) next.address = 'Ingresa la dirección del establecimiento.';
-    const number = Number(sequential);
-    if (sequential && (!Number.isInteger(number) || number < 1 || number > 999999999))
-      next.sequential = 'Debe ser un entero entre 1 y 999999999.';
-    setErrors(next);
-    if (Object.keys(next).length) return;
-    setPending(true);
-    try {
-      const result = await invoicingApi.savePoint(requireTenantId(tenantId), branch.id, {
-        establishmentCode: establishment,
-        emissionPointCode: point,
-        establishmentAddress: address.trim(),
-        ...(sequential ? { nextSequential: number } : {}),
-      });
-      onSaved(result);
-      setSequential('');
-      setMessage('Punto guardado');
-    } catch (error) {
-      setError(errorMessage(error, 'No se pudo guardar el punto.'));
-    } finally {
-      setPending(false);
-    }
+    setMessage('');
   }
+  const save = handleSubmit(
+    async ({ nextSequential, ...point }) => {
+      setMessage('');
+      setError('');
+      try {
+        const result = await invoicingApi.savePoint(requireTenantId(tenantId), branch.id, {
+          ...point,
+          ...(nextSequential !== undefined ? { nextSequential } : {}),
+        });
+        load(result);
+        onSaved(result);
+        setMessage('Punto guardado');
+      } catch (error) {
+        setError(errorMessage(error, 'No se pudo guardar el punto.'));
+      }
+    },
+    () => setMessage(''),
+  );
   return (
-    <div className="space-y-3 rounded-lg border p-4">
+    <form
+      noValidate
+      className="space-y-3 rounded-lg border p-4"
+      onSubmit={(event) => void save(event)}
+    >
       <h3 className="font-medium">{branch.name}</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
@@ -430,9 +487,8 @@ function BranchPoint({
             inputMode="numeric"
             maxLength={3}
             placeholder="001"
-            value={establishment}
-            error={errors.establishment}
-            onChange={(event) => setEstablishment(event.target.value)}
+            error={errors.establishmentCode?.message}
+            {...register('establishmentCode')}
           />
         </div>
         <div>
@@ -442,9 +498,8 @@ function BranchPoint({
             inputMode="numeric"
             maxLength={3}
             placeholder="001"
-            value={point}
-            error={errors.point}
-            onChange={(event) => setPoint(event.target.value)}
+            error={errors.emissionPointCode?.message}
+            {...register('emissionPointCode')}
           />
         </div>
         <div>
@@ -452,9 +507,8 @@ function BranchPoint({
           <Input
             id={`addr-${branch.id}`}
             maxLength={300}
-            value={address}
-            error={errors.address}
-            onChange={(event) => setAddress(event.target.value)}
+            error={errors.establishmentAddress?.message}
+            {...register('establishmentAddress')}
           />
         </div>
         <div>
@@ -465,19 +519,21 @@ function BranchPoint({
             min={1}
             max={999999999}
             placeholder={saved ? `Siguiente: ${saved.nextSequential}` : '1'}
-            value={sequential}
-            error={errors.sequential}
-            onChange={(event) => setSequential(event.target.value)}
+            error={errors.nextSequential?.message}
+            {...register('nextSequential')}
           />
         </div>
       </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={pending}
-        onClick={() => void save()}
-      >
+      {changedElsewhere && isDirty && (
+        <Alert variant="warning">
+          Este punto cambió mientras lo editabas (en otra sesión). Recarga los datos actuales antes
+          de guardar; tus cambios sin guardar se descartarán.{' '}
+          <Button type="button" variant="link" onClick={reload}>
+            Recargar punto · {branch.name}
+          </Button>
+        </Alert>
+      )}
+      <Button type="submit" size="sm" variant="outline" disabled={isSubmitting}>
         Guardar punto · {branch.name}
       </Button>
       {message && (
@@ -486,7 +542,7 @@ function BranchPoint({
         </p>
       )}
       {error && <Alert variant="destructive">{error}</Alert>}
-    </div>
+    </form>
   );
 }
 
@@ -531,7 +587,7 @@ function PointsCard({
             ?.filter((branch) => branch.isActive)
             .map((branch) => (
               <BranchPoint
-                key={`${branch.id}-${issuer.revision}`}
+                key={branch.id}
                 branch={branch}
                 saved={issuer.points.find((item) => item.branchId === branch.id)}
                 onSaved={onPointSaved}
@@ -544,17 +600,35 @@ function PointsCard({
 
 function TestCard({ issuer }: { issuer: InvoicingIssuer | null }) {
   const tenantId = useTenantId();
-  const [result, setResult] = useState<IssuerTest>();
+  const configuration = testedConfiguration(issuer);
+  const latestConfiguration = useRef(configuration);
+  useEffect(() => {
+    latestConfiguration.current = configuration;
+  }, [configuration]);
+  const [outcome, setOutcome] = useState<{
+    configuration: string;
+    result?: IssuerTest;
+    error?: string;
+  }>();
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
+  // Saving the issuer or replacing the certificate makes a shown result obsolete.
+  const current = outcome?.configuration === configuration ? outcome : undefined;
+  const result = current?.result;
+  const error = current?.error;
+
   async function run() {
+    const startedWith = configuration;
+    // A response for a configuration that changed while the test ran is discarded.
+    const keep = (next: { result?: IssuerTest; error?: string }) => {
+      if (latestConfiguration.current === startedWith)
+        setOutcome({ configuration: startedWith, ...next });
+    };
     setPending(true);
-    setError('');
+    setOutcome(undefined);
     try {
-      setResult(await invoicingApi.test(requireTenantId(tenantId)));
+      keep({ result: await invoicingApi.test(requireTenantId(tenantId)) });
     } catch (error) {
-      setResult(undefined);
-      setError(errorMessage(error, 'No se pudo ejecutar la prueba.'));
+      keep({ error: errorMessage(error, 'No se pudo ejecutar la prueba.') });
     } finally {
       setPending(false);
     }

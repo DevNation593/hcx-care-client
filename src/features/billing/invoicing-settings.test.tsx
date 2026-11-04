@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { invoicingKeys } from '@/hooks/useInvoicing';
 import { apiClient } from '@/lib/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { UserRole, type User } from '@/types';
@@ -48,6 +49,13 @@ const certificate = (overrides = {}) => ({
   rucVerified: true,
   ...overrides,
 });
+
+const testResult = {
+  certificateValid: true,
+  certificateError: null,
+  rucVerified: true,
+  sriReachable: true,
+};
 
 let client: QueryClient;
 function mount(role: UserRole = UserRole.MASTER) {
@@ -125,6 +133,93 @@ describe('InvoicingSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
     expect(await screen.findByText(/13 dígitos y terminar en 001/)).toBeInTheDocument();
     expect(apiClient.put).not.toHaveBeenCalled();
+  });
+
+  it('shows every invalid issuer field at once next to its field', async () => {
+    mount();
+    fireEvent.change(await screen.findByLabelText('RUC'), { target: { value: '123' } });
+    fireEvent.change(screen.getByLabelText('Contribuyente especial (código)'), {
+      target: { value: '12' },
+    });
+    fireEvent.change(screen.getByLabelText('Agente de retención (código)'), {
+      target: { value: '1a' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
+    expect(
+      await screen.findByText('El RUC debe tener 13 dígitos y terminar en 001.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Ingresa la razón social.')).toBeInTheDocument();
+    expect(screen.getByText('Ingresa la dirección de la matriz.')).toBeInTheDocument();
+    expect(
+      screen.getByText('El código de contribuyente especial debe tener entre 3 y 13 dígitos.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('El código de agente de retención debe tener hasta 8 dígitos.'),
+    ).toBeInTheDocument();
+    expect(apiClient.put).not.toHaveBeenCalled();
+  });
+
+  it('reloads an untouched issuer form when a newer configuration arrives', async () => {
+    serve(issuer());
+    vi.mocked(apiClient.put).mockResolvedValue(issuer({ revision: 5 }));
+    mount();
+    await screen.findByDisplayValue('Clínica Demo S.A.');
+    act(() => {
+      client.setQueryData(
+        invoicingKeys.issuer('t1'),
+        issuer({ revision: 4, legalName: 'Clínica Nueva', environment: '2' }),
+      );
+    });
+    expect(await screen.findByDisplayValue('Clínica Nueva')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ambiente')).toHaveValue('2');
+    expect(screen.queryByText(/La configuración del emisor cambió/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenCalledWith(
+        '/tenants/t1/invoicing/issuer',
+        expect.objectContaining({ revision: 4, legalName: 'Clínica Nueva', environment: '2' }),
+      ),
+    );
+  });
+
+  it('keeps edits with their old revision when the configuration changed elsewhere', async () => {
+    serve(issuer());
+    vi.mocked(apiClient.put).mockRejectedValue({
+      code: 'INVOICING_CONFIGURATION_CHANGED',
+      message: 'La configuración cambió.',
+    });
+    mount();
+    fireEvent.change(await screen.findByLabelText('Razón social'), {
+      target: { value: 'Mi edición' },
+    });
+    act(() => {
+      client.setQueryData(
+        invoicingKeys.issuer('t1'),
+        issuer({ revision: 4, legalName: 'Clínica Nueva', environment: '2' }),
+      );
+    });
+    expect(await screen.findByText(/La configuración del emisor cambió/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Razón social')).toHaveValue('Mi edición');
+    expect(screen.getByLabelText('Ambiente')).toHaveValue('1');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenCalledWith(
+        '/tenants/t1/invoicing/issuer',
+        expect.objectContaining({ revision: 3, legalName: 'Mi edición', environment: '1' }),
+      ),
+    );
+    expect(await screen.findByText('La configuración cambió.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Recargar datos del emisor' }));
+    expect(await screen.findByDisplayValue('Clínica Nueva')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ambiente')).toHaveValue('2');
+    expect(screen.queryByText(/La configuración del emisor cambió/)).not.toBeInTheDocument();
+    expect(screen.queryByText('La configuración cambió.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
+    await waitFor(() =>
+      expect(vi.mocked(apiClient.put).mock.calls[1][1]).toEqual(
+        expect.objectContaining({ revision: 4, legalName: 'Clínica Nueva' }),
+      ),
+    );
   });
 
   it('uploads the p12 with its password and shows holder, serial and expiry, never the password', async () => {
@@ -315,6 +410,121 @@ describe('InvoicingSettings', () => {
         expect.objectContaining({ nextSequential: 50 }),
       ),
     );
+  });
+
+  it('blocks saving a new issuer over one created elsewhere until it is reloaded', async () => {
+    mount();
+    fireEvent.change(await screen.findByLabelText('Razón social'), {
+      target: { value: 'Mi edición' },
+    });
+    act(() => {
+      client.setQueryData(invoicingKeys.issuer('t1'), issuer());
+    });
+    expect(await screen.findByText(/La configuración del emisor cambió/)).toBeInTheDocument();
+    // Without a loaded revision the API could not refuse the overwrite.
+    expect(screen.getByRole('button', { name: 'Guardar emisor' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Recargar datos del emisor' }));
+    expect(await screen.findByDisplayValue('Clínica Demo S.A.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar emisor' })).toBeEnabled();
+  });
+
+  it('reloads an untouched point when the saved point changes and keeps edits otherwise', async () => {
+    const saved = {
+      branchId: 'b1',
+      establishmentCode: '001',
+      emissionPointCode: '001',
+      establishmentAddress: 'Av. Matriz',
+      nextSequential: 42,
+    };
+    serve(issuer({ points: [saved] }));
+    mount();
+    const address = await screen.findByLabelText('Dirección del establecimiento · Principal');
+    act(() => {
+      client.setQueryData(
+        invoicingKeys.issuer('t1'),
+        issuer({ points: [{ ...saved, establishmentAddress: 'Av. Nueva 1' }] }),
+      );
+    });
+    await waitFor(() => expect(address).toHaveValue('Av. Nueva 1'));
+    expect(screen.queryByText(/Este punto cambió/)).not.toBeInTheDocument();
+    fireEvent.change(address, { target: { value: 'Mi dirección' } });
+    act(() => {
+      client.setQueryData(
+        invoicingKeys.issuer('t1'),
+        issuer({ points: [{ ...saved, emissionPointCode: '009', establishmentAddress: 'Av. Otra' }] }),
+      );
+    });
+    expect(await screen.findByText(/Este punto cambió/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Dirección del establecimiento · Principal')).toHaveValue(
+      'Mi dirección',
+    );
+    expect(screen.getByLabelText('Punto de emisión · Principal')).toHaveValue('001');
+    fireEvent.click(screen.getByRole('button', { name: 'Recargar punto · Principal' }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Punto de emisión · Principal')).toHaveValue('009'),
+    );
+    expect(screen.getByLabelText('Dirección del establecimiento · Principal')).toHaveValue(
+      'Av. Otra',
+    );
+    expect(screen.queryByText(/Este punto cambió/)).not.toBeInTheDocument();
+  });
+
+  it('clears the test result when the issuer is saved in another environment', async () => {
+    serve(issuer({ certificate: certificate() }));
+    vi.mocked(apiClient.post).mockResolvedValue(testResult);
+    vi.mocked(apiClient.put).mockResolvedValue(
+      issuer({ certificate: certificate(), environment: '2', revision: 4 }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Probar firma y SRI' }));
+    expect(await screen.findByText('SRI: disponible')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Ambiente'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
+    expect(await screen.findByText('Emisor guardado')).toBeInTheDocument();
+    expect(screen.queryByText('SRI: disponible')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Firma electrónica: /)).not.toBeInTheDocument();
+  });
+
+  it('clears the test result when the certificate is replaced', async () => {
+    serve(issuer({ certificate: certificate() }));
+    vi.mocked(apiClient.post).mockResolvedValue(testResult);
+    vi.mocked(apiClient.put).mockResolvedValue(
+      issuer({ certificate: certificate({ sha256: 'a'.repeat(64) }), revision: 4 }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Probar firma y SRI' }));
+    expect(await screen.findByText('SRI: disponible')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Archivo de firma (.p12 o .pfx)'), {
+      target: { files: [new File([new Uint8Array([1])], 'nueva.p12')] },
+    });
+    fireEvent.change(screen.getByLabelText('Contraseña de la firma'), { target: { value: SECRET } });
+    fireEvent.click(screen.getByRole('button', { name: 'Subir firma' }));
+    expect(await screen.findByText('Firma electrónica guardada')).toBeInTheDocument();
+    expect(screen.queryByText('SRI: disponible')).not.toBeInTheDocument();
+  });
+
+  it('discards a test response started with an older configuration', async () => {
+    serve(issuer({ certificate: certificate() }));
+    let answer!: (value: unknown) => void;
+    vi.mocked(apiClient.post).mockImplementationOnce(
+      () => new Promise((resolve) => (answer = resolve)),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Probar firma y SRI' }));
+    act(() => {
+      client.setQueryData(
+        invoicingKeys.issuer('t1'),
+        issuer({ certificate: certificate(), environment: '2', revision: 4 }),
+      );
+    });
+    await act(async () => answer(testResult));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Probar firma y SRI' })).toBeEnabled(),
+    );
+    expect(screen.queryByText('SRI: disponible')).not.toBeInTheDocument();
+    vi.mocked(apiClient.post).mockResolvedValue({ ...testResult, sriReachable: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Probar firma y SRI' }));
+    expect(await screen.findByText('SRI: sin respuesta')).toBeInTheDocument();
   });
 
   it('shows the test result for certificate and SRI', async () => {
