@@ -6,7 +6,6 @@ import { QUERY_KEYS } from '@/lib/constants';
 import { useAuthStore } from '@/store/authStore';
 import { UserRole, type User } from '@/types';
 import type { Order } from '@/types/cash';
-import { InvoicingSettings } from '../billing/invoicing-settings';
 import { InvoiceRequestPanel } from './invoice-request-panel';
 import { InvoicesTab } from './invoices-tab';
 
@@ -21,31 +20,12 @@ vi.mock('@/hooks/usePermissions', () => ({
 vi.mock('@/hooks/useBranches', () => ({
   useBranches: () => ({ data: [{ id: 'b1', name: 'Principal', isActive: true }] }),
 }));
-const taxpayer = {
-  id: 'tax1',
-  legalName: 'Emisor real',
-  ruc: '1234567890001',
-  defaultEnvironment: '1',
-  establishments: [
-    { id: 'est1', code: '001', emissionPoints: [{ id: 'point1', code: '002', enabled: true }] },
-  ],
-};
-const connection = {
-  id: 'con1',
-  taxpayerId: 'tax1',
-  taxpayerName: 'Emisor real',
-  environment: '1',
-  hasApiKey: true,
-  hasWebhookSecret: false,
-  active: true,
-  webhookUrl: null,
-  points: [],
-};
 const receipt = (overrides = {}) => ({
   id: 'req1',
   orderId: 'o1',
   status: 'REQUESTED',
-  requiresReconciliation: false,
+  sequential: null,
+  emailedAt: null,
   artifacts: { xml: false, ride: false },
   lastError: null,
   number: null,
@@ -82,115 +62,15 @@ beforeEach(() => {
   state.known = true;
   latest = receipt();
   vi.mocked(apiClient.get).mockImplementation(async (url) => {
-    if (url.endsWith('/invoicing/connection')) return null;
-    if (url.endsWith('/invoicing/options')) return { taxpayers: [taxpayer] };
     if (url.endsWith('/invoice-requests/req1')) return latest;
     return { items: [], total: 0, page: 1, pageSize: 20 };
   });
-  vi.mocked(apiClient.post).mockImplementation(async (url) =>
-    url.endsWith('/invoicing/test') ? { taxpayers: [taxpayer] } : receipt(),
-  );
-  vi.mocked(apiClient.put).mockResolvedValue(connection);
+  vi.mocked(apiClient.post).mockImplementation(async () => receipt());
 });
 afterEach(() => {
   client?.clear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
-});
-
-describe('InvoicingSettings', () => {
-  it('tests a blank unsaved key, saves the real issuer, then loads saved point choices', async () => {
-    mount(<InvoicingSettings />);
-    const key = await screen.findByLabelText('API key');
-    expect(key).toHaveValue('');
-    fireEvent.change(key, { target: { value: 'typed-secret' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Probar conexión' }));
-    expect(await screen.findByText('Emisor real · 1234567890001')).toBeInTheDocument();
-    expect(apiClient.put).not.toHaveBeenCalled();
-    expect(apiClient.get).not.toHaveBeenCalledWith('/tenants/t1/invoicing/options');
-    fireEvent.change(screen.getByLabelText('Emisor'), { target: { value: 'tax1' } });
-    expect(screen.getByText('Pruebas')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar conexión' }));
-    await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith('/tenants/t1/invoicing/connection', {
-        taxpayerId: 'tax1',
-        apiKey: 'typed-secret',
-        active: true,
-      }),
-    );
-    expect(
-      await screen.findByText('Sin webhook: los estados se actualizan por consulta periódica.'),
-    ).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByLabelText('API key')).toHaveValue(''));
-    fireEvent.change(await screen.findByLabelText('Establecimiento · Principal'), {
-      target: { value: 'est1' },
-    });
-    fireEvent.change(screen.getByLabelText('Punto de emisión · Principal'), {
-      target: { value: 'point1' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar punto · Principal' }));
-    await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith('/tenants/t1/branches/b1/emission-point', {
-        establishmentId: 'est1',
-        emissionPointId: 'point1',
-      }),
-    );
-    expect(
-      JSON.stringify(
-        client
-          .getQueryCache()
-          .getAll()
-          .map((q) => q.state.data),
-      ),
-    ).not.toContain('typed-secret');
-  });
-  it('invalidates tested issuer choices when the key changes', async () => {
-    mount(<InvoicingSettings />);
-    fireEvent.change(await screen.findByLabelText('API key'), { target: { value: 'first-key' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Probar conexión' }));
-    await screen.findByText('Emisor real · 1234567890001');
-    fireEvent.change(screen.getByLabelText('Emisor'), { target: { value: 'tax1' } });
-    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'new-key' } });
-    expect(screen.queryByText('Emisor real · 1234567890001')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Guardar conexión' })).toBeDisabled();
-  });
-  it('preserves omitted credentials and offers webhook copy', async () => {
-    vi.mocked(apiClient.get).mockImplementation(async (url) =>
-      url.endsWith('/connection')
-        ? { ...connection, hasWebhookSecret: true, webhookUrl: 'https://hcx.test/callback' }
-        : { taxpayers: [taxpayer] },
-    );
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-    mount(<InvoicingSettings />);
-    await screen.findByText('API key guardada');
-    expect(screen.getByLabelText('API key')).toHaveValue('');
-    expect(screen.getByLabelText('Secreto webhook (opcional)')).toHaveValue('');
-    fireEvent.click(screen.getByRole('button', { name: 'Copiar URL webhook' }));
-    expect(writeText).toHaveBeenCalledWith('https://hcx.test/callback');
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar conexión' }));
-    await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith('/tenants/t1/invoicing/connection', {
-        taxpayerId: 'tax1',
-        active: true,
-      }),
-    );
-  });
-  it.each([UserRole.ASISTENTE, UserRole.PROFESIONAL])(
-    'never mounts MASTER queries for %s',
-    (role) => {
-      mount(<InvoicingSettings />, role);
-      expect(apiClient.get).not.toHaveBeenCalled();
-      expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
-    },
-  );
-  it('shows a clear retry when the provider host is not configured', async () => {
-    vi.mocked(apiClient.get).mockRejectedValue({ message: 'Configura EMITE_FACIL_API_URL' });
-    mount(<InvoicingSettings />);
-    expect(await screen.findByText('Configura EMITE_FACIL_API_URL')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Reintentar conexión' }));
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledTimes(2));
-  });
 });
 
 describe('InvoiceRequestPanel', () => {
@@ -498,12 +378,11 @@ describe('InvoiceRequestPanel', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' })));
-    latest = receipt({ status: 'FAILED', requiresReconciliation: true });
+    latest = receipt({ status: 'PROCESSING' });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
       await vi.advanceTimersByTimeAsync(1);
     });
-    expect(screen.getByText(/Conciliación pendiente/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Volver a emitir' })).not.toBeInTheDocument();
     latest = receipt({ status: 'AUTHORIZED', artifacts: { xml: true, ride: false } });
     await act(async () => {
@@ -583,19 +462,12 @@ describe('InvoiceRequestPanel', () => {
       lastError: {
         code: 'SRI_REJECTED',
         message: 'Rechazo fiscal real',
-        attempts: [
+        messages: [
           {
-            id: 'a1',
-            operation: 'RECEPTION',
-            sriStatus: 'DEVUELTA',
-            messages: [
-              {
-                identifier: '43',
-                message: 'Identificación del comprador inválida',
-                additionalInfo: 'Revisar identificación fiscal',
-                type: 'ERROR',
-              },
-            ],
+            identifier: '43',
+            message: 'Identificación del comprador inválida',
+            additionalInfo: 'Revisar identificación fiscal',
+            type: 'ERROR',
           },
         ],
       },
@@ -605,12 +477,96 @@ describe('InvoiceRequestPanel', () => {
     );
     mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
     expect(await screen.findByText('Rechazo fiscal real')).toBeInTheDocument();
-    expect(screen.getByText('Recepción: DEVUELTA')).toBeInTheDocument();
     expect(
       screen.getByText(
-        '43 · Identificación del comprador inválida · Revisar identificación fiscal · ERROR',
+        '43 · Identificación del comprador inválida · Revisar identificación fiscal',
       ),
     ).toBeInTheDocument();
+  });
+  it('shows the SRI messages of a rejected invoice and offers to reissue', async () => {
+    latest = receipt({
+      status: 'REJECTED',
+      lastError: {
+        code: 'SRI_REJECTED',
+        message: 'El SRI rechazó la factura.',
+        messages: [
+          { identifier: '35', message: 'Documento devuelto', additionalInfo: null, type: 'ERROR' },
+        ],
+      },
+    });
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? latest : { items: [latest], total: 1 },
+    );
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    expect(await screen.findByText('35 · Documento devuelto')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Volver a emitir' })).toBeEnabled();
+  });
+  it('offers to reissue a rejected invoice even when the SRI messages are hidden', async () => {
+    state.view = false;
+    vi.mocked(apiClient.post).mockResolvedValue(receipt({ status: 'REJECTED' }));
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />, UserRole.ASISTENTE);
+    fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' }));
+    expect(await screen.findByRole('button', { name: 'Volver a emitir' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it('shows a processing invoice as waiting for the SRI and keeps polling', async () => {
+    vi.useFakeTimers();
+    latest = receipt({ status: 'PROCESSING' });
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' })));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByText('Esperando al SRI')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Volver a emitir' })).not.toBeInTheDocument();
+    const before = vi.mocked(apiClient.get).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(before);
+  });
+  it('shows the Spanish message of a failed invoice', async () => {
+    latest = receipt({
+      status: 'FAILED',
+      lastError: { code: 'SRI_TIMEOUT', message: 'El SRI no respondió a tiempo.' },
+    });
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? latest : { items: [latest], total: 1 },
+    );
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    expect(await screen.findByText('El SRI no respondió a tiempo.')).toBeInTheDocument();
+  });
+  it('shows that the invoice was emailed, in Ecuador time, and nothing when it was not', async () => {
+    latest = receipt({ status: 'AUTHORIZED', emailedAt: '2026-10-17T03:30:00Z' });
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? latest : { items: [latest], total: 1 },
+    );
+    const { unmount } = mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    const when = new Date('2026-10-17T03:30:00Z').toLocaleString('es-EC', {
+      timeZone: 'America/Guayaquil',
+    });
+    expect(await screen.findByText(`Enviada por correo el ${when}`)).toBeInTheDocument();
+    expect(when).toContain('16');
+    unmount();
+    latest = receipt({ status: 'AUTHORIZED', emailedAt: null });
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    await screen.findByText('Autorizada');
+    expect(screen.queryByText(/Enviada por correo/)).not.toBeInTheDocument();
+  });
+  it('does not mention the former provider', async () => {
+    latest = receipt({
+      status: 'REJECTED',
+      lastError: { code: 'SRI_REJECTED', message: 'El SRI rechazó la factura.' },
+    });
+    vi.mocked(apiClient.get).mockImplementation(async (url) =>
+      url.endsWith('/req1') ? latest : { items: [latest], total: 1 },
+    );
+    mount(<InvoiceRequestPanel order={order} eligibility={eligible} />);
+    await screen.findByText('El SRI rechazó la factura.');
+    expect(document.body).not.toHaveTextContent(/emite[\s-]?f[aá]cil|emitefacil/i);
   });
   it('shows state without emission controls to a view-only user', async () => {
     state.create = false;

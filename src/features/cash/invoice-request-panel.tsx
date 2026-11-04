@@ -45,7 +45,6 @@ export function InvoiceRequestPanel({
     !unresolvedAttempt &&
     !authorized &&
     !!request &&
-    !request.requiresReconciliation &&
     (request.status === 'REJECTED' || request.status === 'FAILED');
   const uncertainRetry = unresolvedAttempt && !authorized;
   const canStart = !!eligibility?.eligible && order.status === 'PAID';
