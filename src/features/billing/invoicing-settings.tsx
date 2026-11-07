@@ -82,10 +82,12 @@ const testedConfiguration = (issuer: InvoicingIssuer | null) =>
 
 function IssuerCard({
   issuer,
+  begin,
   onSaved,
 }: {
   issuer: InvoicingIssuer | null;
-  onSaved: (saved: InvoicingIssuer) => void;
+  begin: () => number;
+  onSaved: (saved: InvoicingIssuer, startedAt: number) => void;
 }) {
   const tenantId = useTenantId();
   const {
@@ -129,13 +131,14 @@ function IssuerCard({
     async (data) => {
       setMessage('');
       setError('');
+      const startedAt = begin();
       try {
         const saved = await invoicingApi.saveIssuer(requireTenantId(tenantId), {
           ...data,
           ...(loadedRevision !== undefined ? { revision: loadedRevision } : {}),
         });
         load(saved);
-        onSaved(saved);
+        onSaved(saved, startedAt);
         setMessage('Emisor guardado');
       } catch (error) {
         setError(errorMessage(error, 'No se pudo guardar el emisor.'));
@@ -288,10 +291,12 @@ function IssuerCard({
 
 function CertificateCard({
   issuer,
+  begin,
   onSaved,
 }: {
   issuer: InvoicingIssuer | null;
-  onSaved: (saved: InvoicingIssuer) => void;
+  begin: () => number;
+  onSaved: (saved: InvoicingIssuer, startedAt: number) => void;
 }) {
   const tenantId = useTenantId();
   const [file, setFile] = useState<File | null>(null);
@@ -315,9 +320,10 @@ function CertificateCard({
     if (!password) return setError('Ingresa la contraseña de la firma.');
     setError('');
     setPending(true);
+    const startedAt = begin();
     try {
       const saved = await invoicingApi.uploadCertificate(requireTenantId(tenantId), file, password);
-      onSaved(saved);
+      onSaved(saved, startedAt);
       setFile(null);
       if (fileRef.current) fileRef.current.value = '';
       setMessage('Firma electrónica guardada');
@@ -693,11 +699,39 @@ function SettingsForm() {
     enabled: !!tenantId,
   });
   const issuer = issuerQuery.data ?? null;
-  function replaceIssuer(saved: InvoicingIssuer) {
-    client.setQueryData(invoicingKeys.issuer(tenantId), saved);
+  // Issuer, certificate and point saves run concurrently (their locks are independent), so a
+  // response generated before another save can arrive after it. Every mutation takes a tick when
+  // it starts and each point records the tick of its save: a response never overwrites a point
+  // saved after that response's request began.
+  const clock = useRef(0);
+  const pointSavedAt = useRef(new Map<string, number>());
+  const begin = () => ++clock.current;
+  // The optimistic cache write gives immediate feedback; the refetch makes the cache end
+  // consistent with the server whatever order the concurrent responses arrived in.
+  const revalidate = () => {
+    void client.invalidateQueries({ queryKey: invoicingKeys.issuer(tenantId) });
     void client.invalidateQueries({ queryKey: ['orders'] });
+  };
+  function replaceIssuer(saved: InvoicingIssuer, startedAt: number) {
+    client.setQueryData<InvoicingIssuer | null>(invoicingKeys.issuer(tenantId), (current) => {
+      if (!current) return saved;
+      // Revisions only grow: an older response must not replace a newer configuration.
+      if (current.revision > saved.revision) return current;
+      const newer = current.points.filter(
+        (point) => (pointSavedAt.current.get(point.branchId) ?? 0) > startedAt,
+      );
+      return {
+        ...saved,
+        points: [
+          ...saved.points.filter((point) => !newer.some((item) => item.branchId === point.branchId)),
+          ...newer,
+        ],
+      };
+    });
+    revalidate();
   }
   function replacePoint(point: EmissionPoint) {
+    pointSavedAt.current.set(point.branchId, ++clock.current);
     client.setQueryData<InvoicingIssuer | null>(invoicingKeys.issuer(tenantId), (current) =>
       current
         ? {
@@ -706,7 +740,7 @@ function SettingsForm() {
           }
         : current,
     );
-    void client.invalidateQueries({ queryKey: ['orders'] });
+    revalidate();
   }
   if (issuerQuery.isPending)
     return (
@@ -714,7 +748,9 @@ function SettingsForm() {
         Cargando configuración…
       </p>
     );
-  if (issuerQuery.isError)
+  // Only a failed first load replaces the page: a failed background refetch keeps the forms (and
+  // their unsaved edits) mounted.
+  if (issuerQuery.isError && issuerQuery.data === undefined)
     return (
       <Alert variant="destructive">
         {errorMessage(issuerQuery.error, 'No se pudo cargar la configuración de facturación.')}{' '}
@@ -725,8 +761,16 @@ function SettingsForm() {
     );
   return (
     <div className="space-y-6">
-      <IssuerCard issuer={issuer} onSaved={replaceIssuer} />
-      <CertificateCard issuer={issuer} onSaved={replaceIssuer} />
+      {issuerQuery.isError && (
+        <Alert variant="warning">
+          No se pudo actualizar la configuración. Los datos mostrados pueden estar desactualizados.{' '}
+          <Button type="button" variant="link" onClick={() => void issuerQuery.refetch()}>
+            Reintentar
+          </Button>
+        </Alert>
+      )}
+      <IssuerCard issuer={issuer} begin={begin} onSaved={replaceIssuer} />
+      <CertificateCard issuer={issuer} begin={begin} onSaved={replaceIssuer} />
       <PointsCard issuer={issuer} onPointSaved={replacePoint} />
       <TestCard issuer={issuer} />
     </div>
