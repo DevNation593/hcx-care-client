@@ -5,7 +5,7 @@ import { invoicingKeys } from '@/hooks/useInvoicing';
 import { apiClient } from '@/lib/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { UserRole, type User } from '@/types';
-import type { InvoicingIssuer } from '@/types/invoicing';
+import type { EmissionPoint, InvoicingIssuer } from '@/types/invoicing';
 import { InvoicingSettings } from './invoicing-settings';
 
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
@@ -91,8 +91,24 @@ function mount(role: UserRole = UserRole.MASTER) {
     </QueryClientProvider>,
   );
 }
-const serve = (value: InvoicingIssuer | null) =>
-  vi.mocked(apiClient.get).mockImplementation(async () => value);
+// The fake server: saves change what the configuration GET returns, as the real API does (every
+// save is followed by a refetch of the configuration).
+let server: InvoicingIssuer | null = null;
+const serve = (value: InvoicingIssuer | null) => {
+  server = value;
+  vi.mocked(apiClient.get).mockImplementation(async () => server);
+};
+const putIssuer = (value: InvoicingIssuer) =>
+  vi.mocked(apiClient.put).mockImplementation(async () => (server = value));
+const putPoint = (point: EmissionPoint) =>
+  vi.mocked(apiClient.put).mockImplementation(async () => {
+    if (server)
+      server = {
+        ...server,
+        points: [...server.points.filter((item) => item.branchId !== point.branchId), point],
+      };
+    return point;
+  });
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -249,7 +265,7 @@ describe('InvoicingSettings', () => {
   it('uploads the p12 with its password and shows holder, serial and expiry, never the password', async () => {
     serve(issuer());
     const validTo = '2030-05-17T12:00:00.000Z';
-    vi.mocked(apiClient.put).mockResolvedValue(issuer({ certificate: certificate({ validTo }) }));
+    putIssuer(issuer({ certificate: certificate({ validTo }) }));
     mount();
     const file = new File([new Uint8Array([1, 2, 3])], 'firma.p12');
     const input = await screen.findByLabelText('Archivo de firma (.p12 o .pfx)');
@@ -357,7 +373,7 @@ describe('InvoicingSettings', () => {
 
   it('never shows the pre-save issuer values while the saved issuer reaches the cache', async () => {
     serve(issuer());
-    vi.mocked(apiClient.put).mockResolvedValue(issuer({ legalName: 'Clínica Editada', revision: 4 }));
+    putIssuer(issuer({ legalName: 'Clínica Editada', revision: 4 }));
     mount();
     const legalName = await screen.findByLabelText('Razón social');
     const writes = recordWrites(legalName);
@@ -374,7 +390,7 @@ describe('InvoicingSettings', () => {
 
   it('never blanks a new point while the saved point reaches the cache', async () => {
     serve(issuer());
-    vi.mocked(apiClient.put).mockResolvedValue({
+    putPoint({
       branchId: 'b1',
       establishmentCode: '001',
       emissionPointCode: '002',
@@ -606,9 +622,7 @@ describe('InvoicingSettings', () => {
   it('clears the test result when the issuer is saved in another environment', async () => {
     serve(issuer({ certificate: certificate() }));
     vi.mocked(apiClient.post).mockResolvedValue(testResult);
-    vi.mocked(apiClient.put).mockResolvedValue(
-      issuer({ certificate: certificate(), environment: '2', revision: 4 }),
-    );
+    putIssuer(issuer({ certificate: certificate(), environment: '2', revision: 4 }));
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Probar firma y SRI' }));
     expect(await screen.findByText('SRI: disponible')).toBeInTheDocument();
@@ -622,9 +636,7 @@ describe('InvoicingSettings', () => {
   it('clears the test result when the certificate is replaced', async () => {
     serve(issuer({ certificate: certificate() }));
     vi.mocked(apiClient.post).mockResolvedValue(testResult);
-    vi.mocked(apiClient.put).mockResolvedValue(
-      issuer({ certificate: certificate({ sha256: 'a'.repeat(64) }), revision: 4 }),
-    );
+    putIssuer(issuer({ certificate: certificate({ sha256: 'a'.repeat(64) }), revision: 4 }));
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Probar firma y SRI' }));
     expect(await screen.findByText('SRI: disponible')).toBeInTheDocument();
@@ -698,6 +710,154 @@ describe('InvoicingSettings', () => {
     mount(role);
     expect(apiClient.get).not.toHaveBeenCalled();
     expect(screen.queryByLabelText('RUC')).not.toBeInTheDocument();
+  });
+
+  describe('issuer response racing a point save', () => {
+    const oldPoint: EmissionPoint = {
+      branchId: 'b1',
+      establishmentCode: '001',
+      emissionPointCode: '001',
+      establishmentAddress: 'Av. Matriz',
+      nextSequential: 42,
+    };
+    const newPoint: EmissionPoint = {
+      branchId: 'b1',
+      establishmentCode: '001',
+      emissionPointCode: '002',
+      establishmentAddress: 'Av. Sucursal 5',
+      nextSequential: 1,
+    };
+
+    async function savePointWhileIssuerSaveIsInFlight() {
+      serve(issuer({ points: [oldPoint] }));
+      const issuerSave = deferred<InvoicingIssuer>();
+      vi.mocked(apiClient.put).mockImplementation(async (url: string) => {
+        if (url.endsWith('/emission-point')) {
+          server = { ...server!, points: [newPoint] };
+          return newPoint;
+        }
+        return issuerSave.promise;
+      });
+      mount();
+      const address = await screen.findByLabelText('Dirección del establecimiento · Principal');
+      const writes = recordWrites(address);
+      return { issuerSave, address, writes };
+    }
+    const editPoint = () => {
+      fireEvent.change(screen.getByLabelText('Punto de emisión · Principal'), {
+        target: { value: '002' },
+      });
+      fireEvent.change(screen.getByLabelText('Dirección del establecimiento · Principal'), {
+        target: { value: 'Av. Sucursal 5' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar punto · Principal' }));
+    };
+    const cachedPoints = () =>
+      client.getQueryData<InvoicingIssuer>(invoicingKeys.issuer('t1'))?.points;
+
+    it('keeps the freshly saved point while a response generated before it sits in the cache', async () => {
+      const { issuerSave, address, writes } = await savePointWhileIssuerSaveIsInFlight();
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
+      await waitFor(() => expect(apiClient.put).toHaveBeenCalledTimes(1));
+      editPoint();
+      expect(await screen.findByText('Punto guardado')).toBeInTheDocument();
+      // The refetch that follows the issuer response stays pending: the stale response is all
+      // the cache has until it settles (indefinitely if it fails).
+      const pendingGet = deferred<InvoicingIssuer | null>();
+      vi.mocked(apiClient.get).mockImplementation(() => pendingGet.promise);
+      issuerSave.resolve(issuer({ revision: 4, points: [oldPoint] }));
+      expect(await screen.findByText('Emisor guardado')).toBeInTheDocument();
+      await act(() => new Promise((done) => setTimeout(done, 20)));
+      expect(cachedPoints()).toEqual([newPoint]);
+      expect(address).toHaveValue('Av. Sucursal 5');
+      expect(writes).not.toContain('Av. Matriz');
+      expect(screen.queryByText(/Este punto cambió/)).not.toBeInTheDocument();
+      pendingGet.resolve(server);
+      await act(() => new Promise((done) => setTimeout(done, 20)));
+      expect(cachedPoints()).toEqual([newPoint]);
+    });
+
+    it('takes the point of an issuer response that started after the point save', async () => {
+      const otherUsersPoint: EmissionPoint = { ...newPoint, establishmentAddress: 'Av. Otro 9' };
+      const { issuerSave } = await savePointWhileIssuerSaveIsInFlight();
+      editPoint();
+      expect(await screen.findByText('Punto guardado')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar emisor' }));
+      await waitFor(() => expect(apiClient.put).toHaveBeenCalledTimes(2));
+      vi.mocked(apiClient.get).mockImplementation(() => deferred<InvoicingIssuer>().promise);
+      issuerSave.resolve(issuer({ revision: 4, points: [otherUsersPoint] }));
+      expect(await screen.findByText('Emisor guardado')).toBeInTheDocument();
+      expect(cachedPoints()).toEqual([otherUsersPoint]);
+    });
+  });
+
+  it('keeps the new issuer being typed when the refetch fails and no issuer exists yet', async () => {
+    serve(null);
+    mount();
+    const legalName = await screen.findByLabelText('Razón social');
+    fireEvent.change(legalName, { target: { value: 'Clínica Nueva' } });
+    vi.mocked(apiClient.get).mockRejectedValue({ message: 'API caída' });
+    await act(() => client.refetchQueries({ queryKey: invoicingKeys.issuer('t1') }));
+    expect(await screen.findByText(/No se pudo actualizar la configuración/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Razón social')).toBe(legalName);
+    expect(legalName).toHaveValue('Clínica Nueva');
+  });
+
+  it('refetches the issuer after a point save and after a certificate upload', async () => {
+    serve(issuer());
+    putPoint({
+      branchId: 'b1',
+      establishmentCode: '001',
+      emissionPointCode: '002',
+      establishmentAddress: 'Av. Sucursal 5',
+      nextSequential: 1,
+    });
+    mount();
+    await screen.findByLabelText('Establecimiento · Principal');
+    fireEvent.change(screen.getByLabelText('Establecimiento · Principal'), {
+      target: { value: '001' },
+    });
+    fireEvent.change(screen.getByLabelText('Punto de emisión · Principal'), {
+      target: { value: '002' },
+    });
+    fireEvent.change(screen.getByLabelText('Dirección del establecimiento · Principal'), {
+      target: { value: 'Av. Sucursal 5' },
+    });
+    const initialGets = vi.mocked(apiClient.get).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar punto · Principal' }));
+    expect(await screen.findByText('Punto guardado')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(initialGets),
+    );
+    const afterPoint = vi.mocked(apiClient.get).mock.calls.length;
+    putIssuer(issuer({ certificate: certificate(), revision: 4 }));
+    fireEvent.change(screen.getByLabelText('Archivo de firma (.p12 o .pfx)'), {
+      target: { files: [new File([new Uint8Array([1])], 'firma.p12')] },
+    });
+    fireEvent.change(screen.getByLabelText('Contraseña de la firma'), { target: { value: SECRET } });
+    fireEvent.click(screen.getByRole('button', { name: 'Subir firma' }));
+    expect(await screen.findByText('Firma electrónica guardada')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(afterPoint),
+    );
+  });
+
+  it('keeps the forms and their unsaved edits when a background refetch fails', async () => {
+    serve(issuer());
+    mount();
+    const legalName = await screen.findByLabelText('Razón social');
+    fireEvent.change(legalName, { target: { value: 'Edición sin guardar' } });
+    vi.mocked(apiClient.get).mockRejectedValue({ message: 'API caída' });
+    await act(() => client.refetchQueries({ queryKey: invoicingKeys.issuer('t1') }));
+    expect(await screen.findByText(/No se pudo actualizar la configuración/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Razón social')).toBe(legalName);
+    expect(legalName).toHaveValue('Edición sin guardar');
+    serve(issuer());
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    await waitFor(() =>
+      expect(screen.queryByText(/No se pudo actualizar la configuración/)).not.toBeInTheDocument(),
+    );
+    expect(legalName).toHaveValue('Edición sin guardar');
   });
 
   it('shows a clear retry when the configuration cannot be loaded', async () => {
