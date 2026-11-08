@@ -49,8 +49,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    // Printing a clinical document shows only the page: no navigation, no clipping.
-    <div className="min-h-screen flex overflow-hidden bg-background print:block print:overflow-visible">
+    // The shell is exactly one viewport tall, so only <main> scrolls and the sidebar and header
+    // stay put. Printing a clinical document shows only the page: no navigation, no clipping.
+    <div className="h-dvh flex overflow-hidden bg-background print:block print:h-auto print:overflow-visible">
       <div className="contents print:hidden">
         <Sidebar />
       </div>
