@@ -75,6 +75,14 @@ export const updatePlatformTenantSchema = z.object({
   address: z.string().trim(),
 }).strict();
 
+/** Clinic admin panel: the clinic's own contact data. Blank phone and address clear the value. */
+export const clinicProfileSchema = z.object({
+  name: z.string().trim().min(1, 'Ingresa el nombre del consultorio').max(120, 'Hasta 120 caracteres'),
+  email: onboardingEmail.max(254, 'Hasta 254 caracteres'),
+  phone: z.string().trim().max(40, 'Hasta 40 caracteres'),
+  address: z.string().trim().max(300, 'Hasta 300 caracteres'),
+}).strict();
+
 /** Platform panel: plan change, optionally as a trial of the new plan. */
 export const changePlatformPlanSchema = z.object({
   planId: z.string().min(1, 'Selecciona un plan'),

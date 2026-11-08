@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { type WorkingHours, type ReminderRule, type TenantSettings } from '@/types';
 import { BranchesManager } from '@/features/admin/branches/branches-manager';
+import { ClinicProfileCard } from '@/features/admin/settings/clinic-profile-card';
 import { useSections } from '@/hooks/useSections';
 
 const DAYS_MAP: { key: keyof WorkingHours; label: string }[] = [
@@ -226,6 +227,8 @@ export default function AdminSettingsPage() {
           </Button>
         </div>
       </div>
+
+      <ClinicProfileCard />
 
       {/* Working Hours */}
       <Card>
