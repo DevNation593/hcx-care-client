@@ -27,6 +27,12 @@ const storedSettings = {
   locale: 'es',
 };
 
+// The selector first renders with its default and takes the stored timezone in an effect.
+async function waitForStoredSettings() {
+  const timezone = await screen.findByRole('combobox', { name: 'Zona horaria' });
+  await waitFor(() => expect(timezone).toHaveValue('America/Bogota'));
+}
+
 function renderPage() {
   useAuthStore.setState({
     user: { id: 'user-1', role: UserRole.MASTER, tenantId: 'tenant-1' } as User,
@@ -46,7 +52,7 @@ describe('clinic settings', () => {
   it('holds no electronic invoicing data: it lives in Billing > Settings', async () => {
     renderPage();
 
-    expect(await screen.findByRole('combobox', { name: 'Zona horaria' })).toHaveValue('America/Bogota');
+    await waitForStoredSettings();
     expect(screen.queryByText('Facturación electrónica')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Razón social')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Número de identificación')).not.toBeInTheDocument();
@@ -57,7 +63,7 @@ describe('clinic settings', () => {
   it('saves without sending any billing or faktur field', async () => {
     renderPage();
 
-    await screen.findByRole('combobox', { name: 'Zona horaria' });
+    await waitForStoredSettings();
     fireEvent.click(screen.getByRole('button', { name: '45 min' }));
     fireEvent.click(screen.getByRole('button', { name: /Guardar Cambios/ }));
 
