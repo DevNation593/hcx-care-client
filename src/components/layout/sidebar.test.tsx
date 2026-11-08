@@ -102,8 +102,13 @@ describe('Sidebar modules and submodules', () => {
       'Almacenamiento',
       'Configuración',
     ]);
+    expect(linksIn('Facturación')).toEqual(['Facturas emitidas', 'Configuración']);
+    expect(screen.getByRole('link', { name: 'Facturas emitidas' })).toHaveAttribute('href', '/admin/billing');
+    expect(
+      within(screen.getByRole('group', { name: 'Facturación' })).getByRole('link', { name: 'Configuración' }),
+    ).toHaveAttribute('href', '/admin/billing/settings');
     // Modules with a single screen stay as a direct entry.
-    for (const name of ['Dashboard', 'Pacientes', 'Facturación']) {
+    for (const name of ['Dashboard', 'Pacientes', 'Caja', 'Inventario']) {
       expect(screen.getByRole('link', { name }).closest('[role="group"]')).toBeNull();
     }
   });
@@ -173,7 +178,9 @@ describe('Sidebar modules and submodules', () => {
     renderSidebar();
 
     expect(await screen.findByRole('link', { name: 'Calendario' })).toHaveAttribute('href', '/calendar');
-    expect(screen.getByRole('link', { name: 'Configuración' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('group', { name: 'Administración' })).getByRole('link', { name: 'Configuración' }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Agenda' })).not.toBeInTheDocument();
   });
 });
@@ -212,19 +219,31 @@ describe('Sidebar billing entry', () => {
     useAuthStore.setState({ user: { ...admin, role: UserRole.ASISTENTE } });
     renderSidebar();
     expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Facturación' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Facturas emitidas' })).not.toBeInTheDocument();
   });
 
   it('is shown to the account holder', async () => {
     renderSidebar();
-    expect(await screen.findByRole('link', { name: 'Facturación' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Facturas emitidas' })).toBeInTheDocument();
   });
 
   it('is shown to a professional only when billing.view was given to them', async () => {
     useAuthStore.setState({ user: { ...admin, role: UserRole.PROFESIONAL } });
     permissions.granted = ['billing.view'];
     renderSidebar();
-    expect(await screen.findByRole('link', { name: 'Facturación' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Facturas emitidas' })).toBeInTheDocument();
+    permissions.granted = [];
+  });
+
+  it('keeps the billing settings to the account holder, even for who may see invoices', async () => {
+    useAuthStore.setState({ user: { ...admin, role: UserRole.ASISTENTE } });
+    permissions.granted = ['billing.view'];
+    renderSidebar();
+    await screen.findByRole('link', { name: 'Facturas emitidas' });
+
+    expect(
+      within(screen.getByRole('group', { name: 'Facturación' })).getAllByRole('link').map((link) => link.textContent),
+    ).toEqual(['Facturas emitidas']);
     permissions.granted = [];
   });
 });
@@ -283,8 +302,8 @@ describe('Sidebar for a cashier', () => {
     permissions.granted = ['billing.view'];
     const { unmount } = renderSidebar();
     expect(await screen.findByRole('link', { name: 'Caja' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Facturación' })).toBeInTheDocument();
-    for (const name of ['Dashboard', 'Pacientes', 'Inventario']) {
+    expect(screen.getByRole('link', { name: 'Facturas emitidas' })).toBeInTheDocument();
+    for (const name of ['Dashboard', 'Pacientes', 'Inventario', 'Configuración']) {
       expect(screen.queryByRole('link', { name })).not.toBeInTheDocument();
     }
     for (const name of ['Agenda', 'Clínica', 'Administración']) {
@@ -317,8 +336,9 @@ describe('Sidebar administration section', () => {
 
   it('shows every administration entry to the account holder', async () => {
     renderSidebar();
+    const section = await screen.findByRole('group', { name: 'Administración' });
     for (const name of adminLinks) {
-      expect(await screen.findByRole('link', { name })).toBeInTheDocument();
+      expect(await within(section).findByRole('link', { name })).toBeInTheDocument();
     }
   });
 
@@ -340,7 +360,7 @@ describe('Sidebar administration section', () => {
     useAuthStore.setState({ user: { ...admin, role: UserRole.PROFESIONAL } });
     renderSidebar();
     expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Facturación' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Facturas emitidas' })).not.toBeInTheDocument();
     permissions.withdrawn = [];
   });
 
@@ -348,12 +368,12 @@ describe('Sidebar administration section', () => {
     useAuthStore.setState({ user: { ...admin, role: UserRole.ASISTENTE } });
     const { unmount } = renderSidebar();
     expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Facturación' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Facturas emitidas' })).not.toBeInTheDocument();
     unmount();
 
     permissions.granted = ['billing.view'];
     renderSidebar();
-    expect(await screen.findByRole('link', { name: 'Facturación' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Facturas emitidas' })).toBeInTheDocument();
     permissions.granted = [];
   });
 
@@ -377,7 +397,7 @@ describe('Sidebar administration section', () => {
     useAuthStore.setState({ user: { ...admin, role: UserRole.ADMIN } });
     renderSidebar();
     expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Facturación' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Facturas emitidas' })).not.toBeInTheDocument();
   });
 });
 
@@ -392,7 +412,7 @@ describe('Sidebar section visibility', () => {
     ['Consentimientos', 'core.treatments.consents'],
     ['Caja', 'core.billing.cash'],
     ['Inventario', 'core.billing.inventory'],
-    ['Facturación', 'core.billing.invoicing'],
+    ['Facturas emitidas', 'core.billing.invoicing'],
     ['Equipo', 'core.admin.team'],
     ['Reportes', 'core.admin.reports'],
     ['Almacenamiento', 'core.patients.files'],
