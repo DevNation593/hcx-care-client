@@ -33,6 +33,7 @@ import {
   FileSignature,
   Wallet,
   Package,
+  Receipt,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -96,7 +97,14 @@ export function Sidebar() {
     },
     { name: 'Caja', href: '/cash', icon: Wallet, show: isEnabled('core.billing.cash') && can('billing.view', isMaster) },
     { name: 'Inventario', href: '/inventory', icon: Package, show: isEnabled('core.billing.inventory') && can('inventory.manage', isMaster) },
-    { name: 'Facturación', href: '/admin/billing', icon: FileText, show: isEnabled('core.billing.invoicing') && can('billing.view', isMaster) },
+    {
+      name: 'Facturación',
+      icon: FileText,
+      items: [
+        { name: 'Facturas emitidas', href: '/admin/billing', icon: Receipt, show: isEnabled('core.billing.invoicing') && can('billing.view', isMaster) },
+        { name: 'Configuración', href: '/admin/billing/settings', icon: Settings, show: isEnabled('core.billing.invoicing') && isMaster },
+      ],
+    },
     {
       name: 'Administración',
       icon: Building2,
@@ -111,10 +119,11 @@ export function Sidebar() {
   ];
 
   // A module is listed only while it has a submodule to open.
-  // A cashier sees only the screens it may open.
+  // A cashier sees only the screens it may open, inside a module or not.
+  const allowed = (item: NavItem) => item.show && (!isCashier || CASHIER_ENTRIES.includes(item.href));
   const visibleNavigation = navigation
-    .filter((entry) => !isCashier || (!isModule(entry) && CASHIER_ENTRIES.includes(entry.href)))
-    .map((entry) => (isModule(entry) ? { ...entry, items: entry.items.filter((item) => item.show) } : entry))
+    .filter((entry) => !isCashier || isModule(entry) || CASHIER_ENTRIES.includes(entry.href))
+    .map((entry) => (isModule(entry) ? { ...entry, items: entry.items.filter(allowed) } : entry))
     .filter((entry) => (isModule(entry) ? entry.items.length > 0 : entry.show));
 
   const toggleModule = (name: string) =>

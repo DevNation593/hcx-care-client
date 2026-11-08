@@ -40,7 +40,8 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   }
 
   return (
-    <div className="min-h-screen flex overflow-hidden bg-background">
+    // One viewport tall: only <main> scrolls, the sidebar and header stay put.
+    <div className="h-dvh flex overflow-hidden bg-background">
       <PlatformSidebar />
       {!sidebarCollapsed && (
         <button

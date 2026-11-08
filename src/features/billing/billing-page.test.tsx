@@ -1,14 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BillingPage from '@/app/(dashboard)/admin/billing/page';
 import { useAuthStore } from '@/store/authStore';
 import { UserRole, type Invoice, type User } from '@/types';
 
-const api = vi.hoisted(() => ({ listInvoices: vi.fn(), issuer: vi.fn(), list: vi.fn(), view: true }));
+const api = vi.hoisted(() => ({ listInvoices: vi.fn(), issuer: vi.fn(), list: vi.fn(), view: true, branches: [] as unknown[] }));
 vi.mock('@/lib/api/invoicing-api', () => ({ invoicingApi: { issuer: api.issuer, list: api.list } }));
 vi.mock('@/hooks/usePermissions', () => ({ useMyPermissions: () => ({ can: () => api.view }) }));
-vi.mock('@/hooks/useBranches', () => ({ useBranches: () => ({ data: [] }) }));
+vi.mock('@/hooks/useBranches', () => ({ useBranches: () => ({ data: api.branches }) }));
 vi.mock('@/lib/api/endpoints', () => ({
   billingApi: { listInvoices: api.listInvoices },
 }));
@@ -42,6 +42,20 @@ function invoice(overrides: Partial<Invoice>): Invoice {
   };
 }
 
+const request = (overrides = {}) => ({
+  id: 'req-1',
+  orderId: 'order-1',
+  orderNumber: 12,
+  status: 'AUTHORIZED',
+  sequential: 1,
+  emailedAt: null,
+  artifacts: { xml: true, ride: true },
+  lastError: null,
+  number: '001-001-000000001',
+  requestedAt: '2026-10-17T12:00:00Z',
+  ...overrides,
+});
+
 function renderPage(role: UserRole = UserRole.MASTER) {
   useAuthStore.setState({ user: { id: 'user-1', role, tenantId: 'tenant-1' } as User });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -54,6 +68,7 @@ beforeEach(() => {
   api.issuer.mockResolvedValue(null);
   api.list.mockResolvedValue({ items: [], total: 0 });
   api.view = true;
+  api.branches = [];
 });
 
 describe('BillingPage history', () => {
@@ -83,28 +98,55 @@ describe('BillingPage history', () => {
     expect(screen.queryByRole('link', { name: 'XML' })).not.toBeInTheDocument();
   });
 
-  it('keeps history read-only and enables B2 configuration without Faktur controls', async () => {
+  it('shows no former-provider card while the clinic has none of those receipts', async () => {
     renderPage();
-    expect(await screen.findByText('Aún no hay comprobantes emitidos.')).toBeInTheDocument();
-    expect(await screen.findByLabelText('RUC')).toHaveValue('');
-    expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
-    expect(screen.queryByText(/próximamente/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Configurar Faktur' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Emitir factura' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Paciente')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Faktur/)).not.toBeInTheDocument();
+    expect(await screen.findByText('No hay facturas para estos filtros.')).toBeInTheDocument();
+    await waitFor(() => expect(api.listInvoices).toHaveBeenCalled());
+    expect(screen.queryByText('Comprobantes anteriores')).not.toBeInTheDocument();
   });
 });
 
-it('does not mount MASTER settings for an assistant with billing access', async () => {
+describe('BillingPage issued invoices', () => {
+  it('lists the invoices requested to the SRI across every branch', async () => {
+    api.list.mockResolvedValue({ items: [request()], total: 1, page: 1, pageSize: 20 });
+    renderPage();
+    expect(await screen.findByText('Orden #12')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Facturas emitidas/ })).toBeInTheDocument();
+    expect(api.list).toHaveBeenCalledWith('tenant-1', expect.not.objectContaining({ branchId: expect.anything() }));
+  });
+
+  it('filters by branch when the clinic has more than one', async () => {
+    api.branches = [
+      { id: 'main', name: 'Sede principal', isActive: true },
+      { id: 'north', name: 'Sede Norte', isActive: false },
+    ];
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('Sucursal'), { target: { value: 'north' } });
+    await waitFor(() =>
+      expect(api.list).toHaveBeenLastCalledWith('tenant-1', expect.objectContaining({ branchId: 'north' })),
+    );
+  });
+
+  it('holds no billing settings: they live in their own submodule', async () => {
+    renderPage();
+    await screen.findByText('No hay facturas para estos filtros.');
+    expect(api.issuer).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('RUC')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Faktur/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Emitir factura' })).not.toBeInTheDocument();
+  });
+});
+
+it('shows the invoices to an assistant with billing access', async () => {
+  api.list.mockResolvedValue({ items: [request()], total: 1, page: 1, pageSize: 20 });
   renderPage(UserRole.ASISTENTE);
-  await screen.findByText('Aún no hay comprobantes emitidos.');
-  expect(api.issuer).not.toHaveBeenCalled();
-  expect(screen.queryByLabelText('RUC')).not.toBeInTheDocument();
+  expect(await screen.findByText('Orden #12')).toBeInTheDocument();
 });
 it('does not load invoice history without billing.view', () => {
   api.view = false;
   renderPage(UserRole.ASISTENTE);
+  expect(screen.getByText('No tienes permiso para consultar facturas.')).toBeInTheDocument();
   expect(api.listInvoices).not.toHaveBeenCalled();
   expect(api.list).not.toHaveBeenCalled();
 });

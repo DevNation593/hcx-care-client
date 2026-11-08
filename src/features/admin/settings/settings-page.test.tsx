@@ -28,6 +28,12 @@ const storedSettings = {
   locale: 'es',
 };
 
+// The selector first renders with its default and takes the stored timezone in an effect.
+async function waitForStoredSettings() {
+  const timezone = await screen.findByRole('combobox', { name: 'Zona horaria' });
+  await waitFor(() => expect(timezone).toHaveValue('America/Bogota'));
+}
+
 function renderPage() {
   useAuthStore.setState({
     user: { id: 'user-1', role: UserRole.MASTER, tenantId: 'tenant-1' } as User,
@@ -43,27 +49,31 @@ beforeEach(() => {
   http.patch.mockImplementation(async (_url: string, body: unknown) => body);
 });
 
-describe('clinic settings without Faktur', () => {
-  it('shows no Faktur connection fields', async () => {
+describe('clinic settings', () => {
+  it('holds no electronic invoicing data: it lives in Billing > Settings', async () => {
     renderPage();
 
-    expect(await screen.findByDisplayValue('Clínica Integral S.A.')).toBeInTheDocument();
+    await waitForStoredSettings();
+    expect(screen.queryByText('Facturación electrónica')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Razón social')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Número de identificación')).not.toBeInTheDocument();
     expect(screen.queryByText(/Faktur/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Establecimiento')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Punto de emisión')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Activar facturación electrónica')).not.toBeInTheDocument();
   });
 
-  it('saves without sending any faktur field', async () => {
+  it('saves without sending any billing or faktur field', async () => {
     renderPage();
 
-    fireEvent.change(await screen.findByDisplayValue('Clínica Integral S.A.'), { target: { value: 'Clínica Nueva' } });
+    await waitForStoredSettings();
+    fireEvent.click(screen.getByRole('button', { name: '45 min' }));
     fireEvent.click(screen.getByRole('button', { name: /Guardar Cambios/ }));
 
     await waitFor(() => expect(http.patch).toHaveBeenCalledTimes(1));
     const body = http.patch.mock.calls[0][1];
-    expect(body).toMatchObject({ legalName: 'Clínica Nueva' });
+    for (const key of ['legalName', 'taxIdentificationType', 'taxIdentificationNumber']) {
+      // undefined is dropped from the JSON body, so the API never receives the key.
+      expect(body[key]).toBeUndefined();
+    }
     expect(Object.keys(body).filter((key) => key.startsWith('faktur'))).toEqual([]);
   });
 });
