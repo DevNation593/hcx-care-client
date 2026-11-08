@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { specialtyRecordsApi } from '@/lib/api/endpoints';
+import { STALE_RECORD_CODES } from '@/lib/clinical-record-errors';
 import { QUERY_KEYS } from '@/lib/constants';
 import { toast } from 'sonner';
 import type { ApiError } from '@/types';
@@ -71,7 +72,10 @@ export function useCorrectSpecialtyRecord(patientId: string) {
       invalidate();
       toast.success('Registro corregido');
     },
-    onError: notifyUnlessFieldIssues('No fue posible corregir el registro'),
+    onError: (error: ApiError) => {
+      if (error.code && STALE_RECORD_CODES.includes(error.code)) invalidate();
+      notifyUnlessFieldIssues('No fue posible corregir el registro')(error);
+    },
   });
 }
 
@@ -86,6 +90,7 @@ export function useRemoveSpecialtyRecord(patientId: string) {
       toast.success('Registro eliminado');
     },
     onError: (error: ApiError) => {
+      if (error.code && STALE_RECORD_CODES.includes(error.code)) invalidate();
       toast.error(error.message || 'No fue posible eliminar el registro');
     },
   });

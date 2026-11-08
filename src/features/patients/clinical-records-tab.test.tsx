@@ -208,6 +208,8 @@ describe('ClinicalRecordsTab', () => {
         data: { weightKg: 69.5, oxygenSaturation: 88 },
         notes: 'Control mensual',
         changeReason: 'Peso mal digitado',
+        // The version edited: a save made by someone else since answers 409.
+        version: 1,
       },
     });
     expect(screen.queryByRole('button', { name: 'Guardar corrección' })).not.toBeInTheDocument();
@@ -233,7 +235,7 @@ describe('ClinicalRecordsTab', () => {
 
     expect(hooks.correct).toHaveBeenCalledWith({
       recordId: 'record-1',
-      data: { notes: null, changeReason: 'Nota equivocada' },
+      data: { notes: null, changeReason: 'Nota equivocada', version: 1 },
     });
   });
 
@@ -262,6 +264,86 @@ describe('ClinicalRecordsTab', () => {
     fireEvent.change(screen.getByLabelText('Mostrar'), { target: { value: 'nutrition.assessments' } });
     expect(screen.queryByText('Control mensual')).not.toBeInTheDocument();
     expect(screen.getByText('71')).toBeInTheDocument();
+  });
+
+  describe('signed records', () => {
+    const signed = (overrides: Partial<SpecialtyRecord> = {}) =>
+      record({ signed: true, signedAt: '2026-10-01T16:00:00.000Z', ...overrides });
+
+    it('offers its author an addendum instead of correcting or removing it', () => {
+      hooks.records = [signed()];
+      render(<ClinicalRecordsTab patientId="patient-1" />);
+
+      expect(within(cardOf('Control mensual')).getByText('Firmado')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Corregir con adenda Signos vitales' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Corregir Signos vitales' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Eliminar Signos vitales' })).not.toBeInTheDocument();
+    });
+
+    it('offers no addendum to someone who is not the author', () => {
+      hooks.records = [signed({ professionalId: 'someone-else' })];
+      render(<ClinicalRecordsTab patientId="patient-1" />);
+
+      expect(screen.queryByRole('button', { name: /adenda/i })).not.toBeInTheDocument();
+    });
+
+    it('saves the addendum with its reason, linked to the signed record', async () => {
+      hooks.records = [signed()];
+      render(<ClinicalRecordsTab patientId="patient-1" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Corregir con adenda Signos vitales' }));
+      const save = screen.getByRole('button', { name: 'Guardar adenda' });
+      expect(save).toBeDisabled();
+
+      fireEvent.change(document.getElementById('amend-weightKg')!, { target: { value: '69.5' } });
+      fireEvent.change(screen.getByLabelText(/Motivo/), { target: { value: ' Peso mal digitado ' } });
+      await act(async () => fireEvent.click(save));
+
+      expect(hooks.create).toHaveBeenCalledWith({
+        moduleKey: 'general.vital-signs',
+        schemaVersion: 1,
+        data: { weightKg: 69.5, oxygenSaturation: 88 },
+        notes: 'Control mensual',
+        amendsRecordId: 'record-1',
+        amendmentReason: 'Peso mal digitado',
+      });
+      expect(hooks.correct).not.toHaveBeenCalled();
+    });
+
+    it('shows a corrected record as superseded, and its addendum with the reason', () => {
+      hooks.records = [
+        signed({ id: 'addendum', amendsRecordId: 'record-1', amendmentReason: 'Peso mal digitado', notes: 'Nueva' }),
+        signed({ amendedBy: { id: 'addendum', createdAt: '2026-10-02T09:00:00.000Z' } }),
+      ];
+      render(<ClinicalRecordsTab patientId="patient-1" />);
+
+      const original = cardOf('Control mensual');
+      expect(within(original).getByText('Corregido por adenda')).toBeInTheDocument();
+      expect(within(original).queryByRole('button', { name: /adenda/i })).not.toBeInTheDocument();
+
+      const addendum = cardOf('Nueva');
+      expect(within(addendum).getByText('Adenda')).toBeInTheDocument();
+      expect(within(addendum).getByText('Peso mal digitado')).toBeInTheDocument();
+      // The addendum itself can be corrected with another one.
+      expect(within(addendum).getByRole('button', { name: /Corregir con adenda/ })).toBeInTheDocument();
+    });
+
+    it('drops an edit that the record no longer accepts and lets the history reload', async () => {
+      hooks.correct.mockRejectedValue({ code: 'CLINICAL_RECORD_VERSION_CONFLICT', message: 'Alguien más modificó este registro.' });
+      render(<ClinicalRecordsTab patientId="patient-1" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Corregir Signos vitales' }));
+      fireEvent.change(screen.getByLabelText(/Motivo/), { target: { value: 'x' } });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Guardar corrección' })));
+
+      expect(screen.queryByRole('button', { name: 'Guardar corrección' })).not.toBeInTheDocument();
+    });
+
+    it('warns that without an open encounter a record is signed as it is saved', () => {
+      render(<ClinicalRecordsTab patientId="patient-1" />);
+
+      expect(screen.getByText(/queda firmado al instante/)).toBeInTheDocument();
+    });
   });
 
   it('says so when the patient has no records', () => {

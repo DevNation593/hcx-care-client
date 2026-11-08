@@ -128,7 +128,7 @@ export function EncounterPanel({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{describeEncounter(encounter)}</span>
                     <Badge variant={encounter.status === 'OPEN' ? 'warning' : 'secondary'}>
-                      {encounter.status === 'OPEN' ? 'Abierta' : 'Cerrada'}
+                      {encounter.status === 'OPEN' ? 'Abierta' : encounter.signedAt ? 'Firmada' : 'Cerrada'}
                     </Badge>
                     <span className="text-muted-foreground">
                       {[
@@ -143,6 +143,15 @@ export function EncounterPanel({
                     </span>
                   </div>
                   <p className="whitespace-pre-wrap">{encounter.reason}</p>
+                  {encounter.status === 'CLOSED' && (
+                    <p className="text-xs text-muted-foreground">
+                      {encounter.signedAt
+                        ? `Firmada el ${formatDate(encounter.signedAt, 'dd/MM/yyyy HH:mm')}${
+                            encounter.contentHash ? ` · huella ${encounter.contentHash.slice(3, 15)}` : ''
+                          }`
+                        : 'Cerrada antes de la firma digital: sus registros son definitivos.'}
+                    </p>
+                  )}
                   {encounter.summary && (
                     <p className="whitespace-pre-wrap text-muted-foreground">{encounter.summary}</p>
                   )}
@@ -323,8 +332,9 @@ function CloseEncounterDialog({
           <DialogHeader>
             <DialogTitle>Cerrar atención</DialogTitle>
             <DialogDescription>
-              Al cerrarla firmas la atención: no admite más registros y su cita queda como atendida.
-              Los registros ya guardados se pueden corregir con motivo.
+              Al cerrarla firmas la atención y sus registros: no admite más registros y su cita queda
+              como atendida. Después, cada registro solo se corrige con una adenda; el original se
+              conserva tal como se firmó.
             </DialogDescription>
           </DialogHeader>
           <div>

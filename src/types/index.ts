@@ -790,6 +790,19 @@ export interface SpecialtyRecord {
     professionalProfile?: { professionalTitle: string | null; licenseNumber: string | null } | null;
   };
   appointment?: { id: string; title: string; startTime: string };
+  /**
+   * Final: signed with its encounter, or as it was saved outside any encounter. A signed record
+   * is never changed nor removed; its author corrects it with an addendum.
+   */
+  signed?: boolean;
+  signedAt?: string | null;
+  /** SHA-256 of the content at signing (`v1:<hex>`). */
+  contentHash?: string | null;
+  /** Set on an addendum: the signed record it corrects, and why. */
+  amendsRecordId?: string | null;
+  amendmentReason?: string | null;
+  /** Set on a record an addendum corrected. */
+  amendedBy?: { id: string; createdAt: string } | null;
 }
 
 export interface SessionPlan {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Pencil, Printer, Trash2 } from 'lucide-react';
+import { AlertTriangle, FilePlus2, Pencil, Printer, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -32,6 +32,7 @@ import {
   usePatientSpecialtyRecords,
   useRemoveSpecialtyRecord,
 } from '@/hooks/useSpecialtyRecords';
+import { STALE_RECORD_CODES } from '@/lib/clinical-record-errors';
 import { cn, formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { ApiError, SpecialtyRecord } from '@/types';
@@ -76,6 +77,7 @@ export function ClinicalRecordsTab({
 
   const [moduleFilter, setModuleFilter] = useState('');
   const [correcting, setCorrecting] = useState<SpecialtyRecord | null>(null);
+  const [amending, setAmending] = useState<SpecialtyRecord | null>(null);
   const [removing, setRemoving] = useState<SpecialtyRecord | null>(null);
 
   const definitions = useMemo(
@@ -94,6 +96,11 @@ export function ClinicalRecordsTab({
     definitionOf(record)?.name ?? describeModule(record.moduleKey).name;
 
   const recordable = (modulesQuery.data ?? []).filter((definition) => definition.canRecord);
+  // An addendum is written with the current version of the form the record used.
+  const latestRecordable = (moduleKey: string) =>
+    recordable
+      .filter((definition) => definition.moduleKey === moduleKey && !definition.legacy)
+      .sort((a, b) => b.schemaVersion - a.schemaVersion)[0];
   const configurationStatus = modulesQuery.isError
     ? 'error'
     : !tenantId || modulesQuery.isPending
@@ -112,6 +119,12 @@ export function ClinicalRecordsTab({
         initialAppointmentId={startAppointmentId}
       />
 
+      {!openEncounter && recordable.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          No tienes una atención abierta con este paciente: lo que guardes queda firmado al instante
+          y después solo se corrige con una adenda.
+        </p>
+      )}
       <SpecialtyRecordEntryForm
         tenantId={tenantId}
         patientId={patientId}
@@ -169,8 +182,12 @@ export function ClinicalRecordsTab({
           visible.map((record) => {
             const definition = definitionOf(record);
             const isAuthor = !!userId && record.professionalId === userId;
+            // A signed record is final: its author corrects it with an addendum, once.
+            const signed = record.signed === true;
+            const superseded = !!record.amendedBy;
+            const amendWith = signed && !superseded ? latestRecordable(record.moduleKey) : undefined;
             return (
-              <Card key={record.id}>
+              <Card key={record.id} className={cn(superseded && 'opacity-75')}>
                 <CardContent className="space-y-3 pt-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -191,8 +208,14 @@ export function ClinicalRecordsTab({
                         </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      {(record.version ?? 1) > 1 && <Badge variant="outline">Corregido</Badge>}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {record.amendsRecordId && <Badge>Adenda</Badge>}
+                      {signed && <Badge variant="secondary">Firmado</Badge>}
+                      {superseded ? (
+                        <Badge variant="outline">Corregido por adenda</Badge>
+                      ) : (
+                        (record.version ?? 1) > 1 && <Badge variant="outline">Corregido</Badge>
+                      )}
                       <Link
                         href={`/patients/${patientId}/records/${record.id}/print`}
                         aria-label={`Imprimir ${nameOf(record)}`}
@@ -200,7 +223,18 @@ export function ClinicalRecordsTab({
                       >
                         <Printer className="h-4 w-4" />
                       </Link>
-                      {isAuthor && (
+                      {isAuthor && amendWith && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAmending(record)}
+                          aria-label={`Corregir con adenda ${nameOf(record)}`}
+                        >
+                          <FilePlus2 className="mr-1 h-4 w-4" />
+                          Agregar adenda
+                        </Button>
+                      )}
+                      {isAuthor && !signed && (
                         <>
                           <Button
                             variant="ghost"
@@ -237,6 +271,20 @@ export function ClinicalRecordsTab({
                     </p>
                   ))}
 
+                  {record.amendsRecordId && record.amendmentReason && (
+                    <p className="rounded-md border border-input px-3 py-2 text-sm">
+                      <span className="font-medium">Motivo de la adenda:</span>{' '}
+                      {record.amendmentReason}
+                    </p>
+                  )}
+                  {superseded && record.amendedBy && (
+                    <p className="text-sm text-muted-foreground">
+                      Corregido por una adenda del{' '}
+                      {formatDate(record.amendedBy.createdAt, 'dd/MM/yyyy HH:mm')}. Se conserva tal
+                      como se firmó.
+                    </p>
+                  )}
+
                   <RecordDataView definition={definition} data={record.data} />
                   {record.notes && (
                     <p className="whitespace-pre-wrap border-t pt-3 text-sm">{record.notes}</p>
@@ -255,6 +303,15 @@ export function ClinicalRecordsTab({
           definition={definitionOf(correcting)}
           title={nameOf(correcting)}
           onClose={() => setCorrecting(null)}
+        />
+      )}
+      {amending && latestRecordable(amending.moduleKey) && (
+        <AmendRecordDialog
+          patientId={patientId}
+          record={amending}
+          definition={latestRecordable(amending.moduleKey)!}
+          title={nameOf(amending)}
+          onClose={() => setAmending(null)}
         />
       )}
       {removing && (
@@ -329,11 +386,18 @@ function CorrectRecordDialog({
           ...(editable ? { data: toRecordData(definition.schema, values) } : {}),
           notes: notes.trim() || null,
           changeReason: reason.trim(),
+          ...(record.version ? { version: record.version } : {}),
         },
       });
       onClose();
     } catch (error) {
-      setIssues(issuesByField((error as ApiError | undefined)?.issues));
+      const apiError = error as ApiError | undefined;
+      // Saved by someone else or signed meanwhile: the history reloads and the edit is not sent.
+      if (apiError?.code && STALE_RECORD_CODES.includes(apiError.code)) {
+        onClose();
+        return;
+      }
+      setIssues(issuesByField(apiError?.issues));
     }
   };
 
@@ -376,6 +440,90 @@ function CorrectRecordDialog({
             </Button>
             <Button type="submit" disabled={!reason.trim()} loading={correct.isPending}>
               Guardar corrección
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * The correction of a signed record: a new record of the same form, with its reason, that stays
+ * next to the original. It starts from the data of the original, in the current version of the form.
+ */
+function AmendRecordDialog({
+  patientId,
+  record,
+  definition,
+  title,
+  onClose,
+}: {
+  patientId: string;
+  record: SpecialtyRecord;
+  definition: ClinicalModuleDefinition;
+  title: string;
+  onClose: () => void;
+}) {
+  const create = useCreateSpecialtyRecord(patientId);
+  const [values, setValues] = useState<FormValues>(() => initialModuleValues(definition, record.data));
+  const [notes, setNotes] = useState(record.notes ?? '');
+  const [reason, setReason] = useState('');
+  const [issues, setIssues] = useState<Record<string, string>>({});
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!reason.trim() || create.isPending) return;
+    setIssues({});
+    try {
+      await create.mutateAsync({
+        moduleKey: record.moduleKey,
+        schemaVersion: definition.schemaVersion,
+        data: toRecordData(definition.schema, values),
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+        amendsRecordId: record.id,
+        amendmentReason: reason.trim(),
+      });
+      onClose();
+    } catch (error) {
+      setIssues(issuesByField((error as ApiError | undefined)?.issues));
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Adenda a {title}</DialogTitle>
+            <DialogDescription>
+              El registro firmado del {formatDate(record.recordDate, 'dd/MM/yyyy')} se conserva tal
+              como se firmó. La adenda queda junto a él, firmada, con el motivo que indiques.
+            </DialogDescription>
+          </DialogHeader>
+          <ClinicalModuleForm
+            definition={definition}
+            values={values}
+            onChange={setValues}
+            issues={issues}
+            idPrefix="amend"
+          />
+          <div>
+            <Label htmlFor="amend-notes">Notas adicionales</Label>
+            <Textarea
+              id="amend-notes"
+              rows={3}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+          </div>
+          <ReasonField id="amend-reason" value={reason} onChange={setReason} />
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={!reason.trim()} loading={create.isPending}>
+              Guardar adenda
             </Button>
           </DialogFooter>
         </form>

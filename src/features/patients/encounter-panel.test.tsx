@@ -211,5 +211,20 @@ describe('EncounterPanel', () => {
     expect(screen.getByText('Cerrada')).toBeInTheDocument();
     expect(screen.getByText('Sofía Ruiz · Fisioterapia · 1 registro')).toBeInTheDocument();
     expect(screen.getByText('Alta de fisioterapia')).toBeInTheDocument();
+    // Closed before signatures existed: as final, without a fingerprint.
+    expect(screen.getByText(/Cerrada antes de la firma digital/)).toBeInTheDocument();
+  });
+
+  it('shows when a closed encounter was signed and the start of its fingerprint', () => {
+    const signed = encounter({
+      id: 'encounter-0',
+      status: 'CLOSED',
+      signedAt: '2026-10-03T16:45:00.000Z',
+      contentHash: 'v1:0123456789abcdef0123',
+    });
+    render(<EncounterPanel patientId="patient-1" encounters={[signed]} />);
+
+    expect(screen.getByText('Firmada')).toBeInTheDocument();
+    expect(screen.getByText(/^Firmada el \d{2}\/10\/2026 \d{2}:\d{2} · huella 0123456789ab$/)).toBeInTheDocument();
   });
 });
