@@ -7,6 +7,8 @@ import type {
   ApiError,
   ChangePlatformPlanInput,
   CreatePlatformTenantInput,
+  DemoRequest,
+  DemoRequestStatus,
   PlatformPayment,
   PlatformPlan,
   PlatformPlanInput,
@@ -17,6 +19,22 @@ import type {
   SubscriptionPayment,
   UpdatePlatformTenantInput,
 } from '@/types';
+
+export function usePlatformDemoRequests(status: DemoRequestStatus | '') {
+  return useQuery<DemoRequest[], ApiError>({
+    queryKey: [...QUERY_KEYS.PLATFORM_DEMO_REQUESTS, status],
+    queryFn: () => platformApi.listDemoRequests(status || undefined),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useUpdateDemoRequest() {
+  const queryClient = useQueryClient();
+  return useMutation<DemoRequest, ApiError, { id: string; status: DemoRequestStatus }>({
+    mutationFn: ({ id, status }) => platformApi.updateDemoRequest(id, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PLATFORM_DEMO_REQUESTS }),
+  });
+}
 
 export function usePlatformSummary() {
   return useQuery({

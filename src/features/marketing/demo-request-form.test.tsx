@@ -5,7 +5,10 @@ import { DemoRequestForm } from './demo-request-form';
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 
-const whatsapp = { whatsappNumber: '593991234567', email: 'ventas@example.com', responseTime: 'En 24 horas.' };
+const create = vi.fn();
+vi.mock('@/lib/api/endpoints', () => ({ demoRequestApi: { create: (input: unknown) => create(input) } }));
+
+const contact = { whatsappNumber: '', email: '', responseTime: 'En 24 horas.' };
 
 function fill() {
   fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Ana Vega' } });
@@ -16,69 +19,76 @@ function fill() {
   fireEvent.click(screen.getByLabelText(/Acepto la/));
 }
 
+const submit = () => fireEvent.click(screen.getByRole('button', { name: 'Solicitar demo' }));
+
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.restoreAllMocks();
 });
 
 describe('DemoRequestForm', () => {
   it('shows field errors and sends nothing when the form is empty', async () => {
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    render(<DemoRequestForm contact={whatsapp} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Solicitar demo' }));
+    render(<DemoRequestForm contact={contact} />);
+    submit();
 
     expect(await screen.findByText('Escribe tu nombre')).toBeInTheDocument();
     expect(screen.getByText('Debes aceptar la política de privacidad')).toBeInTheDocument();
-    expect(open).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
   });
 
-  it('opens WhatsApp with the request and goes to the thank-you page', async () => {
-    const open = vi.spyOn(window, 'open').mockReturnValue({ opener: {} } as unknown as Window);
-    render(<DemoRequestForm contact={whatsapp} />);
+  it('sends the request to the API and goes to the thank-you page', async () => {
+    create.mockResolvedValue({ received: true });
+    render(<DemoRequestForm contact={contact} />);
     fill();
-    fireEvent.click(screen.getByRole('button', { name: 'Solicitar demo' }));
+    fireEvent.change(screen.getByLabelText('Mensaje (opcional)'), { target: { value: 'Atendemos nutrición' } });
+    submit();
 
     await waitFor(() => expect(push).toHaveBeenCalledWith('/gracias'));
-    const url = new URL(open.mock.calls[0][0] as string);
-    expect(url.origin + url.pathname).toBe('https://wa.me/593991234567');
-    expect(url.searchParams.get('text')).toContain('Centro Vida');
+    expect(create).toHaveBeenCalledWith({
+      name: 'Ana Vega',
+      clinic: 'Centro Vida',
+      email: 'ana@example.com',
+      phone: '0991234567',
+      teamSize: '2-5',
+      message: 'Atendemos nutrición',
+      acceptPrivacy: true,
+    });
   });
 
-  it('keeps the visitor on the form with a manual link when the popup is blocked', async () => {
-    vi.spyOn(window, 'open').mockReturnValue(null);
-    render(<DemoRequestForm contact={whatsapp} />);
-    fill();
-    fireEvent.click(screen.getByRole('button', { name: 'Solicitar demo' }));
+  it('works without any WhatsApp number or contact e-mail configured', () => {
+    render(<DemoRequestForm contact={contact} />);
+    expect(screen.getByRole('button', { name: 'Solicitar demo' })).toBeInTheDocument();
+  });
 
-    const link = await screen.findByRole('link', { name: 'Abrir WhatsApp' });
-    expect(link.getAttribute('href')).toContain('https://wa.me/593991234567');
+  it('keeps the typed form and explains the failure when the API rejects it', async () => {
+    create.mockRejectedValue({ message: 'Network Error' });
+    render(<DemoRequestForm contact={contact} />);
+    fill();
+    submit();
+
+    expect(await screen.findByText(/No pudimos enviar tu solicitud/)).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Nombre')).toHaveValue('Ana Vega');
   });
 
-  it('falls back to e-mail when there is no WhatsApp number', async () => {
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    render(<DemoRequestForm contact={{ ...whatsapp, whatsappNumber: '' }} />);
-    expect(screen.getByText(/Se abrirá tu aplicación de correo/)).toBeInTheDocument();
+  it('asks to wait when too many requests came from the connection', async () => {
+    create.mockRejectedValue({ message: 'Too Many Requests', status: 429 });
+    render(<DemoRequestForm contact={contact} />);
     fill();
-    fireEvent.click(screen.getByRole('button', { name: 'Solicitar demo' }));
+    submit();
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/gracias'));
-    const [url, target] = open.mock.calls[0];
-    expect(target).toBe('_self');
-    expect(String(url)).toMatch(/^mailto:ventas@example\.com\?subject=/);
-    expect(decodeURIComponent(String(url))).toContain('Centro Vida');
+    expect(await screen.findByText(/Intenta de nuevo en unos minutos/)).toBeInTheDocument();
   });
 
-  it('renders a notice instead of a form when no contact channel exists', () => {
-    render(<DemoRequestForm contact={{ whatsappNumber: '', email: '', responseTime: 'x' }} />);
-    expect(screen.queryByRole('button', { name: 'Solicitar demo' })).not.toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Pronto habilitaremos');
+  it('keeps the honeypot out of reach of people', () => {
+    render(<DemoRequestForm contact={contact} />);
+    const honeypot = screen.getByLabelText('Sitio web', { selector: 'input' });
+    expect(honeypot).toHaveAttribute('tabindex', '-1');
+    expect(honeypot.closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
   it('shows the response-time promise', () => {
-    render(<DemoRequestForm contact={whatsapp} />);
+    render(<DemoRequestForm contact={contact} />);
     expect(screen.getByText('En 24 horas.')).toBeInTheDocument();
   });
 });

@@ -5,48 +5,45 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { resolveContactChannel, type ContactInfo } from '@/content/site';
+import type { ContactInfo } from '@/content/site';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  TEAM_SIZES, buildDemoMessage, demoRequestSchema, mailtoUrl, whatsappUrl, type DemoRequest,
-} from './demo-request';
+import { demoRequestApi } from '@/lib/api/endpoints';
+import type { ApiError } from '@/types';
+import { TEAM_SIZES, demoRequestSchema, type DemoRequest } from './demo-request';
+
+function submitError(failure: unknown): string {
+  if ((failure as ApiError | null)?.status === 429) {
+    return 'Recibimos varias solicitudes desde tu conexión. Intenta de nuevo en unos minutos.';
+  }
+  return 'No pudimos enviar tu solicitud. Revisa tu conexión e inténtalo otra vez.';
+}
 
 export function DemoRequestForm({ contact }: { contact: ContactInfo }) {
   const router = useRouter();
-  const channel = resolveContactChannel(contact);
-  const [manualUrl, setManualUrl] = useState<string | null>(null);
-  const { register, handleSubmit, formState: { errors } } = useForm<DemoRequest>({
+  const [error, setError] = useState<string | null>(null);
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<DemoRequest>({
     resolver: zodResolver(demoRequestSchema),
-    defaultValues: { name: '', clinic: '', email: '', phone: '', teamSize: '', message: '', acceptPrivacy: false },
+    defaultValues: {
+      name: '', clinic: '', email: '', phone: '', teamSize: '', message: '', acceptPrivacy: false, website: '',
+    },
   });
 
-  if (channel === 'none') {
-    return (
-      <p role="status" className="rounded-md border bg-muted p-4 text-sm">
-        Pronto habilitaremos el formulario de solicitud de demo.
-      </p>
-    );
-  }
-
-  const onSubmit = (data: DemoRequest) => {
-    const message = buildDemoMessage(data);
-    if (channel === 'email') {
-      window.open(mailtoUrl(contact.email, 'Solicitud de demo', message), '_self');
+  const onSubmit = async ({ message, website, ...data }: DemoRequest) => {
+    setError(null);
+    try {
+      await demoRequestApi.create({
+        ...data,
+        ...(message ? { message } : {}),
+        ...(website ? { website } : {}),
+      });
       router.push('/gracias');
-      return;
+    } catch (failure) {
+      // The typed form stays as it is so the visitor can try again.
+      setError(submitError(failure));
     }
-    const url = whatsappUrl(contact.whatsappNumber, message);
-    const opened = window.open(url, '_blank');
-    if (!opened) {
-      // Popup blocked: do not claim the request was sent.
-      setManualUrl(url);
-      return;
-    }
-    opened.opener = null;
-    router.push('/gracias');
   };
 
   return (
@@ -54,19 +51,19 @@ export function DemoRequestForm({ contact }: { contact: ContactInfo }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="demo-name">Nombre</Label>
-          <Input id="demo-name" autoComplete="name" {...register('name')} error={errors.name?.message} />
+          <Input id="demo-name" autoComplete="name" maxLength={120} {...register('name')} error={errors.name?.message} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="demo-clinic">Consultorio o clínica</Label>
-          <Input id="demo-clinic" autoComplete="organization" {...register('clinic')} error={errors.clinic?.message} />
+          <Input id="demo-clinic" autoComplete="organization" maxLength={160} {...register('clinic')} error={errors.clinic?.message} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="demo-email">Correo electrónico</Label>
-          <Input id="demo-email" type="email" autoComplete="email" {...register('email')} error={errors.email?.message} />
+          <Input id="demo-email" type="email" autoComplete="email" maxLength={254} {...register('email')} error={errors.email?.message} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="demo-phone">Teléfono</Label>
-          <Input id="demo-phone" type="tel" autoComplete="tel" {...register('phone')} error={errors.phone?.message} />
+          <Input id="demo-phone" type="tel" autoComplete="tel" maxLength={30} {...register('phone')} error={errors.phone?.message} />
         </div>
       </div>
 
@@ -75,18 +72,34 @@ export function DemoRequestForm({ contact }: { contact: ContactInfo }) {
         <select
           id="demo-team"
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          aria-invalid={!!errors.teamSize}
           {...register('teamSize')}
         >
           <option value="">Seleccionar</option>
-          {TEAM_SIZES.map((size) => <option key={size} value={size}>{size} profesionales</option>)}
+          {TEAM_SIZES.map((size) => (
+            <option key={size} value={size}>
+              {size === '1' ? '1 profesional' : `${size} profesionales`}
+            </option>
+          ))}
         </select>
         {errors.teamSize && <p role="alert" className="text-sm text-destructive">{errors.teamSize.message}</p>}
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="demo-message">Mensaje (opcional)</Label>
-        <Textarea id="demo-message" {...register('message')} />
+        <Textarea
+          id="demo-message"
+          maxLength={500}
+          placeholder="Cuéntanos qué especialidades atienden o qué te gustaría ver en la demo"
+          {...register('message')}
+        />
         {errors.message && <p role="alert" className="text-sm text-destructive">{errors.message.message}</p>}
+      </div>
+
+      {/* Honeypot: off-screen and out of the tab order, so only bots fill it in. */}
+      <div aria-hidden="true" className="absolute -left-[10000px] h-px w-px overflow-hidden">
+        <label htmlFor="demo-website">Sitio web</label>
+        <input id="demo-website" type="text" tabIndex={-1} autoComplete="off" {...register('website')} />
       </div>
 
       <div className="space-y-1">
@@ -101,18 +114,16 @@ export function DemoRequestForm({ contact }: { contact: ContactInfo }) {
         {errors.acceptPrivacy && <p role="alert" className="text-sm text-destructive">{errors.acceptPrivacy.message}</p>}
       </div>
 
-      {manualUrl && (
-        <p role="alert" className="rounded-md border border-destructive/40 p-3 text-sm">
-          No pudimos abrir WhatsApp automáticamente.{' '}
-          <a href={manualUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">Abrir WhatsApp</a>
+      {error && (
+        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+          {error}
         </p>
       )}
 
-      <Button type="submit" size="lg" className="w-full sm:w-auto">Solicitar demo</Button>
+      <Button type="submit" size="lg" className="w-full sm:w-auto" loading={isSubmitting}>
+        Solicitar demo
+      </Button>
       <p className="text-sm text-muted-foreground">{contact.responseTime}</p>
-      {channel === 'email' && (
-        <p className="text-sm text-muted-foreground">Se abrirá tu aplicación de correo con la solicitud lista para enviar.</p>
-      )}
     </form>
   );
 }

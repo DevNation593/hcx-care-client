@@ -1105,6 +1105,36 @@ export interface TaskSummary {
 // PLATFORM PANEL (mirrors the API's src/platform; dates arrive as ISO strings)
 // ==========================================
 
+export type DemoRequestStatus = 'NEW' | 'CONTACTED' | 'CLOSED';
+
+/** What the public form sends to `POST /demo-requests`. `website` is a honeypot left empty. */
+export interface DemoRequestInput {
+  name: string;
+  clinic: string;
+  email: string;
+  phone: string;
+  teamSize: string;
+  message?: string;
+  acceptPrivacy: boolean;
+  website?: string;
+}
+
+/** A demo request as the platform panel lists it (`GET /platform/demo-requests`). */
+export interface DemoRequest {
+  id: string;
+  name: string;
+  clinic: string;
+  email: string;
+  phone: string;
+  teamSize: string;
+  message: string | null;
+  status: DemoRequestStatus;
+  privacyAcceptedAt: string;
+  handledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Subscription statuses exactly as the API names them. */
 export type ApiSubscriptionStatus =
   | 'TRIALING'
