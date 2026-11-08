@@ -12,7 +12,7 @@ export default function ThanksPage() {
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
       <h1 className="text-3xl font-bold">¡Gracias por tu solicitud!</h1>
       <p className="mt-4 text-muted-foreground">
-        Si enviaste el mensaje, ya lo tenemos. {site.contact.responseTime}
+        Recibimos tu solicitud de demo. {site.contact.responseTime}
       </p>
       <ul className="mt-8 flex flex-wrap justify-center gap-4 text-sm">
         <li><Link href="/como-funciona" className="text-primary underline">Ver cómo funciona</Link></li>

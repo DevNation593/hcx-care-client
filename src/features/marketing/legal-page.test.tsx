@@ -38,6 +38,14 @@ describe('legal texts', () => {
     expect(empty.container.querySelectorAll('h2').length).toBeGreaterThanOrEqual(5);
   });
 
+  it('the privacy policy says the demo form stores the request and who sees it', () => {
+    const { container } = render(<PrivacyText legal={reviewed} brand="Marca" />);
+    expect(container).toHaveTextContent('se guardan en nuestra base de datos');
+    expect(container).toHaveTextContent('panel de control');
+    expect(container).toHaveTextContent('Conservamos tu solicitud de demo');
+    expect(container).not.toHaveTextContent('no almacena');
+  });
+
   it('the cookie policy names the analytics cookies and how to change the choice', () => {
     const { container } = render(<CookiesText legal={reviewed} brand="Marca" />);
     expect(container).toHaveTextContent('Google Analytics');
