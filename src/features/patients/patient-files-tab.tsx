@@ -65,6 +65,10 @@ export function PatientFilesTab({ patientId }: { patientId: string }) {
   const [description, setDescription] = useState('');
   const problem = file ? fileProblem(file) : null;
   // A file uploaded during an attention belongs to it.
+  // A file of a closed encounter is part of its signature: it can no longer be removed.
+  const signedFile = (file: PatientFile) =>
+    !!file.encounterId &&
+    encounters.some((encounter) => encounter.id === file.encounterId && encounter.status === 'CLOSED');
   const openEncounter = encounters.find(
     (encounter) => encounter.status === 'OPEN' && encounter.professionalId === userId,
   );
@@ -215,7 +219,9 @@ export function PatientFilesTab({ patientId }: { patientId: string }) {
                       <Download className="mr-1 h-4 w-4" />
                       Descargar
                     </Button>
-                    {item.uploadedById === userId && (
+                    {signedFile(item) ? (
+                      <span className="text-xs text-muted-foreground">En una atención firmada</span>
+                    ) : item.uploadedById === userId && (
                       <Button
                         variant="ghost"
                         size="sm"
