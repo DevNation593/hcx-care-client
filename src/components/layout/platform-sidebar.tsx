@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, ChevronLeft, ChevronRight, CreditCard, Layers, LayoutDashboard } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, CreditCard, Inbox, Layers, LayoutDashboard } from 'lucide-react';
 import { LogoMark } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { ROUTES } from '@/lib/constants';
@@ -15,6 +15,7 @@ const NAVIGATION = [
   { name: 'Consultorios', href: ROUTES.PLATFORM_TENANTS, icon: Building2, exact: false },
   { name: 'Planes', href: ROUTES.PLATFORM_PLANS, icon: Layers, exact: false },
   { name: 'Pagos', href: ROUTES.PLATFORM_PAYMENTS, icon: CreditCard, exact: false },
+  { name: 'Solicitudes de demo', href: ROUTES.PLATFORM_DEMO_REQUESTS, icon: Inbox, exact: false },
 ];
 
 export function PlatformSidebar() {

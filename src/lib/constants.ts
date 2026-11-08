@@ -37,6 +37,7 @@ export const ROUTES = {
   PLATFORM_TENANT_DETAIL: (id: string) => `/platform/tenants/${id}`,
   PLATFORM_PAYMENTS: '/platform/payments',
   PLATFORM_PLANS: '/platform/plans',
+  PLATFORM_DEMO_REQUESTS: '/platform/demo-requests',
   
   // Onboarding
   ONBOARDING: '/onboarding',
@@ -79,6 +80,9 @@ export const API_ENDPOINTS = {
   PLATFORM_SECTION_CATALOG: '/platform/section-catalog',
   PLATFORM_PAYMENTS: '/platform/subscription-payments',
   PLATFORM_PLANS: '/platform/plans',
+  PLATFORM_DEMO_REQUESTS: '/platform/demo-requests',
+  // Public site (no session)
+  DEMO_REQUESTS: '/demo-requests',
   SPECIALTY_CATALOG: '/specialties',
   // Auth (public, no tenantId)
   LOGIN: '/auth/login',
@@ -276,6 +280,7 @@ export const QUERY_KEYS = {
   PLATFORM_SECTION_CATALOG: ['platform', 'section-catalog'],
   PLATFORM_PAYMENTS: ['platform', 'payments'],
   PLATFORM_PLANS: ['platform', 'plans'],
+  PLATFORM_DEMO_REQUESTS: ['platform', 'demo-requests'],
   SPECIALTY_CATALOG: ['specialties', 'catalog'],
   // Auth
   ME: ['me'],
