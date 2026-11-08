@@ -19,6 +19,7 @@ import { useAppointments } from '@/hooks/useAppointments';
 import { useBranches } from '@/hooks/useBranches';
 import { useCloseEncounter, useRemoveEncounter, useStartEncounter } from '@/hooks/useEncounters';
 import { formatDate } from '@/lib/utils';
+import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { useAuthStore } from '@/store/authStore';
 import { AppointmentStatus } from '@/types';
 import {
@@ -313,15 +314,26 @@ function CloseEncounterDialog({
 }) {
   const close = useCloseEncounter(patientId);
   const [summary, setSummary] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string>();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (close.isPending) return;
+    if (close.isPending || !password) return;
+    setPasswordError(undefined);
     try {
-      await close.mutateAsync({ encounterId: encounter.id, summary: summary.trim() || undefined });
+      await close.mutateAsync({
+        encounterId: encounter.id,
+        summary: summary.trim() || undefined,
+        password,
+      });
       onClose();
-    } catch {
+    } catch (error) {
       // The hook already reported the error; the dialog stays open to retry.
+      setPasswordError(signaturePasswordError(error));
+    } finally {
+      // Typed again for every attempt: it is never kept.
+      setPassword('');
     }
   };
 
@@ -347,11 +359,17 @@ function CloseEncounterDialog({
               onChange={(event) => setSummary(event.target.value)}
             />
           </div>
+          <SignaturePasswordField
+            id="close-password"
+            value={password}
+            onChange={setPassword}
+            error={passwordError}
+          />
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" loading={close.isPending}>
+            <Button type="submit" disabled={!password} loading={close.isPending}>
               Cerrar y firmar
             </Button>
           </DialogFooter>

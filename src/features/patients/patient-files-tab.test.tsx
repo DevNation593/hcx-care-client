@@ -153,6 +153,22 @@ describe('PatientFilesTab', () => {
     expect(hooks.remove).toHaveBeenCalledWith({ fileId: 'file-1', reason: 'Paciente equivocado' });
   });
 
+  it('offers no removal of a file that belongs to a signed encounter', () => {
+    hooks.encounters = [
+      { id: 'closed', status: 'CLOSED', professionalId: 'me' },
+      { id: 'open', status: 'OPEN', professionalId: 'me' },
+    ];
+    hooks.files.data = [
+      stored({ id: 'file-1', fileName: 'firmado.pdf', encounterId: 'closed' }),
+      stored({ id: 'file-2', fileName: 'abierto.pdf', encounterId: 'open' }),
+    ];
+    render(<PatientFilesTab patientId="patient-1" />);
+
+    expect(screen.queryByRole('button', { name: 'Eliminar firmado.pdf' })).not.toBeInTheDocument();
+    expect(screen.getByText('En una atención firmada')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Eliminar abierto.pdf' })).toBeInTheDocument();
+  });
+
   it('says so when there are no files and offers a retry when they cannot be loaded', () => {
     const view = render(<PatientFilesTab patientId="patient-1" />);
     expect(screen.getByText('Aún no hay archivos de este paciente.')).toBeInTheDocument();

@@ -52,8 +52,8 @@ export function useStartEncounter(patientId: string) {
 export function useCloseEncounter(patientId: string) {
   return useEncounterMutation(
     patientId,
-    ({ encounterId, summary }: { encounterId: string; summary?: string }) =>
-      encountersApi.close(patientId, encounterId, summary),
+    ({ encounterId, summary, password }: { encounterId: string; summary?: string; password: string }) =>
+      encountersApi.close(patientId, encounterId, password, summary),
     { success: 'Atención cerrada y firmada', error: 'No fue posible cerrar la atención' },
     { signsRecords: true },
   );

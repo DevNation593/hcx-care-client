@@ -161,9 +161,26 @@ describe('ClinicalRecordsTab', () => {
       render(<ClinicalRecordsTab patientId="patient-1" />);
 
       expect(screen.queryByText('Atención en curso')).not.toBeInTheDocument();
-      await saveVitals();
+      fireEvent.change(screen.getByLabelText('Tipo de registro'), { target: { value: 'general.vital-signs' } });
+      fireEvent.change(document.getElementById('record-weightKg')!, { target: { value: '70' } });
+      // Outside an encounter it is signed as it is saved: the password is asked.
+      const save = screen.getByRole('button', { name: 'Guardar y firmar' });
+      expect(save).toBeDisabled();
+      fireEvent.change(screen.getByLabelText(/Tu contraseña para firmar/), { target: { value: 'Clave-1' } });
+      await act(async () => fireEvent.click(save));
 
       expect(hooks.create.mock.calls[0][0]).not.toHaveProperty('encounterId');
+      expect(hooks.create.mock.calls[0][0]).toMatchObject({ password: 'Clave-1' });
+    });
+
+    it('asks no password for a record written into the open encounter', async () => {
+      hooks.encounters = [openEncounter];
+      render(<ClinicalRecordsTab patientId="patient-1" />);
+
+      await saveVitals();
+
+      expect(screen.queryByLabelText(/Tu contraseña para firmar/)).not.toBeInTheDocument();
+      expect(hooks.create.mock.calls[0][0]).not.toHaveProperty('password');
     });
 
     it('says which encounter a record belongs to and links to its printable document', () => {
@@ -297,9 +314,13 @@ describe('ClinicalRecordsTab', () => {
 
       fireEvent.change(document.getElementById('amend-weightKg')!, { target: { value: '69.5' } });
       fireEvent.change(screen.getByLabelText(/Motivo/), { target: { value: ' Peso mal digitado ' } });
+      // An addendum is a signature: it waits for the password.
+      expect(save).toBeDisabled();
+      fireEvent.change(screen.getByLabelText(/Tu contraseña para firmar/), { target: { value: 'Clave-1' } });
       await act(async () => fireEvent.click(save));
 
       expect(hooks.create).toHaveBeenCalledWith({
+        password: 'Clave-1',
         moduleKey: 'general.vital-signs',
         schemaVersion: 1,
         data: { weightKg: 69.5, oxygenSaturation: 88 },

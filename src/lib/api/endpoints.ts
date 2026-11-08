@@ -638,10 +638,11 @@ export const encountersApi = {
   start: (patientId: string, data: EncounterInput) =>
     apiClient.post<Encounter>(API_ENDPOINTS.PATIENT_ENCOUNTERS(getTenantId(), patientId), data),
   // Closing is the professional's sign-off: the encounter takes no more records.
-  close: (patientId: string, encounterId: string, summary?: string) =>
+  /** Closing signs the encounter: the professional's password is checked again. */
+  close: (patientId: string, encounterId: string, password: string, summary?: string) =>
     apiClient.post<Encounter>(
       API_ENDPOINTS.PATIENT_ENCOUNTER_CLOSE(getTenantId(), patientId, encounterId),
-      summary ? { summary } : {},
+      summary ? { summary, password } : { password },
     ),
   remove: (patientId: string, encounterId: string, reason: string) =>
     apiClient.delete<{ message: string }>(

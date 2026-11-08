@@ -31,7 +31,7 @@ describe('encounter mutations', () => {
     const { wrapper, keys } = setup();
     const close = renderHook(() => useCloseEncounter('patient-1'), { wrapper });
 
-    await act(() => close.result.current.mutateAsync({ encounterId: 'encounter-1' }));
+    await act(() => close.result.current.mutateAsync({ encounterId: 'encounter-1', password: 'clave' }));
 
     expect(keys()).toEqual(
       expect.arrayContaining([

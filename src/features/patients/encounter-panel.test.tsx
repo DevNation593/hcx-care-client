@@ -176,10 +176,35 @@ describe('EncounterPanel', () => {
     fireEvent.change(screen.getByLabelText('Resumen o indicaciones de cierre'), {
       target: { value: ' Control en 7 días ' },
     });
+    // Closing signs: nothing is sent until the professional types their password.
+    expect(screen.getByRole('button', { name: 'Cerrar y firmar' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Tu contraseña para firmar/), { target: { value: 'Clave-1' } });
     await submit('Cerrar y firmar');
 
-    expect(hooks.close).toHaveBeenCalledWith({ encounterId: 'encounter-1', summary: 'Control en 7 días' });
+    expect(hooks.close).toHaveBeenCalledWith({
+      encounterId: 'encounter-1',
+      summary: 'Control en 7 días',
+      password: 'Clave-1',
+    });
     expect(screen.queryByRole('button', { name: 'Cerrar y firmar' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the dialog open with the reason when the password is refused, and forgets it', async () => {
+    hooks.close.mockRejectedValueOnce({
+      code: 'SIGNATURE_PASSWORD_INVALID',
+      message: 'La contraseña no es correcta. Escríbela de nuevo para firmar.',
+    });
+    const open = encounter();
+    render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar atención' }));
+    const field = screen.getByLabelText(/Tu contraseña para firmar/);
+    fireEvent.change(field, { target: { value: 'equivocada' } });
+    await submit('Cerrar y firmar');
+
+    expect(screen.getByRole('alert')).toHaveTextContent('La contraseña no es correcta');
+    expect(field).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Cerrar y firmar' })).toBeDisabled();
   });
 
   it('removes an empty encounter only with a reason', async () => {

@@ -38,6 +38,7 @@ import { useAuthStore } from '@/store/authStore';
 import type { ApiError, SpecialtyRecord } from '@/types';
 import type { ClinicalModuleDefinition, FormAlertLevel } from '@/types/clinical';
 import { describeEncounter, EncounterPanel } from './encounter-panel';
+import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { SpecialtyRecordEntryForm } from './specialty-record-entry-form';
 import { hasTemplates, TemplatePicker } from './template-picker';
 import type { Encounter } from '@/types/clinical';
@@ -132,6 +133,7 @@ export function ClinicalRecordsTab({
         configurationError={errorMessage(modulesQuery.error)}
         modules={recordable}
         isSaving={createRecord.isPending}
+        signsOnSave={!openEncounter}
         onSubmit={(payload) =>
           createRecord.mutateAsync({
             ...payload,
@@ -470,11 +472,14 @@ function AmendRecordDialog({
   const [notes, setNotes] = useState(record.notes ?? '');
   const [reason, setReason] = useState('');
   const [issues, setIssues] = useState<Record<string, string>>({});
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string>();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!reason.trim() || create.isPending) return;
+    if (!reason.trim() || !password || create.isPending) return;
     setIssues({});
+    setPasswordError(undefined);
     try {
       await create.mutateAsync({
         moduleKey: record.moduleKey,
@@ -483,10 +488,15 @@ function AmendRecordDialog({
         ...(notes.trim() ? { notes: notes.trim() } : {}),
         amendsRecordId: record.id,
         amendmentReason: reason.trim(),
+        password,
       });
       onClose();
     } catch (error) {
       setIssues(issuesByField((error as ApiError | undefined)?.issues));
+      setPasswordError(signaturePasswordError(error));
+    } finally {
+      // Typed again for every signature: it is never kept.
+      setPassword('');
     }
   };
 
@@ -518,11 +528,21 @@ function AmendRecordDialog({
             />
           </div>
           <ReasonField id="amend-reason" value={reason} onChange={setReason} />
+          <SignaturePasswordField
+            id="amend-password"
+            value={password}
+            onChange={setPassword}
+            error={passwordError}
+          />
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={!reason.trim()} loading={create.isPending}>
+            <Button
+              type="submit"
+              disabled={!reason.trim() || !password}
+              loading={create.isPending}
+            >
               Guardar adenda
             </Button>
           </DialogFooter>

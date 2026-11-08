@@ -135,6 +135,8 @@ export interface ClinicalRecordInput {
   /** Makes it an addendum to that signed record of the author, with the reason. */
   amendsRecordId?: string;
   amendmentReason?: string;
+  /** Required when the record is signed as it is saved: an addendum, or outside any encounter. */
+  password?: string;
 }
 
 export interface Branch {
