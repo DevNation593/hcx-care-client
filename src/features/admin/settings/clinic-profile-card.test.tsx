@@ -82,6 +82,28 @@ describe('ClinicProfileCard', () => {
     expect(http.patch).not.toHaveBeenCalled();
   });
 
+  it('locks the fields while saving so no edit is typed and then overwritten', async () => {
+    let finish: (value: unknown) => void = () => {};
+    http.patch.mockImplementation(
+      (_url: string, body: Record<string, unknown>) =>
+        new Promise((resolve) => {
+          finish = () => resolve({ ...storedTenant, ...body });
+        }),
+    );
+    renderCard();
+
+    fireEvent.change(await screen.findByLabelText('Teléfono'), { target: { value: '0999999999' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar datos' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Dirección')).toBeDisabled());
+    expect(screen.getByLabelText(/Nombre del consultorio/)).toBeDisabled();
+
+    finish(undefined);
+
+    await waitFor(() => expect(screen.getByLabelText('Dirección')).toBeEnabled());
+    expect(screen.getByLabelText('Teléfono')).toHaveValue('0999999999');
+  });
+
   it('reports a failed save and keeps the edits', async () => {
     http.patch.mockRejectedValue({ message: 'No tienes permiso para esta acción' });
     renderCard();

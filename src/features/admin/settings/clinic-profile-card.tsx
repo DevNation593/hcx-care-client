@@ -78,7 +78,8 @@ export function ClinicProfileCard() {
           <Skeleton className="h-40 w-full" />
         ) : (
           <form onSubmit={(event) => void submit(event)} noValidate className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* Locked while saving: the form resets to what was sent, so an edit typed meanwhile would be lost. */}
+            <fieldset disabled={update.isPending} className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {FIELDS.map(({ name, label, type, required, wide }) => (
                 <div key={name} className={wide ? 'md:col-span-2' : undefined}>
                   <Label htmlFor={`clinic-${name}`} required={required}>
@@ -98,7 +99,7 @@ export function ClinicProfileCard() {
                   )}
                 </div>
               ))}
-            </div>
+            </fieldset>
             {update.isError && (
               <p role="alert" className="text-sm text-destructive">
                 {update.error.message || 'No se pudieron guardar los datos del consultorio'}
