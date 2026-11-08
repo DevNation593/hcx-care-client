@@ -57,6 +57,9 @@ import {
   CreatePlatformTenantInput,
   UpdatePlatformTenantInput,
   ChangePlatformPlanInput,
+  DemoRequest,
+  DemoRequestInput,
+  DemoRequestStatus,
 } from '@/types';
 import type {
   Branch,
@@ -462,8 +465,18 @@ export const tenantSpecialtiesApi = {
     apiClient.get<TenantSpecialty[]>(API_ENDPOINTS.TENANT_SPECIALTIES(tenantId ?? getTenantId())),
 };
 
+/** Public site: no session needed. */
+export const demoRequestApi = {
+  create: (input: DemoRequestInput) =>
+    apiClient.post<{ received: true }>(API_ENDPOINTS.DEMO_REQUESTS, input),
+};
+
 export const platformApi = {
   getSummary: () => apiClient.get<PlatformSummary>(API_ENDPOINTS.PLATFORM_SUMMARY),
+  listDemoRequests: (status?: DemoRequestStatus) =>
+    apiClient.get<DemoRequest[]>(API_ENDPOINTS.PLATFORM_DEMO_REQUESTS, { params: status ? { status } : undefined }),
+  updateDemoRequest: (id: string, status: DemoRequestStatus) =>
+    apiClient.patch<DemoRequest>(`${API_ENDPOINTS.PLATFORM_DEMO_REQUESTS}/${id}`, { status }),
   listTenants: (params?: PlatformTenantListParams) =>
     apiClient.get<PlatformTenantList>(API_ENDPOINTS.PLATFORM_TENANTS, { params }),
   getTenant: (id: string) =>
