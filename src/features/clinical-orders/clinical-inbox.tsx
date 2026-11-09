@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Inbox } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
@@ -116,6 +116,11 @@ export function ClinicalInboxView() {
   const [acting, setActing] = useState<{ order: OrderRef; action: OrderAction } | null>(null);
   const [closing, setClosing] = useState<ClinicalFollowUp | null>(null);
   const data = inbox.data;
+  // Closing the last item of the last page leaves that page out of range: go back to the new last.
+  const lastPage = data ? pageCount(data) : null;
+  useEffect(() => {
+    if (lastPage !== null && page > lastPage) setPage(lastPage);
+  }, [lastPage, page]);
 
   return (
     <div className="space-y-6">

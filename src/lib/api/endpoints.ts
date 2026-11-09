@@ -441,8 +441,14 @@ export const authApi = {
 
   mfaStatus: () => apiClient.get<MfaStatus>(API_ENDPOINTS.MFA),
   setupMfa: (password: string) => apiClient.post<MfaSetup>(`${API_ENDPOINTS.MFA}/setup`, { password }),
+  /**
+   * Confirms the setup. The API ends every session of the account and returns a new one for this
+   * client, with the recovery codes: the caller has to keep the new tokens.
+   */
   enableMfa: (code: string) =>
-    apiClient.post<{ recoveryCodes: string[] }>(`${API_ENDPOINTS.MFA}/enable`, { code }),
+    apiClient
+      .post<AuthResponse & { recoveryCodes: string[] }>(`${API_ENDPOINTS.MFA}/enable`, { code })
+      .then((raw) => ({ ...raw, user: normalizeUser(raw.user) })),
   disableMfa: (input: { password: string; code: string }) =>
     apiClient.post<{ enabled: false }>(`${API_ENDPOINTS.MFA}/disable`, input),
   regenerateRecoveryCodes: (code: string) =>

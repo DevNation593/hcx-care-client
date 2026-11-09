@@ -418,6 +418,20 @@ describe('ClinicalInboxView', () => {
     expect(hooks.inboxScope.at(-1)).toBe('all:1');
   });
 
+  it('goes back to the last page when the one shown runs out of items', () => {
+    const totals = (followUps: number) => ({ pendingReview: 0, awaitingResult: 0, toCommunicate: 0, followUps });
+    hooks.inbox = inboxWith({ totals: totals(201) });
+    const { rerender } = render(<ClinicalInboxView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Siguientes' }));
+    expect(hooks.inboxScope.at(-1)).toBe('mine:2');
+
+    // The only follow-up of page 2 was closed: 200 remain, all on page 1.
+    hooks.inbox = inboxWith({ page: 2, followUps: [], totals: totals(200) });
+    rerender(<ClinicalInboxView />);
+
+    expect(hooks.inboxScope.at(-1)).toBe('mine:1');
+  });
+
   it('blocks closing a follow-up that someone else closed meanwhile', () => {
     hooks.inbox = inboxWith();
     const { rerender } = render(<ClinicalInboxView />);

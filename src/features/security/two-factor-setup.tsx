@@ -10,8 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { apiClient } from '@/lib/api/client';
 import { authApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
+import { useAuthStore } from '@/store/authStore';
 import type { ApiError, MfaSetup } from '@/types';
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -62,7 +64,16 @@ export function TwoFactorEnrollment({ onEnabled }: { onEnabled?: () => void }) {
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
   const start = useMutation({ mutationFn: () => authApi.setupMfa(password) });
-  const confirm = useMutation({ mutationFn: () => authApi.enableMfa(code) });
+  const confirm = useMutation({
+    mutationFn: () => authApi.enableMfa(code),
+    onSuccess: ({ accessToken, refreshToken }) => {
+      // Enabling ended every session opened with the password alone, this one included: keep the
+      // new one at once, so a reload before the codes are acknowledged stays signed in.
+      apiClient.setTokens(accessToken, refreshToken);
+      const { user, setUser } = useAuthStore.getState();
+      if (user) setUser({ ...user, mfaEnabled: true, mfaEnrollmentRequired: false });
+    },
+  });
 
   if (recoveryCodes) {
     return (
