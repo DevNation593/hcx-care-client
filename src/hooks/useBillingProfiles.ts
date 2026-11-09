@@ -4,12 +4,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { billingProfilesApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
+import { useTenantId } from '@/hooks/useTenantScope';
 import type { ApiError } from '@/types';
 import type {
+  BillAsPatientInput,
   BillingProfile,
   BillingProfileInput,
   BillingProfileUpdate,
   LinkBillingProfileInput,
+  LinkedBillingProfile,
 } from '@/types/cash';
 
 export function useBillingProfiles(q?: string, active?: boolean) {
@@ -65,6 +68,28 @@ export function useLinkBillingProfile(patientId: string) {
     (data: LinkBillingProfileInput) => billingProfilesApi.link(patientId, data),
     'Datos de facturación vinculados',
   );
+}
+
+/**
+ * Bills in the patient's own name. Errors are left to the caller: a 422 lists the data to
+ * complete, which the caller asks for instead of a toast.
+ */
+export function useBillAsPatient(patientId: string) {
+  const queryClient = useQueryClient();
+  const tenantId = useTenantId();
+  return useMutation<LinkedBillingProfile, ApiError, BillAsPatientInput | undefined>({
+    mutationFn: (data) => billingProfilesApi.billAsPatient(patientId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BILLING_PROFILES });
+      // Completed data was written to the patient record.
+      if (tenantId) {
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.PATIENT_DETAIL_SCOPED(tenantId, patientId),
+          exact: true,
+        });
+      }
+    },
+  });
 }
 
 export function useUnlinkBillingProfile(patientId: string) {

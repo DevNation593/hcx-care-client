@@ -7,6 +7,8 @@ import { useBillingProfiles, usePatientBillingProfiles } from '@/hooks/useBillin
 import { cn } from '@/lib/utils';
 import { SRI_ID_TYPE_LABELS, type BillingProfile, type BillingProfileKind } from '@/types/cash';
 import { BillingProfileForm } from './billing-profile-form';
+import { PatientOwnBilling } from './patient-own-billing';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 type PickerTab = 'patient' | 'person' | 'company';
 
@@ -74,7 +76,10 @@ function PatientProfiles({
       {isPending ? (
         <p className="text-sm text-muted-foreground">Cargando…</p>
       ) : !data || data.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Sin datos de facturación vinculados.</p>
+        <>
+          <p className="text-sm text-muted-foreground">Sin datos de facturación vinculados.</p>
+          <PatientOwnBilling patient={patient} disabled={disabled} onReady={onSelect} />
+        </>
       ) : (
         <ul className="space-y-2">
           {data.map((profile) => (
@@ -145,10 +150,11 @@ export function BillingProfilePicker({
   const hasPatients = patients.length > 0;
   const [tab, setTab] = useState<PickerTab>(hasPatients ? 'patient' : 'person');
   const [creating, setCreating] = useState(false);
+  const terms = usePatientTerms();
   const activeTab: PickerTab = tab === 'patient' && !hasPatients ? 'person' : tab;
 
   const tabs: { id: PickerTab; label: string }[] = [
-    ...(hasPatients ? [{ id: 'patient' as const, label: 'Paciente' }] : []),
+    ...(hasPatients ? [{ id: 'patient' as const, label: terms.One }] : []),
     { id: 'person', label: 'Otro particular' },
     { id: 'company', label: 'Empresa' },
   ];
