@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { postLoginRoute } from '@/lib/post-login-route';
 import { UserRole } from '@/types';
+import { useAuthStore } from '@/store/authStore';
 import { TwoFactorEnrollment } from './two-factor-setup';
 
 const api = vi.hoisted(() => ({
@@ -10,6 +11,8 @@ const api = vi.hoisted(() => ({
   verifyMfa: vi.fn(),
   setupMfa: vi.fn(),
   enableMfa: vi.fn(),
+  mfaStatus: vi.fn(),
+  setTokens: vi.fn(),
   push: vi.fn(),
 }));
 
@@ -19,11 +22,12 @@ vi.mock('@/lib/api/endpoints', () => ({
     verifyMfa: api.verifyMfa,
     setupMfa: api.setupMfa,
     enableMfa: api.enableMfa,
+    mfaStatus: api.mfaStatus,
   },
   tenantsApi: { get: vi.fn().mockResolvedValue({ id: 'tenant-1' }) },
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: api.push, replace: api.push }) }));
-vi.mock('@/lib/api/client', () => ({ apiClient: { setTokens: vi.fn() } }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { setTokens: api.setTokens } }));
 
 const wrap = (node: React.ReactNode) => (
   <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
@@ -31,7 +35,21 @@ const wrap = (node: React.ReactNode) => (
   </QueryClientProvider>
 );
 
-beforeEach(() => vi.clearAllMocks());
+const professional = {
+  id: 'u',
+  email: 'ana@example.com',
+  firstName: 'Ana',
+  lastName: 'Mora',
+  role: UserRole.PROFESIONAL,
+  tenantId: 'tenant-1',
+  mfaEnabled: false,
+  mfaEnrollmentRequired: true,
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  useAuthStore.setState({ user: null, tenant: null, isAuthenticated: false, hasHydrated: true });
+});
 
 describe('postLoginRoute', () => {
   it('sends an account the clinic requires a second factor from to its setup first', () => {
@@ -52,7 +70,13 @@ describe('TwoFactorEnrollment', () => {
       otpauthUrl: 'otpauth://totp/x',
       qrCodeDataUrl: 'data:image/png;base64,AAAA',
     });
-    api.enableMfa.mockResolvedValue({ recoveryCodes: ['aaaa-bbbb', 'cccc-dddd'] });
+    api.enableMfa.mockResolvedValue({
+      recoveryCodes: ['aaaa-bbbb', 'cccc-dddd'],
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+      user: { ...professional, mfaEnabled: true, mfaEnrollmentRequired: false },
+    });
+    useAuthStore.setState({ user: professional as never, isAuthenticated: true });
     const onEnabled = vi.fn();
     render(wrap(<TwoFactorEnrollment onEnabled={onEnabled} />));
 
@@ -69,9 +93,40 @@ describe('TwoFactorEnrollment', () => {
     await act(async () => fireEvent.click(activate));
 
     expect(api.enableMfa).toHaveBeenCalledWith('123456');
+    // Enabling ended the session opened with the password alone: the new one is kept at once.
+    expect(api.setTokens).toHaveBeenCalledWith('new-access', 'new-refresh');
+    expect(useAuthStore.getState().user).toMatchObject({ mfaEnabled: true, mfaEnrollmentRequired: false });
     expect(screen.getByText('aaaa-bbbb')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ya guardé los códigos' }));
     expect(onEnabled).toHaveBeenCalled();
+  });
+});
+
+describe('TwoFactorEnrollmentPage', () => {
+  it('leaves for the panel when the setup was already confirmed before a reload', async () => {
+    const { default: TwoFactorEnrollmentPage } = await import('@/app/security/two-factor/page');
+    useAuthStore.setState({ user: professional as never, isAuthenticated: true });
+    api.mfaStatus.mockResolvedValue({ enabled: true, required: true, recoveryCodesLeft: 10 });
+
+    await act(async () => {
+      render(wrap(<TwoFactorEnrollmentPage />));
+    });
+
+    expect(api.setupMfa).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Tu contraseña')).not.toBeInTheDocument();
+    await waitFor(() => expect(api.push).toHaveBeenCalledWith('/dashboard'));
+    expect(useAuthStore.getState().user).toMatchObject({ mfaEnrollmentRequired: false });
+  });
+
+  it('offers the setup while it is still pending', async () => {
+    const { default: TwoFactorEnrollmentPage } = await import('@/app/security/two-factor/page');
+    useAuthStore.setState({ user: professional as never, isAuthenticated: true });
+    api.mfaStatus.mockResolvedValue({ enabled: false, required: true, recoveryCodesLeft: 0 });
+
+    render(wrap(<TwoFactorEnrollmentPage />));
+
+    expect(await screen.findByLabelText('Tu contraseña')).toBeInTheDocument();
+    expect(api.push).not.toHaveBeenCalled();
   });
 });
 
