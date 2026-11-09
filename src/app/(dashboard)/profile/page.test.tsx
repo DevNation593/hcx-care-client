@@ -9,6 +9,8 @@ const state = vi.hoisted(() => ({
   mutate: vi.fn(),
 }));
 
+// Two-factor sign-in has its own tests.
+vi.mock('@/features/security/two-factor-setup', () => ({ TwoFactorCard: () => null }));
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: (store: { user: UserProfile | null }) => unknown) =>
     selector({ user: state.profile }),

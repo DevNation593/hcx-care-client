@@ -313,16 +313,25 @@ function ConsentReader({
   );
 }
 
-function SignForm({
+/**
+ * Who signs, the declarations and the signature drawn on screen. Treatment sessions also ask the
+ * optional authorization for advertising photos; clinical procedures leave it out and may name a
+ * witness instead.
+ */
+export function SignForm({
   patient,
   onSign,
   signing,
   onRefuse,
+  withMarketingPhotos = true,
+  withWitness = false,
 }: {
   patient: SessionPatient;
   onSign: (input: SignConsentInput, signer: ConsentDocumentSignature) => Promise<void>;
   signing: boolean;
   onRefuse: () => void;
+  withMarketingPhotos?: boolean;
+  withWitness?: boolean;
 }) {
   const initialRole: ConsentSignerRole = isMinor(patient.dateOfBirth) ? 'REPRESENTATIVE' : 'PATIENT';
   const [role, setRole] = useState<ConsentSignerRole>(initialRole);
@@ -330,6 +339,7 @@ function SignForm({
   const [understood, setUnderstood] = useState(false);
   const [questionsAnswered, setQuestionsAnswered] = useState(false);
   const [marketingPhotos, setMarketingPhotos] = useState(false);
+  const [witnessName, setWitnessName] = useState('');
   const [signature, setSignature] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -380,7 +390,8 @@ function SignForm({
       ...(isRepresentative ? { relationship: relation } : {}),
       understood,
       questionsAnswered,
-      marketingPhotos,
+      ...(withMarketingPhotos ? { marketingPhotos } : {}),
+      ...(withWitness && witnessName.trim() ? { witnessName: witnessName.trim() } : {}),
       signature,
     };
     try {
@@ -481,13 +492,28 @@ function SignForm({
           checked={questionsAnswered}
           onChange={setQuestionsAnswered}
         />
-        <Declaration
-          id="consent-marketing"
-          label="Autorizo el uso publicitario de mis fotos (opcional)"
-          checked={marketingPhotos}
-          onChange={setMarketingPhotos}
-        />
+        {withMarketingPhotos && (
+          <Declaration
+            id="consent-marketing"
+            label="Autorizo el uso publicitario de mis fotos (opcional)"
+            checked={marketingPhotos}
+            onChange={setMarketingPhotos}
+          />
+        )}
       </fieldset>
+
+      {withWitness && (
+        <div>
+          <Label htmlFor="consent-witness">Testigo (opcional)</Label>
+          <Input
+            id="consent-witness"
+            className={FIELD_CLASS}
+            maxLength={SIGNER_NAME.max}
+            value={witnessName}
+            onChange={(event) => setWitnessName(event.target.value)}
+          />
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="consent-signature">

@@ -18,6 +18,7 @@ import {
   Bell,
   Save,
   RotateCcw,
+  ShieldCheck,
 } from 'lucide-react';
 import { type WorkingHours, type ReminderRule, type TenantSettings } from '@/types';
 import { BranchesManager } from '@/features/admin/branches/branches-manager';
@@ -82,6 +83,7 @@ export default function AdminSettingsPage() {
   const [reminders, setReminders] = useState<ReminderRule[]>(
     settings?.reminderRules || DEFAULT_REMINDERS
   );
+  const [requireMfa, setRequireMfa] = useState(settings?.requireMfa ?? false);
   const [hasChanges, setHasChanges] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -95,6 +97,7 @@ export default function AdminSettingsPage() {
     setTimezone(settings.timezone || 'America/Mexico_City');
     setLocale(settings.locale || 'es');
     setReminders(settings.reminderRules || DEFAULT_REMINDERS);
+    setRequireMfa(settings.requireMfa ?? false);
     setInitialized(true);
   }, [initialized, settings]);
 
@@ -144,6 +147,7 @@ export default function AdminSettingsPage() {
         timezone,
         locale,
         reminderRules: reminders,
+        requireMfa,
       },
       {
         onSuccess: () => {
@@ -160,6 +164,7 @@ export default function AdminSettingsPage() {
       setTimezone(settings.timezone || 'America/Mexico_City');
       setLocale(settings.locale || 'es');
       setReminders(settings.reminderRules || DEFAULT_REMINDERS);
+      setRequireMfa(settings.requireMfa ?? false);
     }
     setHasChanges(false);
   };
@@ -308,6 +313,39 @@ export default function AdminSettingsPage() {
               ))}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Account security */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5" />
+            Seguridad de las cuentas
+          </CardTitle>
+          <CardDescription>
+            Con la verificación en dos pasos, quien tenga una contraseña filtrada no puede entrar sin el teléfono de la persona.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-5 w-5"
+              checked={requireMfa}
+              onChange={(e) => {
+                setRequireMfa(e.target.checked);
+                markChanged();
+              }}
+            />
+            <span>
+              <span className="font-medium">Exigir verificación en dos pasos</span> al titular y a los profesionales.
+              Quien no la tenga deberá configurarla en su próximo inicio de sesión, empezando por ti.
+            </span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Si alguien pierde su teléfono, restablécela desde Equipo.
+          </p>
         </CardContent>
       </Card>
 

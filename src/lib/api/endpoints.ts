@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { isMfaChallenge } from '@/types';
 import { API_ENDPOINTS } from '@/lib/constants';
 import { useAuthStore } from '@/store/authStore';
 import {
@@ -25,6 +26,9 @@ import {
   Subscription,
   LoginCredentials,
   AuthResponse,
+  MfaChallenge,
+  MfaSetup,
+  MfaStatus,
   PaginatedResponse,
   SubscriptionPayment,
   PlatformPlan,
@@ -99,6 +103,8 @@ import type {
   TreatmentVersionInput,
   TreatmentWithCurrent,
   TreatmentWithVersions,
+  ProcedureConsent,
+  ProcedureConsentTemplate,
 } from '@/types/treatments';
 import type {
   Paginated,
@@ -376,6 +382,7 @@ function normalizeTenantSettings(raw: any): TenantSettings {
     reminderRules,
     timezone: raw.timezone ?? 'America/Mexico_City',
     locale: raw.locale ?? 'es-MX',
+    requireMfa: raw.requireMfa ?? false,
   };
 }
 
@@ -406,11 +413,27 @@ function normalizeUser(raw: any): User {
 // ==========================================
 
 export const authApi = {
-  login: (credentials: LoginCredentials) =>
-    apiClient.post<AuthResponse>(API_ENDPOINTS.LOGIN, credentials).then((raw) => ({
+  /** An account with two-factor sign-in gets a challenge instead of a session. */
+  login: (credentials: LoginCredentials): Promise<AuthResponse | MfaChallenge> =>
+    apiClient
+      .post<AuthResponse | MfaChallenge>(API_ENDPOINTS.LOGIN, credentials)
+      .then((raw) => (isMfaChallenge(raw) ? raw : { ...raw, user: normalizeUser(raw.user) })),
+
+  /** The second step: a code of the authenticator app or a recovery code. */
+  verifyMfa: (input: { mfaToken: string; code?: string; recoveryCode?: string }) =>
+    apiClient.post<AuthResponse>(API_ENDPOINTS.MFA_VERIFY, input).then((raw) => ({
       ...raw,
       user: normalizeUser(raw.user),
     })),
+
+  mfaStatus: () => apiClient.get<MfaStatus>(API_ENDPOINTS.MFA),
+  setupMfa: (password: string) => apiClient.post<MfaSetup>(`${API_ENDPOINTS.MFA}/setup`, { password }),
+  enableMfa: (code: string) =>
+    apiClient.post<{ recoveryCodes: string[] }>(`${API_ENDPOINTS.MFA}/enable`, { code }),
+  disableMfa: (input: { password: string; code: string }) =>
+    apiClient.post<{ enabled: false }>(`${API_ENDPOINTS.MFA}/disable`, input),
+  regenerateRecoveryCodes: (code: string) =>
+    apiClient.post<{ recoveryCodes: string[] }>(`${API_ENDPOINTS.MFA}/recovery-codes`, { code }),
 
   refresh: (refreshToken: string) =>
     apiClient
@@ -555,6 +578,7 @@ export const tenantSettingsApi = {
       timezone: settings.timezone,
       locale: settings.locale,
       defaultAppointmentDuration: settings.defaultSessionDuration,
+      requireMfa: settings.requireMfa,
       reminderEnabled:
         settings.reminderRules !== undefined
           ? settings.reminderRules.some((r) => r.enabled)
@@ -649,6 +673,37 @@ export const encountersApi = {
       API_ENDPOINTS.PATIENT_ENCOUNTER(getTenantId(), patientId, encounterId),
       { data: { reason } },
     ),
+};
+
+export const procedureConsentsApi = {
+  templates: () =>
+    apiClient.get<ProcedureConsentTemplate[]>(API_ENDPOINTS.PROCEDURE_CONSENT_TEMPLATES(getTenantId())),
+  list: (patientId: string) =>
+    apiClient.get<ProcedureConsent[]>(API_ENDPOINTS.PATIENT_PROCEDURE_CONSENTS(getTenantId(), patientId)),
+  present: (patientId: string, encounterId: string, input: { templateId: string; procedureName: string }) =>
+    apiClient.post<ProcedureConsent>(
+      API_ENDPOINTS.ENCOUNTER_PROCEDURE_CONSENTS(getTenantId(), patientId, encounterId),
+      input,
+    ),
+  sign: (documentId: string, input: SignConsentInput) =>
+    apiClient.post<ProcedureConsent>(
+      API_ENDPOINTS.PROCEDURE_CONSENT_COMMAND(getTenantId(), documentId, 'sign'),
+      input,
+    ),
+  refuse: (documentId: string, reason: string) =>
+    apiClient.post<ProcedureConsent>(
+      API_ENDPOINTS.PROCEDURE_CONSENT_COMMAND(getTenantId(), documentId, 'refuse'),
+      { reason },
+    ),
+  revoke: (documentId: string, reason: string) =>
+    apiClient.post<ProcedureConsent>(
+      API_ENDPOINTS.PROCEDURE_CONSENT_COMMAND(getTenantId(), documentId, 'revoke'),
+      { reason },
+    ),
+  pdf: (documentId: string) =>
+    apiClient.get<Blob>(API_ENDPOINTS.PROCEDURE_CONSENT_COMMAND(getTenantId(), documentId, 'pdf'), {
+      responseType: 'blob',
+    }),
 };
 
 export const treatmentsApi = {
@@ -954,6 +1009,11 @@ export const formDefinitionsApi = {
 // ==========================================
 
 export const usersApi = {
+  /** The account holder removes the second factor of someone who lost it. */
+  resetMfa: (userId: string, tenantId?: string) =>
+    apiClient.post<{ userId: string; enabled: false }>(
+      API_ENDPOINTS.USER_MFA_RESET(getTenantId(tenantId), userId),
+    ),
   list: (params?: { role?: string; isActive?: boolean; page?: number; limit?: number }, tenantId?: string) =>
     apiClient
       .get<PaginatedResponse<User> | User[]>(API_ENDPOINTS.USERS(getTenantId(tenantId)), { params })

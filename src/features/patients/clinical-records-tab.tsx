@@ -25,6 +25,7 @@ import {
 import { issuesByField, toRecordData, type FormValues } from '@/features/clinical-forms/form-values';
 import { describeModule } from '@/features/admin/specialties/module-labels';
 import { useClinicalModules } from '@/hooks/useClinicalModules';
+import { ProcedureConsents } from './procedure-consents';
 import { usePatientEncounters } from '@/hooks/useEncounters';
 import {
   useCorrectSpecialtyRecord,
@@ -119,6 +120,8 @@ export function ClinicalRecordsTab({
         openEncounter={openEncounter}
         initialAppointmentId={startAppointmentId}
       />
+
+      <ProcedureConsents patientId={patientId} openEncounterId={openEncounter?.id} />
 
       {!openEncounter && recordable.length > 0 && (
         <p className="text-sm text-muted-foreground">

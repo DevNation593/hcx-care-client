@@ -24,13 +24,15 @@ export interface ConsentTemplateEditorProps {
 }
 
 // The variables the API fills in when it presents a consent.
-const VARIABLES = ['paciente', 'identificacion', 'tratamiento', 'profesional', 'fecha'] as const;
+// `procedimiento` names the procedure of a clinical consent; in a treatment it is the treatment.
+const VARIABLES = ['paciente', 'identificacion', 'tratamiento', 'procedimiento', 'profesional', 'fecha'] as const;
 type Variable = (typeof VARIABLES)[number];
 
 const SAMPLE_VALUES = (): Record<Variable, string> => ({
   paciente: 'María Fernanda Pérez',
   identificacion: '1712345678',
   tratamiento: 'Toxina botulínica',
+  procedimiento: 'Inserción de DIU',
   profesional: 'Dra. Ana Vega',
   fecha: formatDate(new Date(), "d 'de' MMMM 'de' yyyy"),
 });

@@ -29,6 +29,7 @@ export const ROUTES = {
   FORGOT_PASSWORD: '/forgot-password',
   RESET_PASSWORD: '/reset-password',
   CHANGE_PASSWORD: '/change-password',
+  MFA_ENROLLMENT: '/security/two-factor',
 
   // Platform panel (ADMIN)
   PLATFORM: '/platform',
@@ -136,6 +137,18 @@ export const API_ENDPOINTS = {
     `/tenants/${tenantId}/patients/${patientId}/encounters/${encounterId}`,
   PATIENT_ENCOUNTER_CLOSE: (tenantId: string, patientId: string, encounterId: string) =>
     `/tenants/${tenantId}/patients/${patientId}/encounters/${encounterId}/close`,
+  PATIENT_PROCEDURE_CONSENTS: (tenantId: string, patientId: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/patients/${requiredPathSegment(patientId, 'patient')}/procedure-consents`,
+  ENCOUNTER_PROCEDURE_CONSENTS: (tenantId: string, patientId: string, encounterId: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/patients/${requiredPathSegment(patientId, 'patient')}/encounters/${requiredPathSegment(encounterId, 'encounter')}/procedure-consents`,
+  PROCEDURE_CONSENT_TEMPLATES: (tenantId: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/procedure-consents/templates`,
+  PROCEDURE_CONSENT_COMMAND: (tenantId: string, documentId: string, command: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/procedure-consents/${requiredPathSegment(documentId, 'consent')}/${command}`,
+  MFA: '/auth/mfa',
+  MFA_VERIFY: '/auth/mfa/verify',
+  USER_MFA_RESET: (tenantId: string, userId: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/users/${requiredPathSegment(userId, 'user')}/mfa/reset`,
 
   // Treatments, consent templates and treatment sessions
   TREATMENTS: (tenantId: string) => `/tenants/${tenantId}/treatments`,
@@ -306,6 +319,9 @@ export const QUERY_KEYS = {
     ['patients', patientId, 'specialty-records', recordId],
   PATIENT_ENCOUNTERS: (patientId: string) => ['patients', patientId, 'encounters'],
   PATIENT_FILES: (patientId: string) => ['patients', patientId, 'files'],
+  PATIENT_PROCEDURE_CONSENTS: (patientId: string) => ['patients', patientId, 'procedure-consents'],
+  PROCEDURE_CONSENT_TEMPLATES: ['procedure-consent-templates'] as const,
+  MFA_STATUS: ['auth', 'mfa'] as const,
   TREATMENTS: ['treatments'],
   TREATMENT: (id: string) => ['treatments', id],
   BILLING_PROFILES: ['billing-profiles'],
