@@ -273,7 +273,10 @@ function PatientDetailPageContent() {
         {activeTab === 'specialties' && canSeeClinical && (
           <ClinicalRecordsTab patientId={patientId} startAppointmentId={startAppointmentId} />
         )}
-        {activeTab === 'orders' && canSeeClinical && <ClinicalOrdersTab patientId={patientId} />}
+        {/* Like the menu: a tab named in the URL is mounted only if it is one the user may see. */}
+        {activeTab === 'orders' && visibleTabs.some((tab) => tab.id === 'orders') && (
+          <ClinicalOrdersTab patientId={patientId} />
+        )}
         {activeTab === 'treatments' && canSeeClinical && <PatientTreatmentsTab patientId={patientId} />}
         {activeTab === 'files' && canSeeClinical && <PatientFilesTab patientId={patientId} />}
         {activeTab === 'appointments' && <AppointmentsTab patientId={patientId} />}

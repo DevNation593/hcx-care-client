@@ -18,6 +18,9 @@ const hooks = vi.hoisted(() => ({
   complete: vi.fn(),
   closeFollowUp: vi.fn(),
   createError: null as unknown,
+  followUpsState: { isLoading: false, isError: false },
+  refetchFollowUps: vi.fn(),
+  download: vi.fn(),
 }));
 
 const mutation = (fn: ReturnType<typeof vi.fn>, error: unknown = null) => ({
@@ -28,7 +31,11 @@ const mutation = (fn: ReturnType<typeof vi.fn>, error: unknown = null) => ({
 
 vi.mock('@/hooks/useClinicalOrders', () => ({
   usePatientClinicalOrders: () => ({ data: hooks.orders, isLoading: false, isError: false }),
-  usePatientClinicalFollowUps: () => ({ data: hooks.followUps }),
+  usePatientClinicalFollowUps: () => ({
+    data: hooks.followUpsState.isError ? undefined : hooks.followUps,
+    ...hooks.followUpsState,
+    refetch: hooks.refetchFollowUps,
+  }),
   useClinicalInbox: (scope: string) => {
     hooks.inboxScope.push(scope);
     return { data: hooks.inbox, isLoading: false, isError: false };
@@ -55,7 +62,10 @@ vi.mock('@/hooks/useBranches', () => ({
     ],
   }),
 }));
-vi.mock('@/hooks/usePatientFiles', () => ({ usePatientFiles: () => ({ data: [] }) }));
+vi.mock('@/hooks/usePatientFiles', () => ({
+  usePatientFiles: () => ({ data: [] }),
+  useDownloadPatientFile: () => ({ mutate: hooks.download, isPending: false }),
+}));
 
 const result = (overrides: Partial<ClinicalResult> = {}): ClinicalResult => ({
   id: 'result-1',
@@ -124,6 +134,7 @@ beforeEach(() => {
   hooks.inbox = undefined;
   hooks.inboxScope = [];
   hooks.createError = null;
+  hooks.followUpsState = { isLoading: false, isError: false };
   useAuthStore.setState({ user: { id: 'me', tenantId: 'tenant-1' } as never });
 });
 
@@ -243,6 +254,52 @@ describe('ClinicalOrdersTab', () => {
   });
 });
 
+describe('ClinicalOrdersTab, after the order changed under an open dialog', () => {
+  it('takes the new version, keeps what was typed and says so', async () => {
+    const pending = result();
+    hooks.orders = [order({ status: 'PENDING_REVIEW', version: 3, results: [pending], currentResult: pending })];
+    const { rerender } = render(<ClinicalOrdersTab patientId="patient-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar resultado' }));
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText(/Conducta/), {
+      target: { value: 'Sin hallazgos' },
+    });
+
+    // Someone added a note to the order: same result, newer version.
+    hooks.orders = [order({ status: 'PENDING_REVIEW', version: 4, results: [pending], currentResult: pending })];
+    rerender(<ClinicalOrdersTab patientId="patient-1" />);
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Alguien más actualizó la orden/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Conducta/)).toHaveValue('Sin hallazgos');
+  });
+
+  it('blocks a review when the result it showed is no longer the last one', () => {
+    const pending = result();
+    hooks.orders = [order({ status: 'PENDING_REVIEW', version: 3, results: [pending], currentResult: pending })];
+    const { rerender } = render(<ClinicalOrdersTab patientId="patient-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar resultado' }));
+
+    const corrected = result({ id: 'result-2', version: 2, content: 'Informe corregido' });
+    hooks.orders = [
+      order({ status: 'PENDING_REVIEW', version: 4, results: [pending, corrected], currentResult: corrected }),
+    ];
+    rerender(<ClinicalOrdersTab patientId="patient-1" />);
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/este paso ya no aplica/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Revisar resultado' })).toBeDisabled();
+  });
+
+  it('says when the follow-ups could not be loaded instead of showing none', () => {
+    hooks.followUpsState = { isLoading: false, isError: true };
+    render(<ClinicalOrdersTab patientId="patient-1" />);
+
+    expect(screen.queryByText('Sin seguimientos.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(hooks.refetchFollowUps).toHaveBeenCalled();
+  });
+});
+
 describe('ClinicalInboxView', () => {
   const inboxOrder = {
     id: 'order-1',
@@ -260,6 +317,34 @@ describe('ClinicalInboxView', () => {
     orderedBy: { id: 'me', firstName: 'Ana', lastName: 'Gómez' },
     patient: { id: 'patient-1', firstName: 'Lucía', lastName: 'Mora' },
   };
+
+  it('shows the report, and opens its file, before a review is recorded from the inbox', () => {
+    hooks.inbox = {
+      scope: 'mine',
+      thresholds: { resultReviewAlertDays: 3, orderResultAlertDays: 15 },
+      pendingReview: [
+        {
+          ...result({
+            orderId: 'order-1',
+            content: 'Lesión intraepitelial de bajo grado.',
+            file: { id: 'file-1', fileName: 'citologia.pdf', mimeType: 'application/pdf', sizeBytes: 10 },
+          }),
+          order: { ...inboxOrder, status: 'PENDING_REVIEW' as const },
+          overdue: false,
+        },
+      ],
+      awaitingResult: [],
+      toCommunicate: [],
+      followUps: [],
+    };
+    render(<ClinicalInboxView />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Lesión intraepitelial de bajo grado.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Abrir citologia.pdf/ }));
+    expect(hooks.download).toHaveBeenCalledWith(expect.objectContaining({ id: 'file-1' }));
+  });
 
   it('lists what waits, flags what is overdue and switches to the whole clinic', () => {
     const inbox: ClinicalInbox = {

@@ -112,6 +112,9 @@ vi.mock('@/features/patients/clinical-records-tab', async (importOriginal) => ({
     <div data-testid="records-tab">{startAppointmentId ?? 'no appointment'}</div>
   ),
 }));
+vi.mock('@/features/clinical-orders/clinical-orders-tab', () => ({
+  ClinicalOrdersTab: ({ patientId }: { patientId: string }) => <div data-testid="orders-tab">{patientId}</div>,
+}));
 vi.mock('@/features/patients/patient-files-tab', () => ({
   PatientFilesTab: ({ patientId }: { patientId: string }) => (
     <div data-testid="files-tab">{patientId}</div>
@@ -240,6 +243,18 @@ describe('patient detail opened from the agenda', () => {
     renderPage();
 
     expect(screen.getByTestId('files-tab')).toHaveTextContent('patient-1');
+  });
+
+  it('opens the orders tab from the URL only while its section is on', () => {
+    mocks.search = 'tab=orders';
+    const { unmount } = renderPage();
+    expect(screen.getByTestId('orders-tab')).toHaveTextContent('patient-1');
+    unmount();
+
+    mocks.disabledSections = ['core.clinical.specialties'];
+    renderPage();
+    expect(screen.queryByTestId('orders-tab')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Órdenes y resultados' })).not.toBeInTheDocument();
   });
 
   it('ignores an unknown tab and never shows clinical tabs to an account without clinical access', () => {

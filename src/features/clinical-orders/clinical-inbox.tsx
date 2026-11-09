@@ -14,6 +14,7 @@ import {
   ORDER_PRIORITY_LABELS,
   ORDER_STATUS_LABELS,
   type ClinicalFollowUp,
+  type ClinicalInbox,
   type InboxOrder,
   type InboxScope,
 } from '@/types/clinical-orders';
@@ -84,6 +85,18 @@ function OrderLine({ order, children }: { order: InboxOrder; children?: React.Re
 }
 
 /**
+ * The order a dialog of the inbox acts on, as the inbox shows it now. After someone else moves it
+ * the inbox reloads: the order may be in another list (a result arrived), or in none (it was
+ * reviewed or closed), and then the dialog says its step no longer applies.
+ */
+export function currentInboxOrder(data: ClinicalInbox, opened: OrderRef): { order: OrderRef; gone: boolean } {
+  const pending = data.pendingReview.find((result) => result.orderId === opened.id);
+  if (pending) return { order: { ...pending.order, currentResult: pending }, gone: false };
+  const listed = [...data.awaitingResult, ...data.toCommunicate].find((order) => order.id === opened.id);
+  return listed ? { order: listed, gone: false } : { order: opened, gone: true };
+}
+
+/**
  * The pending clinical work of the professional, or of the clinic: results to review, orders
  * still without a result, results the patient was not told about and open follow-ups. A result
  * stays here until someone reviews it, whatever happens to the patient's appointments.
@@ -137,7 +150,8 @@ export function ClinicalInboxView() {
                   size="sm"
                   onClick={() =>
                     setActing({
-                      order: { ...result.order, currentResult: { id: result.id, communicatedAt: null } },
+                      // The whole result goes along: the dialog shows it before any decision.
+                      order: { ...result.order, currentResult: result },
                       action: 'review',
                     })
                   }
@@ -209,7 +223,9 @@ export function ClinicalInboxView() {
         </>
       )}
 
-      {acting && <OrderActionDialog order={acting.order} action={acting.action} onClose={() => setActing(null)} />}
+      {acting && data && (
+        <OrderActionDialog {...currentInboxOrder(data, acting.order)} action={acting.action} onClose={() => setActing(null)} />
+      )}
       {closing && <CloseFollowUpDialog followUp={closing} onClose={() => setClosing(null)} />}
     </div>
   );

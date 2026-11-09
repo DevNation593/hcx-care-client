@@ -458,7 +458,18 @@ export function ClinicalOrdersTab({ patientId }: { patientId: string }) {
           </Button>
         </CardHeader>
         <CardContent>
-          {looseFollowUps.length === 0 ? (
+          {followUpsQuery.isLoading ? (
+            <Skeleton className="h-12 w-full" />
+          ) : followUpsQuery.isError ? (
+            <Alert variant="destructive">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>No fue posible cargar los seguimientos: puede haber pendientes que no se ven aquí.</span>
+                <Button size="sm" variant="outline" onClick={() => void followUpsQuery.refetch()}>
+                  Reintentar
+                </Button>
+              </div>
+            </Alert>
+          ) : looseFollowUps.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin seguimientos.</p>
           ) : (
             <ul className="space-y-2">
@@ -475,7 +486,12 @@ export function ClinicalOrdersTab({ patientId }: { patientId: string }) {
         <NewFollowUpDialog patientId={patientId} onClose={() => setCreatingFollowUp(false)} />
       )}
       {acting && (
-        <OrderActionDialog order={acting.order} action={acting.action} onClose={() => setActing(null)} />
+        <OrderActionDialog
+          // The order as it is now: after a version conflict the list reloads and the dialog follows.
+          order={orders.find((order) => order.id === acting.order.id) ?? acting.order}
+          action={acting.action}
+          onClose={() => setActing(null)}
+        />
       )}
       {closingFollowUp && (
         <CloseFollowUpDialog followUp={closingFollowUp} onClose={() => setClosingFollowUp(null)} />

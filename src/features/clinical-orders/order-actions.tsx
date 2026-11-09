@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { Download } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -24,13 +26,15 @@ import {
   useReviewClinicalResult,
   useSendToLab,
 } from '@/hooks/useClinicalOrders';
-import { usePatientFiles } from '@/hooks/usePatientFiles';
+import { useDownloadPatientFile, usePatientFiles } from '@/hooks/usePatientFiles';
+import { formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import {
   CONTACT_CHANNEL_LABELS,
   REVIEW_DECISION_LABELS,
   type ClinicalFollowUp,
   type ClinicalOrderStatus,
+  type ClinicalResult,
   type PatientContactChannel,
   type ResultReviewDecision,
 } from '@/types/clinical-orders';
@@ -44,7 +48,42 @@ export interface OrderRef {
   version: number;
   provider?: string | null;
   externalReference?: string | null;
-  currentResult?: { id: string; communicatedAt: string | null } | null;
+  /** The last version of the result: what a review or a communication is about. */
+  currentResult?: (Pick<ClinicalResult, 'id' | 'communicatedAt'> & Partial<ClinicalResult>) | null;
+}
+
+/**
+ * The report a professional reviews or tells the patient about, as the laboratory issued it, with
+ * its file to open. A decision is never recorded on a result the dialog did not show.
+ */
+function ResultSummary({ patientId, result }: { patientId: string; result: NonNullable<OrderRef['currentResult']> }) {
+  const download = useDownloadPatientFile(patientId);
+  return (
+    <section aria-label="Resultado" className="space-y-2 rounded-md border bg-muted/40 p-3 text-sm">
+      <p className="font-medium">
+        Resultado{result.version && result.version > 1 ? ` (versión ${result.version})` : ''}
+        {result.receivedAt && ` · recibido el ${formatDate(result.receivedAt)}`}
+        {result.studyDate && ` · estudio del ${formatDate(result.studyDate)}`}
+        {result.issuedBy && ` · ${result.issuedBy}`}
+      </p>
+      {result.content ? (
+        <p className="max-h-60 overflow-y-auto whitespace-pre-wrap">{result.content}</p>
+      ) : (
+        <p className="text-muted-foreground">Sin texto transcrito: el informe está en el archivo.</p>
+      )}
+      {result.file && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={download.isPending}
+          onClick={() => download.mutate(result.file!)}
+        >
+          <Download className="mr-1 h-4 w-4" /> Abrir {result.file.fileName}
+        </Button>
+      )}
+    </section>
+  );
 }
 
 export type OrderAction =
@@ -163,18 +202,24 @@ export function FollowUpFields({
 }
 
 /**
- * The dialog of one step of an order. Each step sends the version of the order the user saw: if
- * someone else moved it meanwhile, the API answers with a conflict and the list reloads.
+ * The dialog of one step of an order. `order` is the current one, read from the list it came
+ * from: when someone else moves the order meanwhile (the API answers a version conflict and the
+ * list reloads), the dialog takes the new version and keeps what was typed, or says the step no
+ * longer applies. `gone` says the order left the list it was opened from.
  */
 export function OrderActionDialog({
   order,
   action,
   onClose,
+  gone = false,
 }: {
   order: OrderRef;
   action: OrderAction;
   onClose: () => void;
+  gone?: boolean;
 }) {
+  // What the user opened the dialog on: a later change to it is shown, never silently applied.
+  const [opened] = useState(() => ({ version: order.version, resultId: order.currentResult?.id }));
   const me = useAuthStore((state) => state.user);
   const patientId = order.patientId;
   const sample = useCollectSample(patientId);
@@ -199,6 +244,12 @@ export function OrderActionDialog({
   const [endStatus, setEndStatus] = useState<'CANCELLED' | 'NOT_PERFORMED'>('CANCELLED');
 
   const resultId = order.currentResult?.id;
+  const aboutResult = action === 'review' || action === 'communicate';
+  const stale =
+    gone ||
+    !availableActions(order).includes(action) ||
+    (aboutResult && resultId !== opened.resultId);
+  const changed = !stale && order.version !== opened.version;
   const needsFollowUp = decision !== 'NO_FURTHER_ACTION';
   // Closing without a recorded contact with the patient needs the reason.
   const completionNeedsNote = action === 'complete' && order.status !== 'PATIENT_CONTACTED';
@@ -307,6 +358,20 @@ export function OrderActionDialog({
         </DialogHeader>
 
         <div className="space-y-3">
+          {stale && (
+            <Alert variant="warning">
+              La orden cambió mientras tenías abierto este diálogo y este paso ya no aplica. Cierra y revisa su estado actual.
+            </Alert>
+          )}
+          {changed && (
+            <Alert variant="warning">
+              Alguien más actualizó la orden mientras la tenías abierta. Revisa su estado; lo que escribiste se conserva y se
+              enviará sobre la versión actual.
+            </Alert>
+          )}
+          {aboutResult && order.currentResult && !stale && (
+            <ResultSummary patientId={patientId} result={order.currentResult} />
+          )}
           {action === 'send' && (
             <>
               <Field id="order-provider" label="Laboratorio o proveedor">
@@ -423,7 +488,7 @@ export function OrderActionDialog({
           <Button variant="outline" onClick={onClose} disabled={pending}>
             Cancelar
           </Button>
-          <Button onClick={submit} disabled={pending || invalid}>
+          <Button onClick={submit} disabled={pending || invalid || stale}>
             {ACTION_LABELS[action]}
           </Button>
         </DialogFooter>
