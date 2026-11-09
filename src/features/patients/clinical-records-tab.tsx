@@ -25,6 +25,7 @@ import {
 import { issuesByField, toRecordData, type FormValues } from '@/features/clinical-forms/form-values';
 import { describeModule } from '@/features/admin/specialties/module-labels';
 import { useClinicalModules } from '@/hooks/useClinicalModules';
+import { LEGACY_ORDER_MODULE_KEY } from '@/types/clinical-orders';
 import { ProcedureConsents } from './procedure-consents';
 import { usePatientEncounters } from '@/hooks/useEncounters';
 import {
@@ -134,7 +135,9 @@ export function ClinicalRecordsTab({
         patientId={patientId}
         configurationStatus={configurationStatus}
         configurationError={errorMessage(modulesQuery.error)}
-        modules={recordable}
+        // Orders are placed from their own tab, with results and review; old order records keep
+        // their addenda through `latestRecordable`.
+        modules={recordable.filter((definition) => definition.moduleKey !== LEGACY_ORDER_MODULE_KEY)}
         isSaving={createRecord.isPending}
         signsOnSave={!openEncounter}
         onSubmit={(payload) =>

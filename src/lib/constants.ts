@@ -150,6 +150,19 @@ export const API_ENDPOINTS = {
   USER_MFA_RESET: (tenantId: string, userId: string) =>
     `/tenants/${requiredPathSegment(tenantId, 'tenant')}/users/${requiredPathSegment(userId, 'user')}/mfa/reset`,
 
+  // Clinical orders, results and follow-ups
+  PATIENT_CLINICAL_ORDERS: (tenantId: string, patientId: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/patients/${requiredPathSegment(patientId, 'patient')}/clinical-orders`,
+  PATIENT_CLINICAL_FOLLOW_UPS: (tenantId: string, patientId: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/patients/${requiredPathSegment(patientId, 'patient')}/clinical-follow-ups`,
+  CLINICAL_ORDER_ACTION: (tenantId: string, orderId: string, action: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/clinical-orders/${requiredPathSegment(orderId, 'order')}/${action}`,
+  CLINICAL_RESULT_ACTION: (tenantId: string, resultId: string, action: 'review' | 'communication') =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/clinical-results/${requiredPathSegment(resultId, 'result')}/${action}`,
+  CLINICAL_FOLLOW_UP: (tenantId: string, followUpId: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/clinical-follow-ups/${requiredPathSegment(followUpId, 'follow-up')}`,
+  CLINICAL_INBOX: (tenantId: string) => `/tenants/${requiredPathSegment(tenantId, 'tenant')}/clinical-inbox`,
+
   // Treatments, consent templates and treatment sessions
   TREATMENTS: (tenantId: string) => `/tenants/${tenantId}/treatments`,
   TREATMENT: (tenantId: string, id: string) => `/tenants/${tenantId}/treatments/${id}`,
@@ -318,6 +331,10 @@ export const QUERY_KEYS = {
   PATIENT_SPECIALTY_RECORD: (patientId: string, recordId: string) =>
     ['patients', patientId, 'specialty-records', recordId],
   PATIENT_ENCOUNTERS: (patientId: string) => ['patients', patientId, 'encounters'],
+  PATIENT_CLINICAL_ORDERS: (patientId: string) => ['patients', patientId, 'clinical-orders'],
+  PATIENT_CLINICAL_FOLLOW_UPS: (patientId: string) => ['patients', patientId, 'clinical-follow-ups'],
+  CLINICAL_INBOX: (scope: string) => ['clinical-inbox', scope] as const,
+  CLINICAL_INBOX_ALL: ['clinical-inbox'] as const,
   PATIENT_FILES: (patientId: string) => ['patients', patientId, 'files'],
   PATIENT_PROCEDURE_CONSENTS: (patientId: string) => ['patients', patientId, 'procedure-consents'],
   PROCEDURE_CONSENT_TEMPLATES: ['procedure-consent-templates'] as const,

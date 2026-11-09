@@ -307,6 +307,7 @@ describe('patient detail treating-team wiring', () => {
       'Equipo tratante',
       'Historia Clínica',
       'Registros clínicos',
+      'Órdenes y resultados',
       'Tratamientos',
       'Archivos',
       'Citas',

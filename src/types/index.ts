@@ -377,6 +377,10 @@ export interface TenantSettings {
   reminderRules: ReminderRule[];
   timezone: string;
   locale: string;
+  /** Days a received result may wait for review before the clinical inbox flags it. */
+  resultReviewAlertDays?: number;
+  /** Days an order may wait for its result before the clinical inbox flags it. */
+  orderResultAlertDays?: number;
   /** Two-factor sign-in required for the account holder and the professionals. */
   requireMfa?: boolean;
 }
