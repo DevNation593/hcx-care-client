@@ -5,11 +5,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BillingProfilePicker } from '@/features/cash/billing-profile-picker';
+import { PatientOwnBilling } from '@/features/cash/patient-own-billing';
 import {
   useLinkBillingProfile,
   usePatientBillingProfiles,
   useUnlinkBillingProfile,
 } from '@/hooks/useBillingProfiles';
+import { usePatient } from '@/hooks/usePatients';
 import { useMyPermissions } from '@/hooks/usePermissions';
 import { useAuthStore } from '@/store/authStore';
 import { isMasterRole } from '@/types/guards';
@@ -21,6 +23,8 @@ export function PatientBillingProfiles({ patientId }: { patientId: string }) {
   const { can } = useMyPermissions();
   const canManage = can('billing.create', !!user && isMasterRole(user.role));
   const { data, isPending, isError } = usePatientBillingProfiles(patientId);
+  const { data: patient } = usePatient(patientId);
+  const patientName = patient ? `${patient.firstName} ${patient.lastName}`.trim() : '';
   const link = useLinkBillingProfile(patientId);
   const unlink = useUnlinkBillingProfile(patientId);
   const [adding, setAdding] = useState(false);
@@ -42,7 +46,12 @@ export function PatientBillingProfiles({ patientId }: { patientId: string }) {
         ) : isError || !data ? (
           <p className="text-sm text-destructive">No se pudieron cargar los perfiles de facturación.</p>
         ) : data.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Sin datos de facturación vinculados.</p>
+          <>
+            <p className="text-sm text-muted-foreground">Sin datos de facturación vinculados.</p>
+            {canManage && patientName && (
+              <PatientOwnBilling patient={{ id: patientId, name: patientName }} onReady={() => undefined} />
+            )}
+          </>
         ) : (
           <ul className="space-y-2">
             {data.map((profile) => (

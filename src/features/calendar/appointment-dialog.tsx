@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 interface AppointmentDialogProps {
   open: boolean;
@@ -65,6 +66,7 @@ export function AppointmentDialog({
   const createAppointment = useCreateAppointment();
   const updateAppointment = useUpdateAppointment(appointment?.id ?? '');
   const patients = usePatients();
+  const terms = usePatientTerms();
   const specialties = useTenantSpecialties();
   const { data: branches = [] } = useBranches();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -184,13 +186,13 @@ export function AppointmentDialog({
         <DialogHeader>
           <DialogTitle>{appointment ? 'Editar cita' : 'Nueva cita'}</DialogTitle>
           <DialogDescription>
-            {appointment ? 'Actualiza la cita y su profesional tratante.' : 'Programa una nueva cita con un paciente.'}
+            {appointment ? 'Actualiza la cita y su profesional tratante.' : `Programa una nueva cita con un ${terms.one}.`}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="patientId">Paciente</Label>
+            <Label htmlFor="patientId">{terms.One}</Label>
             <select
               id="patientId"
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -204,15 +206,15 @@ export function AppointmentDialog({
               disabled={patients.isLoading}
               aria-required="true"
             >
-              <option value="">Seleccionar paciente</option>
+              <option value="">Seleccionar {terms.one}</option>
               {patients.data?.map((patient) => (
                 <option key={patient.id} value={patient.id}>
                   {patient.firstName} {patient.lastName}
                 </option>
               ))}
             </select>
-            {patients.isLoading && <p role="status" className="text-sm text-muted-foreground">Cargando pacientes...</p>}
-            {patients.isError && <p role="alert" className="text-sm text-destructive">No se pudieron cargar los pacientes.</p>}
+            {patients.isLoading && <p role="status" className="text-sm text-muted-foreground">Cargando {terms.many}...</p>}
+            {patients.isError && <p role="alert" className="text-sm text-destructive">No se pudieron cargar los {terms.many}.</p>}
             {errors.patientId && <p role="alert" className="text-sm text-destructive">{errors.patientId.message}</p>}
           </div>
 

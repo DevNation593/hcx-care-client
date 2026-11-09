@@ -17,6 +17,7 @@ import type { ApiError } from '@/types';
 import type { Order, OrderItem } from '@/types/cash';
 import { centsToAmount, formatMoney, parseCents } from './money';
 import { ProductPicker } from './product-picker';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 interface OrderItemsProps {
   order: Order;
@@ -195,6 +196,7 @@ function DiscountEditor({
 }
 
 export function OrderItems({ order, lockedReason, onConflict }: OrderItemsProps) {
+  const terms = usePatientTerms();
   const { can } = useMyPermissions();
   const { isEnabled } = useSections();
   const canEdit = can('billing.create');
@@ -228,7 +230,7 @@ export function OrderItems({ order, lockedReason, onConflict }: OrderItemsProps)
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Paciente</TableHead>
+              <TableHead>{terms.One}</TableHead>
               <TableHead>Concepto</TableHead>
               <TableHead className="text-right">Cant.</TableHead>
               <TableHead className="text-right">Precio</TableHead>

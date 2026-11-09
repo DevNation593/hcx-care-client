@@ -29,6 +29,7 @@ import { downloadBlob, formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { ApiError } from '@/types';
 import type { ProcedureConsent, SessionPatient } from '@/types/treatments';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 const STATUS_VARIANT = {
   PRESENTED: 'warning',
@@ -65,6 +66,7 @@ function TakeConsentDialog({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const terms = usePatientTerms();
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_PROCEDURE_CONSENTS(patientId) });
   const templates = useQuery({
@@ -180,7 +182,7 @@ function TakeConsentDialog({
                 disabled={!templateId || procedureName.trim().length < 3}
                 loading={present.isPending}
               >
-                Mostrar al paciente
+                Mostrar al {terms.one}
               </Button>
             </div>
           </form>
@@ -213,7 +215,7 @@ function TakeConsentDialog({
         {refusing && document && (
           <ReasonDialog
             title="Registrar rechazo"
-            description="El paciente no acepta el procedimiento. Queda registrado con el motivo; la atención sigue abierta."
+            description={`El ${terms.one} no acepta el procedimiento. Queda registrado con el motivo; la atención sigue abierta.`}
             confirmLabel="Registrar rechazo"
             onConfirm={async (reason) => {
               await procedureConsentsApi.refuse(document.id, reason);
@@ -241,6 +243,7 @@ export function ProcedureConsents({
   const userId = useAuthStore((state) => state.user?.id);
   const queryClient = useQueryClient();
   const consents = useProcedureConsents(patientId);
+  const terms = usePatientTerms();
   const [taking, setTaking] = useState(false);
   const [resuming, setResuming] = useState<ProcedureConsent | null>(null);
   const [revoking, setRevoking] = useState<ProcedureConsent | null>(null);
@@ -348,7 +351,7 @@ export function ProcedureConsents({
       {revoking && (
         <ReasonDialog
           title="Revocar consentimiento"
-          description="El paciente retira su consentimiento. Queda registrado con el motivo."
+          description={`El ${terms.one} retira su consentimiento. Queda registrado con el motivo.`}
           confirmLabel="Revocar consentimiento"
           onConfirm={async (reason) => {
             await procedureConsentsApi.revoke(revoking.id, reason);

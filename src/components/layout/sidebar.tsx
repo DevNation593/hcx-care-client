@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { useSections } from '@/hooks/useSections';
 import { useMyPermissions } from '@/hooks/usePermissions';
+import { isHealthSpecialtyCode, usePatientTerms } from '@/hooks/usePatientTerms';
 import { CASHIER_PATHS } from '@/lib/cashier-routes';
 import {
   canAccessClinicalNotes,
@@ -74,14 +75,20 @@ export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const { isEnabled } = useSections();
   const { can } = useMyPermissions();
+  const terms = usePatientTerms();
   const [closedModules, setClosedModules] = useState<string[]>([]);
 
   const managesUsers = !!user && canManageUsers(user);
   const managesSubscription = !!user && canManageSubscription(user);
   const isMaster = !!user && isMasterRole(user.role);
   const isCashier = !!user && isCashierRole(user.role);
-  // Results to review and follow-ups are clinical content, like the record itself.
-  const seesClinical = !!user && canAccessClinicalNotes(user) && can('clinical_records.view');
+  // Results to review and follow-ups are clinical content, like the record itself; an aesthetic
+  // profile is not health care and the API refuses it the inbox (HEALTH_SPECIALTY_REQUIRED).
+  const seesClinical =
+    !!user &&
+    canAccessClinicalNotes(user) &&
+    isHealthSpecialtyCode(user.professionalProfile?.specialty?.code) &&
+    can('clinical_records.view');
 
   const navigation: NavEntry[] = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, show: !isCashier },
@@ -93,7 +100,7 @@ export function Sidebar() {
         { name: 'Actividades', href: '/tasks', icon: ClipboardList, show: isEnabled('core.agenda.tasks') },
       ],
     },
-    { name: 'Pacientes', href: '/patients', icon: Users, show: isEnabled('core.patients.records') },
+    { name: terms.Many, href: '/patients', icon: Users, show: isEnabled('core.patients.records') },
     {
       name: 'Pendientes clínicos',
       href: '/clinical/pending',

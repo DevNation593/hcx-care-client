@@ -455,3 +455,29 @@ describe('Sidebar section visibility', () => {
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
   });
 });
+
+describe('Sidebar for an aesthetic professional', () => {
+  const professional = (code: string) =>
+    ({
+      ...admin,
+      role: UserRole.PROFESIONAL,
+      professionalProfile: { isActive: true, specialty: { id: code, code, name: code, isActive: true } },
+    }) as unknown as User;
+
+  it('calls them clients and leaves out the clinical inbox the API refuses them', async () => {
+    useAuthStore.setState({ user: professional('AESTHETICS') });
+    renderSidebar();
+
+    expect(await screen.findByRole('link', { name: 'Clientes' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Pacientes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Pendientes clínicos' })).not.toBeInTheDocument();
+  });
+
+  it('keeps patients and the clinical inbox for a health professional', async () => {
+    useAuthStore.setState({ user: professional('PSYCHOLOGY') });
+    renderSidebar();
+
+    expect(await screen.findByRole('link', { name: 'Pacientes' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Pendientes clínicos' })).toBeInTheDocument();
+  });
+});

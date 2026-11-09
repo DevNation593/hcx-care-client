@@ -1,7 +1,13 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SessionMedia, TreatmentSessionDetail } from '@/types/treatments';
 import { CloseSummaryStep } from './close-summary-step';
+
+// Rendered without a QueryClient: name people as in a clinical practice.
+vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePatientTerms')>();
+  return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
+});
 
 const photo = (id: string, phase: SessionMedia['phase']) => ({ id, phase }) as SessionMedia;
 

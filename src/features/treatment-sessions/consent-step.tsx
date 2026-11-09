@@ -32,6 +32,7 @@ import type {
   SignConsentInput,
   TreatmentSessionDetail,
 } from '@/types/treatments';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 export const DOCUMENT_STATUS_LABELS: Record<ConsentDocumentStatus, string> = {
   PRESENTED: 'Presentado',
@@ -92,6 +93,7 @@ export interface ConsentStepProps {
 /** Shows the consent to the patient, collects the signature or the refusal, and shows the result. */
 export function ConsentStep({ session, readOnly = false, onDone }: ConsentStepProps) {
   const commands = useSessionCommand(session.id);
+  const terms = usePatientTerms();
   // The body comes only from presenting: the session detail lists documents without it.
   const [presented, setPresented] = useState<ConsentDocument | null>(null);
   // What the sign response returned, kept until the session detail reports it.
@@ -180,7 +182,7 @@ export function ConsentStep({ session, readOnly = false, onDone }: ConsentStepPr
       {canPresent && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Entrega el dispositivo al paciente para que lea el consentimiento completo antes de firmar.
+            Entrega el dispositivo al {terms.one} para que lea el consentimiento completo antes de firmar.
           </p>
           <Button
             size="lg"
@@ -189,7 +191,7 @@ export function ConsentStep({ session, readOnly = false, onDone }: ConsentStepPr
             loading={commands.presentConsent.isPending}
           >
             <FileText className="h-4 w-4" />
-            Mostrar consentimiento al paciente
+            Mostrar consentimiento al {terms.one}
           </Button>
           {presentError && <Alert variant="destructive">{presentError}</Alert>}
         </div>
@@ -254,6 +256,7 @@ function ConsentReader({
   onRefuse: (reason: string) => Promise<void>;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const terms = usePatientTerms();
   const [reachedEnd, setReachedEnd] = useState(false);
   const [refusing, setRefusing] = useState(false);
   const titleId = useId();
@@ -303,7 +306,7 @@ function ConsentReader({
       {refusing && (
         <ReasonDialog
           title="Rechazar consentimiento"
-          description="El paciente no acepta el procedimiento. La atención termina y el motivo queda registrado."
+          description={`El ${terms.one} no acepta el procedimiento. La atención termina y el motivo queda registrado.`}
           confirmLabel="Rechazar consentimiento"
           onConfirm={onRefuse}
           onClose={() => setRefusing(false)}
@@ -334,6 +337,7 @@ export function SignForm({
   withWitness?: boolean;
 }) {
   const initialRole: ConsentSignerRole = isMinor(patient.dateOfBirth) ? 'REPRESENTATIVE' : 'PATIENT';
+  const terms = usePatientTerms();
   const [role, setRole] = useState<ConsentSignerRole>(initialRole);
   const [fields, setFields] = useState(() => prefill(patient, initialRole));
   const [understood, setUnderstood] = useState(false);
@@ -419,7 +423,7 @@ export function SignForm({
           >
             {(Object.keys(SIGNER_ROLE_LABELS) as ConsentSignerRole[]).map((value) => (
               <option key={value} value={value}>
-                {SIGNER_ROLE_LABELS[value]}
+                {value === 'PATIENT' ? terms.One : SIGNER_ROLE_LABELS[value]}
               </option>
             ))}
           </select>
@@ -459,7 +463,7 @@ export function SignForm({
         {isRepresentative && (
           <div>
             <Label htmlFor="consent-signer-relationship">
-              Relación con el paciente<span className="text-destructive"> *</span>
+              Relación con el {terms.one}<span className="text-destructive"> *</span>
             </Label>
             <Input
               id="consent-signer-relationship"
@@ -590,6 +594,7 @@ function SignedConsent({
   onRevoke: (reason: string) => Promise<unknown>;
 }) {
   const [downloading, setDownloading] = useState(false);
+  const terms = usePatientTerms();
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
 
@@ -623,7 +628,7 @@ function SignedConsent({
           <>
             <dt className="text-muted-foreground">Firmó</dt>
             <dd>
-              {signer.signerName} · {SIGNER_ROLE_LABELS[signer.signerRole]}
+              {signer.signerName} · {signer.signerRole === 'PATIENT' ? terms.One : SIGNER_ROLE_LABELS[signer.signerRole]}
               {signer.relationship ? ` (${signer.relationship})` : ''}
             </dd>
           </>
@@ -653,7 +658,7 @@ function SignedConsent({
       {revoking && (
         <ReasonDialog
           title="Revocar consentimiento"
-          description="El paciente retira su consentimiento. Si la atención no ha comenzado, termina; otras atenciones que lo reutilizaban vuelven a pedir consentimiento."
+          description={`El ${terms.one} retira su consentimiento. Si la atención no ha comenzado, termina; otras atenciones que lo reutilizaban vuelven a pedir consentimiento.`}
           confirmLabel="Revocar consentimiento"
           onConfirm={onRevoke}
           onClose={() => setRevoking(false)}

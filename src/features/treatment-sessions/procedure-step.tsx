@@ -24,6 +24,7 @@ import {
   type TreatmentSessionStatus,
 } from '@/types/treatments';
 import { ReasonDialog } from './consent-step';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 // The limit of the API's DTO.
 const PROCEDURE_NOTES_MAX = 10000;
@@ -53,6 +54,7 @@ export function ProcedureStep({
   onDone,
 }: ProcedureStepProps) {
   const commands = useSessionCommand(session.id);
+  const terms = usePatientTerms();
   const [failure, setFailure] = useState<ApiError | null>(null);
   const [cancelling, setCancelling] = useState(false);
   // Closing and marking an absence cannot be undone: both ask first.
@@ -200,7 +202,7 @@ export function ProcedureStep({
       {confirming === 'noShow' && (
         <ConfirmDialog
           title="Registrar inasistencia"
-          description="El paciente no asistió y la atención termina. No se puede deshacer."
+          description={`El ${terms.one} no asistió y la atención termina. No se puede deshacer.`}
           confirmLabel="Confirmar inasistencia"
           onConfirm={() => void run(() => commands.noShow.mutateAsync(), onDone)}
           onClose={() => setConfirming(null)}

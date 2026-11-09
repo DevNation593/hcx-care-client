@@ -6,6 +6,12 @@ import type { ClinicalModuleDefinition, PatientClinicalAlert } from '@/types/cli
 import { ClinicalRecordsTab } from './clinical-records-tab';
 import { PatientClinicalAlerts } from './patient-clinical-alerts';
 
+// Rendered without a QueryClient: name people as in a clinical practice.
+vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePatientTerms')>();
+  return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
+});
+
 const hooks = vi.hoisted(() => ({
   records: [] as unknown[],
   modules: [] as unknown[],
@@ -17,7 +23,9 @@ const hooks = vi.hoisted(() => ({
 }));
 
 // Procedure consents have their own tests.
-vi.mock('./procedure-consents', () => ({ ProcedureConsents: () => null }));
+vi.mock('./procedure-consents', () => ({
+  ProcedureConsents: () => <p>Consentimientos de procedimientos</p>,
+}));
 vi.mock('@/hooks/useSpecialtyRecords', () => ({
   usePatientSpecialtyRecords: () => ({ data: hooks.records, isLoading: false }),
   usePatientClinicalAlerts: () => ({ data: hooks.alerts }),
@@ -367,6 +375,23 @@ describe('ClinicalRecordsTab', () => {
 
       expect(screen.getByText(/queda firmado al instante/)).toBeInTheDocument();
     });
+  });
+
+  it('takes procedure consents only for a health professional', () => {
+    const { unmount } = render(<ClinicalRecordsTab patientId="patient-1" />);
+    expect(screen.getByText('Consentimientos de procedimientos')).toBeInTheDocument();
+    unmount();
+
+    // An aesthetic professional takes consents inside a treatment session; the API refuses this one.
+    useAuthStore.setState({
+      user: {
+        id: 'me',
+        tenantId: 'tenant-1',
+        professionalProfile: { isActive: true, specialty: { code: 'AESTHETICS' } },
+      } as never,
+    });
+    render(<ClinicalRecordsTab patientId="patient-1" />);
+    expect(screen.queryByText('Consentimientos de procedimientos')).not.toBeInTheDocument();
   });
 
   it('says so when the patient has no records', () => {

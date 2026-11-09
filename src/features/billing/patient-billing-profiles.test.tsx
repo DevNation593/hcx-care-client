@@ -15,6 +15,14 @@ vi.mock('@/hooks/useBillingProfiles', () => ({
   useUnlinkBillingProfile: () => ({ mutate: mocks.unlink, isPending: false }),
 }));
 vi.mock('@/hooks/usePermissions', () => ({ useMyPermissions: () => ({ can: mocks.can }) }));
+vi.mock('@/hooks/usePatients', () => ({
+  usePatient: () => ({ data: { firstName: 'Ana', lastName: 'Paz' } }),
+}));
+vi.mock('@/features/cash/patient-own-billing', () => ({
+  PatientOwnBilling: ({ patient }: { patient: { id: string; name: string } }) => (
+    <button type="button">Facturar a nombre de {patient.name}</button>
+  ),
+}));
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (select: (state: { user: { role: string } }) => unknown) =>
     select({ user: { role: 'PROFESSIONAL' } }),
@@ -66,6 +74,14 @@ describe('PatientBillingProfiles', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Desvincular Luis Mora' }));
 
     expect(mocks.unlink).toHaveBeenCalledWith('bp-2');
+  });
+
+  it("offers to bill in the patient's own name when nothing is linked", () => {
+    mocks.profiles.data = [];
+    render(<PatientBillingProfiles patientId="patient-1" />);
+
+    expect(screen.getByText('Sin datos de facturación vinculados.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Facturar a nombre de Ana Paz' })).toBeInTheDocument();
   });
 
   it('links the profile chosen from Agregar', () => {

@@ -26,8 +26,10 @@ import { formatDate, formatRelativeDate } from '@/lib/utils';
 import { APPOINTMENT_STATUS_COLORS, TASK_PRIORITY_COLORS } from '@/lib/constants';
 import Link from 'next/link';
 import { useSections } from '@/hooks/useSections';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 export default function DashboardPage() {
+  const terms = usePatientTerms();
   const queryClient = useQueryClient();
   const { isEnabled } = useSections();
   const calendarOn = isEnabled('core.agenda.calendar');
@@ -132,7 +134,7 @@ export default function DashboardPage() {
             <Link href="/patients/new">
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
-                Nuevo Paciente
+                Nuevo {terms.One}
               </Button>
             </Link>
           )}
@@ -195,7 +197,7 @@ export default function DashboardPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    Pacientes Activos
+                    {terms.Many} Activos
                   </CardTitle>
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
@@ -337,7 +339,7 @@ export default function DashboardPage() {
                         </div>
                         {task.patient && (
                           <p className="text-sm text-muted-foreground">
-                            Paciente: {task.patient.firstName} {task.patient.lastName}
+                            {terms.One}: {task.patient.firstName} {task.patient.lastName}
                           </p>
                         )}
                         {task.dueDate && (
@@ -381,7 +383,7 @@ export default function DashboardPage() {
               <Link href="/patients/new" className="block">
                 <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
                   <Plus className="h-6 w-6" />
-                  <span>Nuevo Paciente</span>
+                  <span>Nuevo {terms.One}</span>
                 </Button>
               </Link>
             )}
@@ -397,7 +399,7 @@ export default function DashboardPage() {
               <Link href="/patients" className="block">
                 <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
                   <Users className="h-6 w-6" />
-                  <span>Ver Pacientes</span>
+                  <span>Ver {terms.Many}</span>
                 </Button>
               </Link>
             )}

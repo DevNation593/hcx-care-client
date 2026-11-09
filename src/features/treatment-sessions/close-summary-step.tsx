@@ -8,11 +8,12 @@ import {
   type TreatmentSessionStatus,
 } from '@/types/treatments';
 import { DOCUMENT_STATUS_LABELS, formatSignedAt } from './consent-step';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 // Statuses that end a session without closing it clinically.
 const ENDED_NOTICES: Partial<Record<TreatmentSessionStatus, string>> = {
   CANCELLED: 'La atención fue cancelada.',
-  NO_SHOW: 'El paciente no asistió.',
+  NO_SHOW: 'El {one} no asistió.',
   CONSENT_REFUSED: 'Consentimiento rechazado.',
   CONSENT_REVOKED: 'Consentimiento revocado.',
 };
@@ -33,6 +34,7 @@ function consentState(session: TreatmentSessionDetail): string {
 
 /** A read-only summary of how the session stands; it changes nothing. */
 export function CloseSummaryStep({ session }: { session: TreatmentSessionDetail }) {
+  const terms = usePatientTerms();
   const count = (phase: 'BEFORE' | 'AFTER') =>
     session.media.filter((media) => media.phase === phase).length;
   const times: [string, string | null][] = [
@@ -44,7 +46,7 @@ export function CloseSummaryStep({ session }: { session: TreatmentSessionDetail 
   return (
     <div className="space-y-4">
       {ENDED_NOTICES[session.status] ? (
-        <Alert variant="default">{ENDED_NOTICES[session.status]}</Alert>
+        <Alert variant="default">{ENDED_NOTICES[session.status]?.replace('{one}', terms.one)}</Alert>
       ) : (
         !['CLINICAL_COMPLETE', 'BILLING_PENDING', 'BILLED', 'BILLING_FAILED'].includes(session.status) && (
           <Alert variant="default">

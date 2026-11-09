@@ -13,6 +13,7 @@ import { billingApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
 import type { Invoice } from '@/types';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 const STATUS_LABELS: Record<Invoice['status'], string> = {
   PENDING: 'Pendiente', ISSUED: 'Emitida', FAILED: 'Fallida', VOIDED: 'Anulada',
@@ -20,6 +21,7 @@ const STATUS_LABELS: Record<Invoice['status'], string> = {
 const isWebUrl = (value?: string) => !!value && /^https?:\/\//i.test(value);
 
 function HistoricalPatientInvoices({ patientId }: { patientId: string }) {
+  const terms = usePatientTerms();
   const invoices = useQuery({
     queryKey: [...QUERY_KEYS.TENANT, 'billing', 'invoices', { patientId }],
     queryFn: () => billingApi.listInvoices({ patientId }),
@@ -45,7 +47,7 @@ function HistoricalPatientInvoices({ patientId }: { patientId: string }) {
         <Link href="/admin/billing" className="text-sm text-primary underline">Ir a Facturación</Link>
       </div>
       {items.length === 0 ? (
-        <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">Este paciente aún no tiene facturas.</CardContent></Card>
+        <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">Este {terms.one} aún no tiene facturas.</CardContent></Card>
       ) : pagination.pageItems.map((invoice) => (
         <Card key={invoice.id}>
           <CardContent className="flex flex-wrap items-start justify-between gap-3 pt-4">

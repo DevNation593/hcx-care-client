@@ -12,8 +12,10 @@ import { formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { isMasterRole } from '@/types/guards';
 import { formatMoney } from './money';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 export function BillableSessionsTab({ branchId }: { branchId: string }) {
+  const terms = usePatientTerms();
   const router = useRouter();
   const { data: sessions, isPending, isError } = useBillableSessions({ branchId });
   const createOrder = useCreateOrder();
@@ -51,7 +53,7 @@ export function BillableSessionsTab({ branchId }: { branchId: string }) {
           <TableHeader>
             <TableRow>
               {canCharge && <TableHead className="w-10" />}
-              <TableHead>Paciente</TableHead>
+              <TableHead>{terms.One}</TableHead>
               <TableHead>Tratamiento</TableHead>
               <TableHead>Fecha</TableHead>
               <TableHead className="text-right">Precio</TableHead>
