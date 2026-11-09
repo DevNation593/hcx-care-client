@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
+import { statusMessage } from './error-messages';
 
 const interceptor = vi.hoisted(() => ({
   onRejected: (error: unknown): Promise<never> => Promise.reject(error),
@@ -67,7 +68,7 @@ describe('ApiClient error normalization', () => {
   it('keeps HTTP status even when the server returns no body', async () => {
     interceptor.responseData = null;
     await expect(apiClient.post('/onboarding/tenants', {})).rejects.toMatchObject({
-      status: 409, message: 'Ocurrió un error',
+      status: 409, message: statusMessage(409),
     });
   });
 
@@ -82,7 +83,7 @@ describe('ApiClient error normalization', () => {
       await apiClient.post('/onboarding/tenants', {});
       throw new Error('Expected 409');
     } catch (error) {
-      expect(error).toMatchObject({ status: 409, message: 'Ocurrió un error' });
+      expect(error).toMatchObject({ status: 409, message: statusMessage(409) });
       expect(error).not.toHaveProperty('code');
       expect(error).not.toHaveProperty('field');
       expect(error).not.toHaveProperty('details');
@@ -111,7 +112,7 @@ describe('ApiClient error normalization', () => {
     interceptor.status = 500;
     interceptor.responseData = new Blob(['<html>Bad gateway</html>'], { type: 'text/html' });
     await expect(apiClient.post('/tenants/t/consent-documents/d/pdf', {})).rejects.toMatchObject({
-      status: 500, message: 'Ocurrió un error',
+      status: 500, message: statusMessage(500),
     });
   });
 

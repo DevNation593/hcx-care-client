@@ -19,6 +19,7 @@ import { formatMoney } from './labels';
 import { planDefaults } from './plan-defaults';
 import { SectionChecklist } from './section-checklist';
 import { TemporaryPasswordNotice } from './temporary-password-notice';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 const TYPE_LABELS: Record<TenantType, string> = {
   [TenantType.PERSONAL]: 'Personal',
@@ -266,7 +267,7 @@ export function CreateTenantForm() {
           </fieldset>
 
           {sectionCatalog.isLoading && <p role="status">Cargando módulos…</p>}
-          {sectionCatalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos.</p>}
+          {sectionCatalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos. {getErrorMessage(sectionCatalog.error, 'Intenta de nuevo.')}</p>}
           {sectionCatalog.data && (
             <SectionChecklist
               catalog={sectionCatalog.data.sections}

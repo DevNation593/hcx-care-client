@@ -10,6 +10,7 @@ import { platformPlanSchema } from '@/lib/validations/schemas';
 import { TenantType, type PlatformPlan, type PlatformPlanInput, type SectionKey } from '@/types';
 import { TENANT_TYPE_LABELS } from './labels';
 import { SectionChecklist } from './section-checklist';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 type NumberField =
   | 'basePrice'
@@ -165,7 +166,7 @@ export function PlanFormDialog({ plan, onClose }: PlanFormDialogProps) {
           </div>
 
           {catalog.isLoading && <p role="status">Cargando módulos…</p>}
-          {catalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos.</p>}
+          {catalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos. {getErrorMessage(catalog.error, 'Intenta de nuevo.')}</p>}
           {catalog.data && (
             <SectionChecklist
               catalog={catalog.data.sections}

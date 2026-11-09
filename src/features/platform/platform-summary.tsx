@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePlatformSummary } from '@/hooks/usePlatform';
 import { ROUTES } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 function Counter({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
@@ -30,7 +31,7 @@ function formatAmount(amount: number, currency: string): string {
 }
 
 export function PlatformSummary() {
-  const { data, isPending, isError, refetch } = usePlatformSummary();
+  const { data, error, isPending, isError, refetch } = usePlatformSummary();
 
   if (isPending) {
     return (
@@ -45,7 +46,7 @@ export function PlatformSummary() {
   if (isError || !data) {
     return (
       <div className="space-y-3">
-        <Alert variant="destructive" title="No se pudo cargar el resumen" />
+        <Alert variant="destructive" title="No se pudo cargar el resumen" description={getErrorMessage(error, 'Intenta de nuevo.')} />
         <Button variant="outline" onClick={() => void refetch()}>
           Reintentar
         </Button>
