@@ -15,6 +15,39 @@ describe('describeModule', () => {
     expect(describeModule('psychology.session-notes').name).toBe('Notas de sesión');
   });
 
+  it('names every gynecology module in Spanish', () => {
+    const names = [
+      'consultation',
+      'menstrual-history',
+      'gynecologic-history',
+      'obstetric-history',
+      'contraception',
+      'iud-procedure',
+      'cytology-hpv',
+      'colposcopy',
+      'ultrasound',
+      'biopsy',
+      'menopause',
+      'fertility',
+    ].map((key) => describeModule(`gynecology.${key}`));
+
+    expect(names.map((label) => label.name)).toEqual([
+      'Consulta ginecológica',
+      'Historia menstrual',
+      'Antecedentes ginecológicos',
+      'Antecedentes obstétricos',
+      'Anticoncepción',
+      'Procedimiento con DIU',
+      'Citología y prueba VPH',
+      'Colposcopia',
+      'Ecografía ginecológica',
+      'Biopsia',
+      'Climaterio y menopausia',
+      'Consulta de fertilidad',
+    ]);
+    for (const label of names) expect(label.description).toMatch(/\S/);
+  });
+
   it('turns an unknown key into readable text instead of showing the raw key', () => {
     expect(describeModule('laboratory.blood_tests')).toEqual({ name: 'Blood tests' });
     expect(describeModule('imaging.x-ray').name).toBe('X ray');

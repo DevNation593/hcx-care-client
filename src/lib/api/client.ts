@@ -69,7 +69,8 @@ class ApiClient {
           requestUrl.includes('/auth/refresh') ||
           requestUrl.includes('/auth/forgot-password') ||
           requestUrl.includes('/auth/reset-password') ||
-          requestUrl.includes('/auth/change-password');
+          requestUrl.includes('/auth/change-password') ||
+          requestUrl.includes('/auth/mfa/verify');
 
         // Never try token refresh for auth endpoints (login/reset/etc.)
         if (error.response?.status === 401 && isAuthEndpoint) {
@@ -84,6 +85,16 @@ class ApiClient {
           window.location.pathname !== '/change-password'
         ) {
           window.location.href = '/change-password';
+        }
+
+        // A clinic that requires two-factor sign-in blocks everything until it is set up.
+        if (
+          error.response?.status === 403 &&
+          this.getErrorCode(error) === 'MFA_ENROLLMENT_REQUIRED' &&
+          typeof window !== 'undefined' &&
+          window.location.pathname !== '/security/two-factor'
+        ) {
+          window.location.href = '/security/two-factor';
         }
 
         // Handle 401 Unauthorized for protected endpoints

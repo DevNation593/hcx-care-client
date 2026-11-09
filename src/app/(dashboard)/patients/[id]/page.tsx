@@ -14,6 +14,7 @@ import { useAuthStore } from '@/store/authStore';
 import { ClinicalRecordsTab } from '@/features/patients/clinical-records-tab';
 import { PatientClinicalAlerts } from '@/features/patients/patient-clinical-alerts';
 import { PatientFilesTab } from '@/features/patients/patient-files-tab';
+import { ClinicalOrdersTab } from '@/features/clinical-orders/clinical-orders-tab';
 import { usePatientEncounters } from '@/hooks/useEncounters';
 import { describeIdentification } from '@/features/patients/patient-identity';
 import { PatientTeamTab } from '@/features/patients/patient-team-tab';
@@ -90,12 +91,13 @@ import {
   Users,
   Receipt,
   Syringe,
+  FlaskConical,
 } from 'lucide-react';
 
 // ==========================================
 // TAB TYPES
 // ==========================================
-type TabId = 'overview' | 'team' | 'clinical' | 'specialties' | 'treatments' | 'files' | 'appointments' | 'tasks' | 'session-plan' | 'billing';
+type TabId = 'overview' | 'team' | 'clinical' | 'specialties' | 'orders' | 'treatments' | 'files' | 'appointments' | 'tasks' | 'session-plan' | 'billing';
 
 interface Tab {
   id: TabId;
@@ -108,6 +110,7 @@ const TABS: Tab[] = [
   { id: 'team', label: 'Equipo tratante', icon: Users },
   { id: 'clinical', label: 'Historia Clínica', icon: FileText },
   { id: 'specialties', label: 'Registros clínicos', icon: ClipboardList },
+  { id: 'orders', label: 'Órdenes y resultados', icon: FlaskConical },
   { id: 'treatments', label: 'Tratamientos', icon: Syringe },
   { id: 'files', label: 'Archivos', icon: Paperclip },
   { id: 'appointments', label: 'Citas', icon: Calendar },
@@ -122,6 +125,7 @@ const TAB_SECTIONS: Partial<Record<TabId, SectionKey>> = {
   clinical: 'core.clinical.notes',
   'session-plan': 'core.clinical.nextSession',
   specialties: 'core.clinical.specialties',
+  orders: 'core.clinical.specialties',
   treatments: 'core.treatments.sessions',
   files: 'core.patients.files',
   appointments: 'core.agenda.calendar',
@@ -160,6 +164,7 @@ function PatientDetailPageContent() {
     (tab) =>
       (tab.id !== 'billing' || canSeeInvoices) &&
       (tab.id !== 'specialties' || canSeeClinical) &&
+      (tab.id !== 'orders' || canSeeClinical) &&
       (tab.id !== 'treatments' || canSeeClinical) &&
       (tab.id !== 'files' || canSeeClinical) &&
       (TAB_SECTIONS[tab.id] === undefined || isEnabled(TAB_SECTIONS[tab.id]!)),
@@ -267,6 +272,10 @@ function PatientDetailPageContent() {
         {activeTab === 'clinical' && <ClinicalHistoryTab patientId={patientId} />}
         {activeTab === 'specialties' && canSeeClinical && (
           <ClinicalRecordsTab patientId={patientId} startAppointmentId={startAppointmentId} />
+        )}
+        {/* Like the menu: a tab named in the URL is mounted only if it is one the user may see. */}
+        {activeTab === 'orders' && visibleTabs.some((tab) => tab.id === 'orders') && (
+          <ClinicalOrdersTab patientId={patientId} />
         )}
         {activeTab === 'treatments' && canSeeClinical && <PatientTreatmentsTab patientId={patientId} />}
         {activeTab === 'files' && canSeeClinical && <PatientFilesTab patientId={patientId} />}

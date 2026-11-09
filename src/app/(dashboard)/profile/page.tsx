@@ -9,6 +9,7 @@ import { useProfile, useUpdateProfile, useChangePassword, useUploadAvatar } from
 import { ROLE_LABELS, PASSWORD_MIN_LENGTH } from '@/lib/constants';
 import { getInitials, formatDate } from '@/lib/utils';
 import { hasActiveProfessionalProfile, isProfessionalRole } from '@/types/guards';
+import { TwoFactorCard } from '@/features/security/two-factor-setup';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -362,6 +363,8 @@ export default function ProfilePage() {
           </Button>
         </div>
       </form>
+
+      <TwoFactorCard />
 
       {/* Change Password Dialog */}
       <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>

@@ -4,48 +4,72 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authApi, usersApi, tenantsApi } from '@/lib/api/endpoints';
 import { useAuthStore } from '@/store/authStore';
 import { QUERY_KEYS } from '@/lib/constants';
-import { LoginCredentials } from '@/types';
+import { isMfaChallenge, type AuthResponse, type LoginCredentials, type MfaChallenge } from '@/types';
 import { apiClient } from '@/lib/api/client';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { isPlatformAdmin } from '@/types/guards';
 import { postLoginRoute } from '@/lib/post-login-route';
 
-export function useLogin() {
+/** Opens the session the API granted: tokens, user, tenant, and the first page to show. */
+function useOpenSession() {
   const setAuth = useAuthStore((state) => state.setAuth);
   const setUser = useAuthStore((state) => state.setUser);
-  const setTenant = useAuthStore((state) => state.setTenant);
   const router = useRouter();
+
+  return async (response: AuthResponse) => {
+    const { accessToken, refreshToken, user } = response;
+    apiClient.setTokens(accessToken, refreshToken);
+    // Set user immediately so getTenantId() works
+    setUser(user);
+
+    // The platform admin has no clinic (PLATFORM_ONLY), and a temporary password or a pending
+    // two-factor setup blocks every request but its own: the tenant loads after them.
+    if (!isPlatformAdmin(user) && !user.mustChangePassword && !user.mfaEnrollmentRequired) {
+      try {
+        const tenant = await tenantsApi.get(user.tenantId);
+        setAuth(user, tenant);
+      } catch {
+        // If tenant fetch fails, user is still authenticated
+        console.warn('Could not fetch tenant details');
+      }
+    }
+
+    router.push(postLoginRoute(user));
+    toast.success('¡Bienvenido!');
+  };
+}
+
+/**
+ * The first step of a sign-in. An account with two-factor sign-in gets a challenge: the caller
+ * shows the code step and finishes with `useVerifyMfaLogin`.
+ */
+export function useLogin(options: { onChallenge?: (challenge: MfaChallenge) => void } = {}) {
+  const openSession = useOpenSession();
 
   return useMutation({
     mutationFn: (credentials: LoginCredentials) => authApi.login(credentials),
     onSuccess: async (response) => {
-      const { accessToken, refreshToken, user } = response;
-      
-      // Store tokens
-      apiClient.setTokens(accessToken, refreshToken);
-      
-      // Set user immediately so getTenantId() works
-      setUser(user);
-      
-      // The platform admin has no clinic (PLATFORM_ONLY) and a temporary password blocks
-      // every request but the change itself: the tenant loads after the password change.
-      if (!isPlatformAdmin(user) && !user.mustChangePassword) {
-        try {
-          const tenant = await tenantsApi.get(user.tenantId);
-          setAuth(user, tenant);
-        } catch {
-          // If tenant fetch fails, user is still authenticated
-          console.warn('Could not fetch tenant details');
-        }
+      if (isMfaChallenge(response)) {
+        options.onChallenge?.(response);
+        return;
       }
-
-      router.push(postLoginRoute(user));
-      toast.success('¡Bienvenido!');
+      await openSession(response);
     },
     onError: (error: any) => {
       toast.error(error.message || 'Error al iniciar sesión');
     },
+  });
+}
+
+/** The second step of a sign-in: a code of the authenticator app or a recovery code. */
+export function useVerifyMfaLogin() {
+  const openSession = useOpenSession();
+
+  return useMutation({
+    mutationFn: (input: { mfaToken: string; code?: string; recoveryCode?: string }) =>
+      authApi.verifyMfa(input),
+    onSuccess: openSession,
   });
 }
 

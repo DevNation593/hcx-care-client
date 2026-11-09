@@ -19,6 +19,7 @@ import { useAppointments } from '@/hooks/useAppointments';
 import { useBranches } from '@/hooks/useBranches';
 import { useCloseEncounter, useRemoveEncounter, useStartEncounter } from '@/hooks/useEncounters';
 import { formatDate } from '@/lib/utils';
+import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { useAuthStore } from '@/store/authStore';
 import { AppointmentStatus } from '@/types';
 import {
@@ -128,7 +129,7 @@ export function EncounterPanel({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{describeEncounter(encounter)}</span>
                     <Badge variant={encounter.status === 'OPEN' ? 'warning' : 'secondary'}>
-                      {encounter.status === 'OPEN' ? 'Abierta' : 'Cerrada'}
+                      {encounter.status === 'OPEN' ? 'Abierta' : encounter.signedAt ? 'Firmada' : 'Cerrada'}
                     </Badge>
                     <span className="text-muted-foreground">
                       {[
@@ -143,6 +144,15 @@ export function EncounterPanel({
                     </span>
                   </div>
                   <p className="whitespace-pre-wrap">{encounter.reason}</p>
+                  {encounter.status === 'CLOSED' && (
+                    <p className="text-xs text-muted-foreground">
+                      {encounter.signedAt
+                        ? `Firmada el ${formatDate(encounter.signedAt, 'dd/MM/yyyy HH:mm')}${
+                            encounter.contentHash ? ` · huella ${encounter.contentHash.slice(3, 15)}` : ''
+                          }`
+                        : 'Cerrada antes de la firma digital: sus registros son definitivos.'}
+                    </p>
+                  )}
                   {encounter.summary && (
                     <p className="whitespace-pre-wrap text-muted-foreground">{encounter.summary}</p>
                   )}
@@ -304,15 +314,26 @@ function CloseEncounterDialog({
 }) {
   const close = useCloseEncounter(patientId);
   const [summary, setSummary] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string>();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (close.isPending) return;
+    if (close.isPending || !password) return;
+    setPasswordError(undefined);
     try {
-      await close.mutateAsync({ encounterId: encounter.id, summary: summary.trim() || undefined });
+      await close.mutateAsync({
+        encounterId: encounter.id,
+        summary: summary.trim() || undefined,
+        password,
+      });
       onClose();
-    } catch {
+    } catch (error) {
       // The hook already reported the error; the dialog stays open to retry.
+      setPasswordError(signaturePasswordError(error));
+    } finally {
+      // Typed again for every attempt: it is never kept.
+      setPassword('');
     }
   };
 
@@ -323,8 +344,9 @@ function CloseEncounterDialog({
           <DialogHeader>
             <DialogTitle>Cerrar atención</DialogTitle>
             <DialogDescription>
-              Al cerrarla firmas la atención: no admite más registros y su cita queda como atendida.
-              Los registros ya guardados se pueden corregir con motivo.
+              Al cerrarla firmas la atención y sus registros: no admite más registros y su cita queda
+              como atendida. Después, cada registro solo se corrige con una adenda; el original se
+              conserva tal como se firmó.
             </DialogDescription>
           </DialogHeader>
           <div>
@@ -337,11 +359,17 @@ function CloseEncounterDialog({
               onChange={(event) => setSummary(event.target.value)}
             />
           </div>
+          <SignaturePasswordField
+            id="close-password"
+            value={password}
+            onChange={setPassword}
+            error={passwordError}
+          />
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" loading={close.isPending}>
+            <Button type="submit" disabled={!password} loading={close.isPending}>
               Cerrar y firmar
             </Button>
           </DialogFooter>
