@@ -5,6 +5,12 @@ import { useAuthStore } from '@/store/authStore';
 import CalendarPage from '@/app/(dashboard)/calendar/page';
 import { toast } from 'sonner';
 
+// Rendered without a QueryClient: name people as in a clinical practice.
+vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePatientTerms')>();
+  return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
+});
+
 const mocks = vi.hoisted(() => ({
   appointments: undefined as Appointment[] | undefined,
   isLoading: true,

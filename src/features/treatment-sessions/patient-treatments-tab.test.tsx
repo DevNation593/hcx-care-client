@@ -4,6 +4,12 @@ import { useAuthStore } from '@/store/authStore';
 import { AppointmentStatus } from '@/types';
 import { PatientTreatmentsTab } from './patient-treatments-tab';
 
+// Rendered without a QueryClient: name people as in a clinical practice.
+vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePatientTerms')>();
+  return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
+});
+
 const hooks = vi.hoisted(() => ({
   sessions: { data: [] as unknown[], isPending: false, isError: false, refetch: vi.fn() },
   treatments: [] as unknown[],

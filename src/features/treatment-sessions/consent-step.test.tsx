@@ -7,6 +7,12 @@ import type {
 } from '@/types/treatments';
 import { ConsentStep } from './consent-step';
 
+// Rendered without a QueryClient: name people as in a clinical practice.
+vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePatientTerms')>();
+  return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
+});
+
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 
 const hooks = vi.hoisted(() => ({

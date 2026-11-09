@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { PatientFormData } from '@/lib/validations/schemas';
 import { IDENTIFICATION_TYPES, IDENTIFICATION_TYPE_LABELS } from './patient-identity';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 const SELECT_CLASS =
   'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm';
@@ -114,13 +115,14 @@ export function PatientGuardianFields({
   errors,
   required,
 }: PatientFieldsProps & { required: boolean }) {
+  const terms = usePatientTerms();
   return (
     <div className="border-t pt-6">
       <h3 className="font-semibold">Representante legal</h3>
       <p className="mb-4 text-sm text-muted-foreground">
         {required
-          ? 'El paciente es menor de edad: registra a su representante legal.'
-          : 'Obligatorio solo cuando el paciente es menor de edad.'}
+          ? `El ${terms.one} es menor de edad: registra a su representante legal.`
+          : `Obligatorio solo cuando el ${terms.one} es menor de edad.`}
       </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -134,7 +136,7 @@ export function PatientGuardianFields({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="guardianRelationship">Relación con el paciente</Label>
+          <Label htmlFor="guardianRelationship">Relación con el {terms.one}</Label>
           <Input
             id="guardianRelationship"
             placeholder="Madre, padre, tutor legal…"

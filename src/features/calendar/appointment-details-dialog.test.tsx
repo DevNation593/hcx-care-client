@@ -6,6 +6,12 @@ import { canEditAppointment } from '@/types/guards';
 import { getAppointmentErrorMessage } from './appointment-errors';
 import { AppointmentDetailsDialog } from './appointment-details-dialog';
 
+// Rendered without a QueryClient: name people as in a clinical practice.
+vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePatientTerms')>();
+  return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
+});
+
 const mocks = vi.hoisted(() => ({ cancel: vi.fn() }));
 vi.mock('@/hooks/useAppointments', () => ({
   useCancelAppointment: () => ({ mutate: mocks.cancel, isPending: false }),

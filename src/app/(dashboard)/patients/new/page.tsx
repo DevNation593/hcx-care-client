@@ -19,10 +19,12 @@ import {
   PatientGuardianFields,
   PatientIdentificationFields,
 } from '@/features/patients/patient-profile-fields';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 export default function NewPatientPage() {
   const router = useRouter();
   const { mutate: createPatient, isPending } = useCreatePatient();
+  const terms = usePatientTerms();
 
   const {
     register,
@@ -53,12 +55,12 @@ export default function NewPatientPage() {
         <Link href="/patients">
           <Button variant="ghost" size="sm" className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver a Pacientes
+            Volver a {terms.Many}
           </Button>
         </Link>
-        <h1 className="text-3xl font-bold">Nuevo Paciente</h1>
+        <h1 className="text-3xl font-bold">Nuevo {terms.One}</h1>
         <p className="text-muted-foreground mt-1">
-          Ingresa la información del nuevo paciente
+          Ingresa la información del nuevo {terms.one}
         </p>
       </div>
 
@@ -67,7 +69,7 @@ export default function NewPatientPage() {
           <CardHeader>
             <CardTitle>Información Personal</CardTitle>
             <CardDescription>
-              Datos básicos del paciente
+              Datos básicos del {terms.one}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -164,7 +166,7 @@ export default function NewPatientPage() {
               <Label htmlFor="notes">Notas</Label>
               <Textarea
                 id="notes"
-                placeholder="Información adicional sobre el paciente..."
+                placeholder={`Información adicional sobre el ${terms.one}...`}
                 rows={4}
                 {...register('notes')}
               />
@@ -179,7 +181,7 @@ export default function NewPatientPage() {
             </Button>
           </Link>
           <Button type="submit" loading={isPending}>
-            Crear Paciente
+            Crear {terms.One}
           </Button>
         </div>
       </form>

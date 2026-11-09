@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useOrders } from '@/hooks/useOrders';
 import type { OrderStatus } from '@/types/cash';
 import { formatMoney } from './money';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   OPEN: 'Abierta',
@@ -33,6 +34,7 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 const PAGE_SIZE = 20;
 
 export function OrdersTab({ branchId }: { branchId: string }) {
+  const terms = usePatientTerms();
   const router = useRouter();
   // Open orders first: an old order with a balance must stay reachable.
   const [status, setStatus] = useState<StatusFilter>('OPEN');
@@ -81,7 +83,7 @@ export function OrdersTab({ branchId }: { branchId: string }) {
               id="orders-search"
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Folio, receptor o paciente"
+              placeholder={`Folio, receptor o ${terms.one}`}
             />
           </div>
           <Button type="submit" variant="outline">

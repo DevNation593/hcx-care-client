@@ -93,6 +93,7 @@ import {
   Syringe,
   FlaskConical,
 } from 'lucide-react';
+import { isHealthSpecialtyCode, usePatientTerms } from '@/hooks/usePatientTerms';
 
 // ==========================================
 // TAB TYPES
@@ -137,6 +138,7 @@ const TAB_SECTIONS: Partial<Record<TabId, SectionKey>> = {
 // MAIN PAGE
 // ==========================================
 function PatientDetailPageContent() {
+  const terms = usePatientTerms();
   const params = useParams();
   const router = useRouter();
   const patientId = params.id as string;
@@ -160,11 +162,14 @@ function PatientDetailPageContent() {
     !!user && can('billing.view', isMasterRole(user.role) || isProfessionalRole(user.role));
   // Specialty records are clinical content: the API refuses them without an active professional profile.
   const canSeeClinical = !!user && canAccessClinicalNotes(user) && can('clinical_records.view');
+  // Orders and results are health care: the API refuses them to an aesthetic profile.
+  const canSeeHealthRecord =
+    canSeeClinical && isHealthSpecialtyCode(user?.professionalProfile?.specialty?.code);
   const visibleTabs = TABS.filter(
     (tab) =>
       (tab.id !== 'billing' || canSeeInvoices) &&
       (tab.id !== 'specialties' || canSeeClinical) &&
-      (tab.id !== 'orders' || canSeeClinical) &&
+      (tab.id !== 'orders' || canSeeHealthRecord) &&
       (tab.id !== 'treatments' || canSeeClinical) &&
       (tab.id !== 'files' || canSeeClinical) &&
       (TAB_SECTIONS[tab.id] === undefined || isEnabled(TAB_SECTIONS[tab.id]!)),
@@ -185,10 +190,10 @@ function PatientDetailPageContent() {
   if (!patient) {
     return (
       <div className="flex flex-col items-center justify-center h-96 space-y-4">
-        <p className="text-muted-foreground text-lg">Paciente no encontrado</p>
+        <p className="text-muted-foreground text-lg">{terms.One} no encontrado</p>
         <Button variant="outline" onClick={() => router.push('/patients')}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver a pacientes
+          Volver a {terms.many}
         </Button>
       </div>
     );
@@ -211,7 +216,7 @@ function PatientDetailPageContent() {
               {patient.firstName} {patient.lastName}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Paciente desde {formatDate(patient.createdAt, 'MMMM yyyy')}
+              {terms.One} desde {formatDate(patient.createdAt, 'MMMM yyyy')}
             </p>
           </div>
           <Badge variant={patient.isActive ? 'default' : 'secondary'}>
@@ -294,9 +299,9 @@ function PatientDetailPageContent() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar paciente?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar {terms.one}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. Se eliminará el paciente{' '}
+              Esta acción no se puede deshacer. Se eliminará el {terms.one}{' '}
               <strong>
                 {patient.firstName} {patient.lastName}
               </strong>{' '}
@@ -779,6 +784,7 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
 // TASKS TAB
 // ==========================================
 function TasksTab({ patientId }: { patientId: string }) {
+  const terms = usePatientTerms();
   const user = useAuthStore((state) => state.user);
   const { data: tasks, isLoading, error: tasksError } = useTasks({ patientId });
   const createTask = useCreateTask();
@@ -827,7 +833,7 @@ function TasksTab({ patientId }: { patientId: string }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Actividades del Paciente</h3>
+        <h3 className="text-lg font-semibold">Actividades del {terms.One}</h3>
         <Button onClick={() => setShowNewTask(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Nueva Actividad
@@ -873,7 +879,7 @@ function TasksTab({ patientId }: { patientId: string }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nueva Actividad</DialogTitle>
-            <DialogDescription>Crear una nueva actividad asociada a este paciente.</DialogDescription>
+            <DialogDescription>Crear una nueva actividad asociada a este {terms.one}.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
