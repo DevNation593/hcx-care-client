@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiError } from '@/types';
 import { PatientOwnBilling } from './patient-own-billing';
@@ -66,7 +66,7 @@ describe('PatientOwnBilling', () => {
     expect(mocks.onReady).toHaveBeenCalledWith(profile);
   });
 
-  it('asks only for what is missing and sends it normalized', () => {
+  it('asks only for what is missing and sends it normalized', async () => {
     failThenSucceed(incomplete(['identification', 'email']));
     render(<PatientOwnBilling patient={patient} onReady={mocks.onReady} />);
     fireEvent.click(screen.getByRole('button', { name: 'Facturar a nombre de Ana Paz' }));
@@ -75,9 +75,11 @@ describe('PatientOwnBilling', () => {
     fireEvent.change(screen.getByLabelText('Correo para la factura'), { target: { value: ' ana@example.test ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar y facturar' }));
 
-    expect(mocks.mutate).toHaveBeenLastCalledWith(
-      { identificationType: 'CEDULA', identificationNumber: '1710034065', email: 'ana@example.test' },
-      expect.anything(),
+    await waitFor(() =>
+      expect(mocks.mutate).toHaveBeenLastCalledWith(
+        { identificationType: 'CEDULA', identificationNumber: '1710034065', email: 'ana@example.test' },
+        expect.anything(),
+      ),
     );
     expect(mocks.onReady).toHaveBeenCalledWith(profile);
   });
@@ -91,7 +93,7 @@ describe('PatientOwnBilling', () => {
     expect(screen.queryByLabelText('Correo para la factura')).not.toBeInTheDocument();
   });
 
-  it('refuses an invalid cedula before sending', () => {
+  it('refuses an invalid cedula before sending', async () => {
     failThenSucceed(incomplete(['identification']));
     render(<PatientOwnBilling patient={patient} onReady={mocks.onReady} />);
     fireEvent.click(screen.getByRole('button', { name: 'Facturar a nombre de Ana Paz' }));
@@ -99,7 +101,7 @@ describe('PatientOwnBilling', () => {
     fireEvent.change(screen.getByLabelText('Número de identificación'), { target: { value: '1710034066' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar y facturar' }));
 
-    expect(screen.getByRole('alert')).toHaveTextContent('La cédula no es válida');
+    expect(await screen.findByText('La cédula no es válida')).toBeInTheDocument();
     expect(mocks.mutate).toHaveBeenCalledTimes(1);
   });
 
@@ -114,8 +116,18 @@ describe('PatientOwnBilling', () => {
     expect(screen.queryByLabelText('Correo para la factura')).not.toBeInTheDocument();
   });
 
-  it('sends a cashier to someone who may edit the record, without a link or a form', () => {
+  it('offers the cashier nothing built from the patient record', () => {
     mocks.role = 'CAJERO';
+    render(<PatientOwnBilling patient={patient} onReady={mocks.onReady} />);
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByText('Pide a recepción que registre los datos de facturación de Ana Paz.')).toBeInTheDocument();
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+
+  it('sends a user who may not edit patients to someone who can, without a link or a form', () => {
+    mocks.can.mockImplementation((permission: string) => permission !== 'patients.update');
     failThenSucceed(incomplete(['email'], ['identification']));
     render(<PatientOwnBilling patient={patient} onReady={mocks.onReady} />);
     fireEvent.click(screen.getByRole('button', { name: 'Facturar a nombre de Ana Paz' }));

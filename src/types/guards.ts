@@ -37,6 +37,11 @@ export function isProfessionalRole(role: UserRole): boolean {
   return role === UserRole.PROFESIONAL;
 }
 
+/** Roles that read patient records, as the API's PATIENT_READER_ROLES; never the cashier. */
+export function canReadPatients(role: UserRole): boolean {
+  return role === UserRole.MASTER || role === UserRole.ASISTENTE || role === UserRole.PROFESIONAL;
+}
+
 export function canAddPatientTeamMember(user: User): boolean {
   return (
     user.role === UserRole.MASTER ||

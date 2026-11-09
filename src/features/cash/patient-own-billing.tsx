@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -11,27 +13,22 @@ import { useBillAsPatient } from '@/hooks/useBillingProfiles';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
 import { useMyPermissions } from '@/hooks/usePermissions';
 import { useSections } from '@/hooks/useSections';
+import {
+  patientBillingDataSchema,
+  type PatientBillingDataValues,
+} from '@/lib/validations/schemas';
 import { useAuthStore } from '@/store/authStore';
 import type { ApiError } from '@/types';
-import type {
-  BillAsPatientInput,
-  LinkedBillingProfile,
-  PatientBillingIssue,
-  SriIdType,
-} from '@/types/cash';
-import { isCashierRole } from '@/types/guards';
-import { normalizeIdNumber, taxIdentificationError } from './tax-identification';
+import type { BillAsPatientInput, LinkedBillingProfile, PatientBillingIssue } from '@/types/cash';
+import { canReadPatients } from '@/types/guards';
 
-type PatientIdType = NonNullable<BillAsPatientInput['identificationType']>;
-
-const ID_TYPES: { value: PatientIdType; label: string; sri: SriIdType }[] = [
-  { value: 'CEDULA', label: 'Cédula', sri: '05' },
-  { value: 'RUC', label: 'RUC', sri: '04' },
-  { value: 'PASSPORT', label: 'Pasaporte', sri: '06' },
+const ID_TYPES: { value: PatientBillingDataValues['identificationType']; label: string }[] = [
+  { value: 'CEDULA', label: 'Cédula' },
+  { value: 'RUC', label: 'RUC' },
+  { value: 'PASSPORT', label: 'Pasaporte' },
 ];
 
 const SELECT_CLASS = 'mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm';
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ISSUES: readonly PatientBillingIssue[] = ['identification', 'legalName', 'email', 'address', 'phone'];
 
@@ -70,25 +67,34 @@ export function PatientOwnBilling({ patient, onReady, disabled }: PatientOwnBill
   const role = useAuthStore((state) => state.user?.role);
   const { can } = useMyPermissions();
   const { isEnabled } = useSections();
-  // Completing the record edits the patient: the API asks for patients.update and the patient
-  // records section, and a cashier never reaches patients (SEC-WEB-12).
-  const mayEditRecord =
-    !!role &&
-    !isCashierRole(role) &&
-    can('patients.update') &&
-    isEnabled('core.patients.records');
   const [incomplete, setIncomplete] = useState<IncompleteData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [idType, setIdType] = useState<PatientIdType>('CEDULA');
-  const [idNumber, setIdNumber] = useState('');
-  const [email, setEmail] = useState('');
+
+  // The recipient is copied from the patient record, which the cashier never reads (SEC-WEB-12):
+  // it bills with the profiles already linked to the patient.
+  const readsPatients = !!role && canReadPatients(role);
+  // Completing the record edits the patient: the API asks for patients.update and the patient
+  // records section.
+  const mayEditRecord = readsPatients && can('patients.update') && isEnabled('core.patients.records');
+
+  if (!readsPatients) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Pide a recepción que registre los datos de facturación de {patient.name}.
+      </p>
+    );
+  }
 
   const mustFixRecord = !!incomplete && incomplete.invalid.length > 0;
   // Data on file that cannot be invoiced is fixed in the record first: completing anything else
   // here could not produce the recipient.
-  const completesHere = !!incomplete && mayEditRecord && !mustFixRecord;
-  const asksIdentification = completesHere && incomplete.missing.includes('identification');
-  const asksEmail = completesHere && incomplete.missing.includes('email');
+  const asks =
+    incomplete && mayEditRecord && !mustFixRecord
+      ? {
+          identification: incomplete.missing.includes('identification'),
+          email: incomplete.missing.includes('email'),
+        }
+      : null;
 
   const send = (data?: BillAsPatientInput) => {
     setError(null);
@@ -107,32 +113,6 @@ export function PatientOwnBilling({ patient, onReady, disabled }: PatientOwnBill
         setError(failure.message);
       },
     });
-  };
-
-  const handleComplete = (event: React.FormEvent) => {
-    event.preventDefault();
-    const data: BillAsPatientInput = {};
-    if (asksIdentification) {
-      const sri = ID_TYPES.find((type) => type.value === idType)!.sri;
-      const normalized = normalizeIdNumber(sri, idNumber);
-      const problem = normalized
-        ? taxIdentificationError(sri, normalized, patient.name)
-        : 'Escribe el número de identificación';
-      if (problem) {
-        setError(problem);
-        return;
-      }
-      data.identificationType = idType;
-      data.identificationNumber = normalized;
-    }
-    if (asksEmail) {
-      if (!EMAIL.test(email.trim())) {
-        setError('Escribe un correo válido');
-        return;
-      }
-      data.email = email.trim();
-    }
-    send(data);
   };
 
   return (
@@ -166,69 +146,18 @@ export function PatientOwnBilling({ patient, onReady, disabled }: PatientOwnBill
         </Alert>
       )}
 
-      {(asksIdentification || asksEmail) && (
-        <form onSubmit={handleComplete} className="space-y-3 rounded-md border p-3" noValidate>
-          <p className="text-sm">
-            Faltan estos datos para facturar a nombre de{' '}
-            <span className="font-medium">{patient.name}</span>. Se guardarán también en su ficha.
-          </p>
-          {asksIdentification && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <Label htmlFor={`own-id-type-${patient.id}`}>Tipo de identificación</Label>
-                <select
-                  id={`own-id-type-${patient.id}`}
-                  className={SELECT_CLASS}
-                  value={idType}
-                  onChange={(event) => setIdType(event.target.value as PatientIdType)}
-                >
-                  {ID_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label htmlFor={`own-id-number-${patient.id}`}>Número de identificación</Label>
-                <Input
-                  id={`own-id-number-${patient.id}`}
-                  className="mt-1"
-                  value={idNumber}
-                  onChange={(event) => setIdNumber(event.target.value)}
-                />
-              </div>
-            </div>
-          )}
-          {asksEmail && (
-            <div>
-              <Label htmlFor={`own-email-${patient.id}`}>Correo para la factura</Label>
-              <Input
-                id={`own-email-${patient.id}`}
-                type="email"
-                className="mt-1"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </div>
-          )}
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={disabled} loading={bill.isPending}>
-              Guardar y facturar
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setIncomplete(null);
-                setError(null);
-              }}
-            >
-              Cancelar
-            </Button>
-          </div>
-        </form>
+      {asks && (asks.identification || asks.email) && (
+        <PatientBillingDataForm
+          patient={patient}
+          asks={asks}
+          disabled={disabled}
+          saving={bill.isPending}
+          onSubmit={send}
+          onCancel={() => {
+            setIncomplete(null);
+            setError(null);
+          }}
+        />
       )}
 
       {error && (
@@ -237,5 +166,83 @@ export function PatientOwnBilling({ patient, onReady, disabled }: PatientOwnBill
         </p>
       )}
     </div>
+  );
+}
+
+/** Asks only for the data the record lacks; mounted per answer, so its schema stays fixed. */
+function PatientBillingDataForm({
+  patient,
+  asks,
+  disabled,
+  saving,
+  onSubmit,
+  onCancel,
+}: {
+  patient: { id: string; name: string };
+  asks: { identification: boolean; email: boolean };
+  disabled?: boolean;
+  saving: boolean;
+  onSubmit: (data: BillAsPatientInput) => void;
+  onCancel: () => void;
+}) {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<PatientBillingDataValues, unknown, BillAsPatientInput>({
+    resolver: zodResolver(patientBillingDataSchema(asks)),
+    defaultValues: { identificationType: 'CEDULA', identificationNumber: '', email: '' },
+  });
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 rounded-md border p-3" noValidate>
+      <p className="text-sm">
+        Faltan estos datos para facturar a nombre de{' '}
+        <span className="font-medium">{patient.name}</span>. Se guardarán también en su ficha.
+      </p>
+      {asks.identification && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor={`own-id-type-${patient.id}`}>Tipo de identificación</Label>
+            <select id={`own-id-type-${patient.id}`} className={SELECT_CLASS} {...register('identificationType')}>
+              {ID_TYPES.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label htmlFor={`own-id-number-${patient.id}`}>Número de identificación</Label>
+            <Input
+              id={`own-id-number-${patient.id}`}
+              className="mt-1"
+              error={errors.identificationNumber?.message}
+              {...register('identificationNumber')}
+            />
+          </div>
+        </div>
+      )}
+      {asks.email && (
+        <div>
+          <Label htmlFor={`own-email-${patient.id}`}>Correo para la factura</Label>
+          <Input
+            id={`own-email-${patient.id}`}
+            type="email"
+            className="mt-1"
+            error={errors.email?.message}
+            {...register('email')}
+          />
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={disabled} loading={saving}>
+          Guardar y facturar
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          Cancelar
+        </Button>
+      </div>
+    </form>
   );
 }
