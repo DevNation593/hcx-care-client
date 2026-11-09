@@ -16,6 +16,8 @@ const hooks = vi.hoisted(() => ({
   remove: vi.fn(),
 }));
 
+// Procedure consents have their own tests.
+vi.mock('./procedure-consents', () => ({ ProcedureConsents: () => null }));
 vi.mock('@/hooks/useSpecialtyRecords', () => ({
   usePatientSpecialtyRecords: () => ({ data: hooks.records, isLoading: false }),
   usePatientClinicalAlerts: () => ({ data: hooks.alerts }),

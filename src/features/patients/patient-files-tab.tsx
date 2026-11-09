@@ -195,6 +195,9 @@ export function PatientFilesTab({ patientId }: { patientId: string }) {
                         <Badge variant="outline">
                           {PATIENT_FILE_CATEGORY_LABELS[item.category] ?? item.category}
                         </Badge>
+                        {item.scanStatus === 'INFECTED' && (
+                          <Badge variant="destructive">Bloqueado por el antivirus</Badge>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {[
@@ -209,16 +212,18 @@ export function PatientFilesTab({ patientId }: { patientId: string }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={download.isPending}
-                      onClick={() => download.mutate(item)}
-                      aria-label={`Descargar ${item.fileName}`}
-                    >
-                      <Download className="mr-1 h-4 w-4" />
-                      Descargar
-                    </Button>
+                    {item.scanStatus !== 'INFECTED' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={download.isPending}
+                        onClick={() => download.mutate(item)}
+                        aria-label={`Descargar ${item.fileName}`}
+                      >
+                        <Download className="mr-1 h-4 w-4" />
+                        Descargar
+                      </Button>
+                    )}
                     {signedFile(item) ? (
                       <span className="text-xs text-muted-foreground">En una atención firmada</span>
                     ) : item.uploadedById === userId && (

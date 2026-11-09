@@ -381,6 +381,8 @@ export interface TenantSettings {
   resultReviewAlertDays?: number;
   /** Days an order may wait for its result before the clinical inbox flags it. */
   orderResultAlertDays?: number;
+  /** Two-factor sign-in required for the account holder and the professionals. */
+  requireMfa?: boolean;
 }
 
 export interface Invoice {
@@ -451,6 +453,10 @@ export interface User {
   managedByProvider?: boolean;
   /** True while the user still has the temporary password set by the platform. */
   mustChangePassword?: boolean;
+  /** The account signs in with a second factor. */
+  mfaEnabled?: boolean;
+  /** The clinic requires a second factor the account has not set up yet. */
+  mfaEnrollmentRequired?: boolean;
   invitedAt?: string;
   invitedBy?: string;
   activatedAt?: string;
@@ -531,6 +537,28 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   user: User;
+}
+
+/** A correct password of an account with two-factor sign-in: the second step comes next. */
+export interface MfaChallenge {
+  mfaRequired: true;
+  mfaToken: string;
+}
+
+export const isMfaChallenge = (response: AuthResponse | MfaChallenge): response is MfaChallenge =>
+  (response as MfaChallenge).mfaRequired === true;
+
+export interface MfaStatus {
+  enabled: boolean;
+  enabledAt: string | null;
+  required: boolean;
+  recoveryCodesLeft: number;
+}
+
+export interface MfaSetup {
+  secret: string;
+  otpauthUrl: string;
+  qrCodeDataUrl: string;
 }
 
 export interface LoginCredentials {

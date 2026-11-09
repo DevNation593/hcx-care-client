@@ -243,6 +243,11 @@ export interface PatientFile {
   sizeBytes: number;
   createdAt: string;
   uploadedBy?: { id: string; firstName: string; lastName: string };
+  /**
+   * What the antivirus said. NOT_SCANNED: uploaded before scanning existed or with no antivirus
+   * configured (scanned on its next download). INFECTED: quarantined, never served.
+   */
+  scanStatus?: 'NOT_SCANNED' | 'CLEAN' | 'INFECTED';
 }
 
 export interface DiagnosisCode {
