@@ -333,7 +333,7 @@ export const QUERY_KEYS = {
   PATIENT_ENCOUNTERS: (patientId: string) => ['patients', patientId, 'encounters'],
   PATIENT_CLINICAL_ORDERS: (patientId: string) => ['patients', patientId, 'clinical-orders'],
   PATIENT_CLINICAL_FOLLOW_UPS: (patientId: string) => ['patients', patientId, 'clinical-follow-ups'],
-  CLINICAL_INBOX: (scope: string) => ['clinical-inbox', scope] as const,
+  CLINICAL_INBOX: (scope: string, page = 1) => ['clinical-inbox', scope, page] as const,
   CLINICAL_INBOX_ALL: ['clinical-inbox'] as const,
   PATIENT_FILES: (patientId: string) => ['patients', patientId, 'files'],
   PATIENT_PROCEDURE_CONSENTS: (patientId: string) => ['patients', patientId, 'procedure-consents'],

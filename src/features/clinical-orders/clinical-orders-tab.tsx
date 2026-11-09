@@ -494,7 +494,14 @@ export function ClinicalOrdersTab({ patientId }: { patientId: string }) {
         />
       )}
       {closingFollowUp && (
-        <CloseFollowUpDialog followUp={closingFollowUp} onClose={() => setClosingFollowUp(null)} />
+        <CloseFollowUpDialog
+          followUp={
+            [...(followUpsQuery.data ?? []), ...orders.flatMap((order) => order.followUps)].find(
+              (followUp) => followUp.id === closingFollowUp.id,
+            ) ?? closingFollowUp
+          }
+          onClose={() => setClosingFollowUp(null)}
+        />
       )}
     </div>
   );

@@ -23,10 +23,12 @@ export function usePatientClinicalFollowUps(patientId: string) {
   });
 }
 
-export function useClinicalInbox(scope: InboxScope) {
+export function useClinicalInbox(scope: InboxScope, page = 1) {
   return useQuery({
-    queryKey: QUERY_KEYS.CLINICAL_INBOX(scope),
-    queryFn: () => clinicalOrdersApi.inbox(scope),
+    queryKey: QUERY_KEYS.CLINICAL_INBOX(scope, page),
+    queryFn: () => clinicalOrdersApi.inbox(scope, page),
+    // The page on screen stays while the next one loads.
+    placeholderData: (previous) => previous,
   });
 }
 

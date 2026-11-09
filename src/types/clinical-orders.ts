@@ -215,6 +215,10 @@ export type InboxScope = 'mine' | 'all';
 
 export interface ClinicalInbox {
   scope: InboxScope;
+  /** Each list holds `pageSize` items of page `page`, the oldest first; `totals` counts them all. */
+  page: number;
+  pageSize: number;
+  totals: { pendingReview: number; awaitingResult: number; toCommunicate: number; followUps: number };
   thresholds: { resultReviewAlertDays: number; orderResultAlertDays: number };
   pendingReview: (ClinicalResult & { order: InboxOrder; overdue: boolean })[];
   awaitingResult: (InboxOrder & { overdue: boolean })[];

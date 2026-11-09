@@ -722,8 +722,8 @@ export const clinicalOrdersApi = {
       API_ENDPOINTS.CLINICAL_RESULT_ACTION(tenant(), resultId, 'communication'),
       data,
     ),
-  inbox: (scope: InboxScope) =>
-    apiClient.get<ClinicalInbox>(API_ENDPOINTS.CLINICAL_INBOX(tenant()), { params: { scope } }),
+  inbox: (scope: InboxScope, page = 1) =>
+    apiClient.get<ClinicalInbox>(API_ENDPOINTS.CLINICAL_INBOX(tenant()), { params: { scope, page } }),
   listFollowUps: (patientId: string) =>
     apiClient.get<ClinicalFollowUp[]>(API_ENDPOINTS.PATIENT_CLINICAL_FOLLOW_UPS(tenant(), patientId)),
   createFollowUp: (patientId: string, data: FollowUpInput) =>

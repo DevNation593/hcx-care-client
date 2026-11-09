@@ -501,13 +501,22 @@ export function OrderActionDialog({
 export function CloseFollowUpDialog({
   followUp,
   onClose,
+  gone = false,
 }: {
-  followUp: Pick<ClinicalFollowUp, 'id' | 'patientId' | 'title' | 'version'>;
+  /** The follow-up as its list shows it now: after a version conflict the list reloads. */
+  followUp: Pick<ClinicalFollowUp, 'id' | 'patientId' | 'title' | 'version'> & {
+    status?: ClinicalFollowUp['status'];
+  };
   onClose: () => void;
+  /** It left the list the dialog was opened from. */
+  gone?: boolean;
 }) {
   const close = useCloseClinicalFollowUp(followUp.patientId);
   const [status, setStatus] = useState<'DONE' | 'CANCELLED'>('DONE');
   const [note, setNote] = useState('');
+  const [openedVersion] = useState(followUp.version);
+  const stale = gone || (followUp.status !== undefined && followUp.status !== 'OPEN');
+  const changed = !stale && followUp.version !== openedVersion;
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent role="dialog" aria-modal="true" className="sm:max-w-md">
@@ -516,6 +525,14 @@ export function CloseFollowUpDialog({
           <DialogDescription>{followUp.title}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          {stale && (
+            <Alert variant="warning">Alguien más cerró este seguimiento mientras tenías abierto el diálogo.</Alert>
+          )}
+          {changed && (
+            <Alert variant="warning">
+              Alguien más cambió este seguimiento. Revisa su fecha y responsable; lo que escribiste se conserva.
+            </Alert>
+          )}
           <Field id="follow-up-status" label="Resultado" required>
             <select
               id="follow-up-status"
@@ -536,7 +553,7 @@ export function CloseFollowUpDialog({
             Cancelar
           </Button>
           <Button
-            disabled={close.isPending || !note.trim()}
+            disabled={close.isPending || !note.trim() || stale}
             onClick={() =>
               close.mutate(
                 { followUpId: followUp.id, version: followUp.version, status, note: note.trim() },
