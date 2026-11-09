@@ -8,6 +8,9 @@ type Callbacks = { onSuccess?: (profile: unknown) => void; onError?: (error: Api
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
   onReady: vi.fn(),
+  role: 'MASTER',
+  can: vi.fn(),
+  recordsOn: true,
 }));
 
 vi.mock('@/hooks/useBillingProfiles', () => ({
@@ -18,15 +21,22 @@ vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
   return { ...actual, usePatientTerms: () => actual.patientTerms(true) };
 });
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/hooks/usePermissions', () => ({ useMyPermissions: () => ({ can: mocks.can }) }));
+vi.mock('@/hooks/useSections', () => ({
+  useSections: () => ({ isEnabled: (section: string) => section !== 'core.patients.records' || mocks.recordsOn }),
+}));
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: (select: (state: { user: { role: string } }) => unknown) => select({ user: { role: mocks.role } }),
+}));
 
 const patient = { id: 'patient-1', name: 'Ana Paz' };
 const profile = { id: 'bp-1', legalName: 'Ana Paz', isDefault: true };
 
-const incomplete = (missing: string[], identificationOnFile = false): ApiError => ({
-  message: identificationOnFile ? 'La identificación registrada no sirve para facturar.' : 'Faltan datos',
+const incomplete = (missing: string[], invalid: string[] = []): ApiError => ({
+  message: invalid.length ? 'Corrige en la ficha la identificación antes de facturar a su nombre.' : 'Faltan datos',
   status: 422,
   code: 'PATIENT_BILLING_DATA_INCOMPLETE',
-  details: { missing, identificationOnFile },
+  details: { missing, invalid },
 });
 
 /** Answers the next mutate with an error, and the one after it with the profile. */
@@ -40,6 +50,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Drops the answers a test queued and did not use.
   mocks.mutate.mockReset();
+  mocks.role = 'MASTER';
+  mocks.can.mockReturnValue(true);
+  mocks.recordsOn = true;
 });
 
 describe('PatientOwnBilling', () => {
@@ -91,14 +104,43 @@ describe('PatientOwnBilling', () => {
   });
 
   it('sends to the record when the identification on file cannot be invoiced', () => {
-    failThenSucceed(incomplete(['identification', 'email'], true));
+    failThenSucceed(incomplete(['email'], ['identification']));
     render(<PatientOwnBilling patient={patient} onReady={mocks.onReady} />);
     fireEvent.click(screen.getByRole('button', { name: 'Facturar a nombre de Ana Paz' }));
 
-    expect(screen.getByText(/no sirve para facturar/)).toBeInTheDocument();
+    expect(screen.getByText(/Corrige en la ficha la identificación/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Editar cliente' })).toHaveAttribute('href', '/patients/patient-1/edit');
     expect(screen.queryByLabelText('Número de identificación')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Correo para la factura')).not.toBeInTheDocument();
+  });
+
+  it('sends a cashier to someone who may edit the record, without a link or a form', () => {
+    mocks.role = 'CAJERO';
+    failThenSucceed(incomplete(['email'], ['identification']));
+    render(<PatientOwnBilling patient={patient} onReady={mocks.onReady} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Facturar a nombre de Ana Paz' }));
+
+    expect(screen.getByText(/Pide a un usuario que pueda editar clientes/)).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Correo para la factura')).not.toBeInTheDocument();
+  });
+
+  it('asks for nothing without patients.update or with the patient records section off', () => {
+    mocks.can.mockImplementation((permission: string) => permission !== 'patients.update');
+    failThenSucceed(incomplete(['identification']));
+    const { unmount } = render(<PatientOwnBilling patient={patient} onReady={mocks.onReady} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Facturar a nombre de Ana Paz' }));
+    expect(screen.queryByLabelText('Número de identificación')).not.toBeInTheDocument();
+    expect(screen.getByText(/Pide a un usuario/)).toBeInTheDocument();
+    unmount();
+
+    mocks.mutate.mockReset();
+    mocks.can.mockReturnValue(true);
+    mocks.recordsOn = false;
+    failThenSucceed(incomplete(['identification']));
+    render(<PatientOwnBilling patient={patient} onReady={mocks.onReady} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Facturar a nombre de Ana Paz' }));
+    expect(screen.queryByLabelText('Número de identificación')).not.toBeInTheDocument();
   });
 
   it('shows any other failure as it comes', () => {

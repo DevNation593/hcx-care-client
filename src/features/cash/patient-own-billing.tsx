@@ -9,13 +9,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useBillAsPatient } from '@/hooks/useBillingProfiles';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
+import { useMyPermissions } from '@/hooks/usePermissions';
+import { useSections } from '@/hooks/useSections';
+import { useAuthStore } from '@/store/authStore';
 import type { ApiError } from '@/types';
 import type {
   BillAsPatientInput,
   LinkedBillingProfile,
-  MissingPatientBillingField,
+  PatientBillingIssue,
   SriIdType,
 } from '@/types/cash';
+import { isCashierRole } from '@/types/guards';
 import { normalizeIdNumber, taxIdentificationError } from './tax-identification';
 
 type PatientIdType = NonNullable<BillAsPatientInput['identificationType']>;
@@ -29,27 +33,24 @@ const ID_TYPES: { value: PatientIdType; label: string; sri: SriIdType }[] = [
 const SELECT_CLASS = 'mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm';
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const ISSUES: readonly PatientBillingIssue[] = ['identification', 'legalName', 'email', 'address', 'phone'];
+
 interface IncompleteData {
-  missing: MissingPatientBillingField[];
-  identificationOnFile: boolean;
+  /** Empty data this form may complete. */
+  missing: PatientBillingIssue[];
+  /** Data on file that must be fixed in the record. */
+  invalid: PatientBillingIssue[];
   message: string;
 }
 
-/** The fields a 422 PATIENT_BILLING_DATA_INCOMPLETE reports, or null for any other error. */
+const issuesIn = (value: unknown): PatientBillingIssue[] =>
+  Array.isArray(value) ? ISSUES.filter((issue) => value.includes(issue)) : [];
+
+/** What a 422 PATIENT_BILLING_DATA_INCOMPLETE reports, or null for any other error. */
 function incompleteData(error: ApiError): IncompleteData | null {
   if (error.code !== 'PATIENT_BILLING_DATA_INCOMPLETE') return null;
   const details = error.details ?? {};
-  const missing = Array.isArray(details.missing)
-    ? details.missing.filter(
-        (field: unknown): field is MissingPatientBillingField =>
-          field === 'identification' || field === 'email',
-      )
-    : [];
-  return {
-    missing,
-    identificationOnFile: details.identificationOnFile === true,
-    message: error.message,
-  };
+  return { missing: issuesIn(details.missing), invalid: issuesIn(details.invalid), message: error.message };
 }
 
 interface PatientOwnBillingProps {
@@ -66,19 +67,28 @@ interface PatientOwnBillingProps {
 export function PatientOwnBilling({ patient, onReady, disabled }: PatientOwnBillingProps) {
   const terms = usePatientTerms();
   const bill = useBillAsPatient(patient.id);
+  const role = useAuthStore((state) => state.user?.role);
+  const { can } = useMyPermissions();
+  const { isEnabled } = useSections();
+  // Completing the record edits the patient: the API asks for patients.update and the patient
+  // records section, and a cashier never reaches patients (SEC-WEB-12).
+  const mayEditRecord =
+    !!role &&
+    !isCashierRole(role) &&
+    can('patients.update') &&
+    isEnabled('core.patients.records');
   const [incomplete, setIncomplete] = useState<IncompleteData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [idType, setIdType] = useState<PatientIdType>('CEDULA');
   const [idNumber, setIdNumber] = useState('');
   const [email, setEmail] = useState('');
 
-  const mustFixRecord =
-    !!incomplete && incomplete.missing.includes('identification') && incomplete.identificationOnFile;
-  // An identification on file that cannot be invoiced is fixed in the record first: completing
-  // anything else here could not produce the recipient.
-  const asksIdentification =
-    !!incomplete && incomplete.missing.includes('identification') && !mustFixRecord;
-  const asksEmail = !!incomplete && incomplete.missing.includes('email') && !mustFixRecord;
+  const mustFixRecord = !!incomplete && incomplete.invalid.length > 0;
+  // Data on file that cannot be invoiced is fixed in the record first: completing anything else
+  // here could not produce the recipient.
+  const completesHere = !!incomplete && mayEditRecord && !mustFixRecord;
+  const asksIdentification = completesHere && incomplete.missing.includes('identification');
+  const asksEmail = completesHere && incomplete.missing.includes('email');
 
   const send = (data?: BillAsPatientInput) => {
     setError(null);
@@ -140,12 +150,19 @@ export function PatientOwnBilling({ patient, onReady, disabled }: PatientOwnBill
         </Button>
       )}
 
-      {mustFixRecord && incomplete && (
+      {incomplete && mustFixRecord && mayEditRecord && (
         <Alert variant="warning">
           {incomplete.message}{' '}
           <Link href={`/patients/${patient.id}/edit`} className="font-medium underline">
             Editar {terms.one}
           </Link>
+        </Alert>
+      )}
+
+      {incomplete && !mayEditRecord && (
+        <Alert variant="warning">
+          Faltan o no son válidos datos de la ficha de {patient.name}. Pide a un usuario que pueda
+          editar {terms.many} que la complete para facturar a su nombre.
         </Alert>
       )}
 

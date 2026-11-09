@@ -54,8 +54,8 @@ export interface BillAsPatientInput {
   phone?: string;
 }
 
-/** What the API reports as missing in a 422 PATIENT_BILLING_DATA_INCOMPLETE. */
-export type MissingPatientBillingField = 'identification' | 'email';
+/** A patient datum a 422 PATIENT_BILLING_DATA_INCOMPLETE reports as missing or invalid. */
+export type PatientBillingIssue = 'identification' | 'legalName' | 'email' | 'address' | 'phone';
 
 export interface BillingProfileInput {
   kind: BillingProfileKind;

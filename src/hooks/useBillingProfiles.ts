@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { billingProfilesApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
 import { useTenantId } from '@/hooks/useTenantScope';
+import { invalidateScopedLists } from '@/hooks/queryInvalidation';
 import type { ApiError } from '@/types';
 import type {
   BillAsPatientInput,
@@ -81,12 +82,13 @@ export function useBillAsPatient(patientId: string) {
     mutationFn: (data) => billingProfilesApi.billAsPatient(patientId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BILLING_PROFILES });
-      // Completed data was written to the patient record.
+      // Completed data was written to the patient record, shown in its detail and the lists.
       if (tenantId) {
         queryClient.invalidateQueries({
           queryKey: QUERY_KEYS.PATIENT_DETAIL_SCOPED(tenantId, patientId),
           exact: true,
         });
+        invalidateScopedLists(queryClient, 'patients', tenantId);
       }
     },
   });
