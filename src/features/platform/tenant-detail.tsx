@@ -13,6 +13,7 @@ import { TenantSectionsCard } from './tenant-sections-card';
 import { TenantStatusCard } from './tenant-status-card';
 import { TenantRolePermissionsCard } from './tenant-role-permissions-card';
 import { TenantClinicalModulesCard } from './tenant-clinical-modules-card';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 const backLink = (
   <Link href={ROUTES.PLATFORM_TENANTS} className="text-sm underline">
@@ -41,7 +42,7 @@ export function TenantDetail({ tenantId }: { tenantId: string }) {
     }
     return (
       <div className="space-y-3">
-        <p role="alert">No se pudo cargar el consultorio.</p>
+        <p role="alert">No se pudo cargar el consultorio. {getErrorMessage(error, 'Intenta de nuevo.')}</p>
         <Button type="button" variant="outline" onClick={() => void refetch()}>Reintentar</Button>
         <div>{backLink}</div>
       </div>
