@@ -25,6 +25,7 @@ import { SESSION_STATUS_VARIANTS } from './patient-treatments-tab';
 import { PhotosStep } from './photos-step';
 import { ProcedureStep } from './procedure-step';
 import { buildSessionSteps, type SessionStep, type SessionStepId } from './session-steps';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 // What a refusal or revocation did to the document, when the session's status does not say it.
 const CONSENT_OUTCOME_LABELS: Record<Exclude<ConsentOutcome, 'signed'>, string> = {
@@ -250,11 +251,12 @@ export function SessionWorkflow({ id }: { id: string }) {
 
 function SessionHeader({ session }: { session: TreatmentSessionDetail }) {
   const { patient, treatment } = session;
+  const terms = usePatientTerms();
   return (
     <div className="flex flex-wrap items-center gap-3">
       <Link
         href={`/patients/${session.patientId}?tab=treatments`}
-        aria-label="Volver al paciente"
+        aria-label={`Volver al ${terms.one}`}
         className="inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent"
       >
         <ArrowLeft className="h-5 w-5" />

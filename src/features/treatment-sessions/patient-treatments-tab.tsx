@@ -28,6 +28,7 @@ import {
   type TreatmentSessionStatus,
   type TreatmentSessionSummary,
 } from '@/types/treatments';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 const SELECT_CLASS = 'mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-sm';
 const PENDING_APPOINTMENT = [AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED];
@@ -52,6 +53,7 @@ export const SESSION_STATUS_VARIANTS: Record<
 
 /** The treatment sessions of a patient, and the start of a new one. */
 export function PatientTreatmentsTab({ patientId }: { patientId: string }) {
+  const terms = usePatientTerms();
   const router = useRouter();
   const sessions = usePatientTreatmentSessions(patientId);
   const [creating, setCreating] = useState(false);
@@ -85,7 +87,7 @@ export function PatientTreatmentsTab({ patientId }: { patientId: string }) {
           </Alert>
         ) : !sessions.data?.length ? (
           <p className="text-sm text-muted-foreground">
-            Este paciente aún no tiene atenciones de tratamiento.
+            Este {terms.one} aún no tiene atenciones de tratamiento.
           </p>
         ) : (
           <ul className="divide-y rounded-md border border-input">

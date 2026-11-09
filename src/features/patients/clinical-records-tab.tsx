@@ -44,6 +44,7 @@ import { SignaturePasswordField, signaturePasswordError } from './signature-pass
 import { SpecialtyRecordEntryForm } from './specialty-record-entry-form';
 import { hasTemplates, TemplatePicker } from './template-picker';
 import type { Encounter } from '@/types/clinical';
+import { isHealthSpecialtyCode, usePatientTerms } from '@/hooks/usePatientTerms';
 
 export const ALERT_STYLES: Record<FormAlertLevel, string> = {
   critical: 'border-red-300 bg-red-50 text-red-900',
@@ -72,6 +73,12 @@ export function ClinicalRecordsTab({
   const createRecord = useCreateSpecialtyRecord(patientId);
   const tenantId = useAuthStore((state) => state.tenant?.id ?? state.user?.tenantId ?? null);
   const userId = useAuthStore((state) => state.user?.id);
+  // Procedure consents are health care (the API answers HEALTH_SPECIALTY_REQUIRED otherwise);
+  // an aesthetic professional takes consents inside a treatment session instead.
+  const terms = usePatientTerms();
+  const healthProfile = useAuthStore((state) =>
+    isHealthSpecialtyCode(state.user?.professionalProfile?.specialty?.code),
+  );
   const { data: encounters = [] } = usePatientEncounters(patientId);
   // One open encounter per professional and patient: new records go into it.
   const openEncounter = encounters.find(
@@ -122,11 +129,13 @@ export function ClinicalRecordsTab({
         initialAppointmentId={startAppointmentId}
       />
 
-      <ProcedureConsents patientId={patientId} openEncounterId={openEncounter?.id} />
+      {healthProfile && (
+        <ProcedureConsents patientId={patientId} openEncounterId={openEncounter?.id} />
+      )}
 
       {!openEncounter && recordable.length > 0 && (
         <p className="text-sm text-muted-foreground">
-          No tienes una atención abierta con este paciente: lo que guardes queda firmado al instante
+          No tienes una atención abierta con este {terms.one}: lo que guardes queda firmado al instante
           y después solo se corrige con una adenda.
         </p>
       )}
@@ -183,7 +192,7 @@ export function ClinicalRecordsTab({
         ) : visible.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              Aún no hay registros clínicos de este paciente.
+              Aún no hay registros clínicos de este {terms.one}.
             </CardContent>
           </Card>
         ) : (

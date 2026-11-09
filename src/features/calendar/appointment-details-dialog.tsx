@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 const ATTENDABLE: AppointmentStatus[] = [
   AppointmentStatus.SCHEDULED,
@@ -42,6 +43,7 @@ export function AppointmentDetailsDialog({
 }: AppointmentDetailsDialogProps) {
   const user = useAuthStore((state) => state.user);
   const cancelAppointment = useCancelAppointment();
+  const terms = usePatientTerms();
   const [showCancellation, setShowCancellation] = useState(false);
   const [reason, setReason] = useState('');
   const [cancelError, setCancelError] = useState<string | null>(null);
@@ -93,11 +95,11 @@ export function AppointmentDetailsDialog({
 
         <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-muted-foreground">Paciente</dt>
+            <dt className="text-muted-foreground">{terms.One}</dt>
             <dd className="font-medium">
               {appointment.patient
                 ? `${appointment.patient.firstName} ${appointment.patient.lastName}`
-                : 'Paciente no disponible'}
+                : `${terms.One} no disponible`}
             </dd>
           </div>
           <div>

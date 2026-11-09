@@ -21,6 +21,7 @@ import {
   PatientGuardianFields,
   PatientIdentificationFields,
 } from '@/features/patients/patient-profile-fields';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 export default function EditPatientPage() {
   const params = useParams();
@@ -29,6 +30,7 @@ export default function EditPatientPage() {
 
   const { data: patient, isLoading: patientLoading } = usePatient(patientId);
   const { mutate: updatePatient, isPending } = useUpdatePatient(patientId);
+  const terms = usePatientTerms();
 
   const {
     register,
@@ -99,10 +101,10 @@ export default function EditPatientPage() {
   if (!patient) {
     return (
       <div className="flex flex-col items-center justify-center h-96 space-y-4">
-        <p className="text-muted-foreground text-lg">Paciente no encontrado</p>
+        <p className="text-muted-foreground text-lg">{terms.One} no encontrado</p>
         <Button variant="outline" onClick={() => router.push('/patients')}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver a pacientes
+          Volver a {terms.many}
         </Button>
       </div>
     );
@@ -117,7 +119,7 @@ export default function EditPatientPage() {
             Volver a Detalle
           </Button>
         </Link>
-        <h1 className="text-3xl font-bold">Editar Paciente</h1>
+        <h1 className="text-3xl font-bold">Editar {terms.One}</h1>
         <p className="text-muted-foreground mt-1">
           {patient.firstName} {patient.lastName}
         </p>
@@ -127,7 +129,7 @@ export default function EditPatientPage() {
         <Card>
           <CardHeader>
             <CardTitle>Información Personal</CardTitle>
-            <CardDescription>Datos básicos del paciente</CardDescription>
+            <CardDescription>Datos básicos del {terms.one}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-2 gap-4">
@@ -219,7 +221,7 @@ export default function EditPatientPage() {
               <Label htmlFor="notes">Notas</Label>
               <Textarea
                 id="notes"
-                placeholder="Información adicional sobre el paciente..."
+                placeholder={`Información adicional sobre el ${terms.one}...`}
                 rows={4}
                 {...register('notes')}
               />

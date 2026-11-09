@@ -15,8 +15,10 @@ import { Plus, Search, Filter, X } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate } from '@/lib/utils';
 import { describeIdentification } from '@/features/patients/patient-identity';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 function PatientsPageContent() {
+  const terms = usePatientTerms();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -33,15 +35,15 @@ function PatientsPageContent() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Pacientes</h1>
+          <h1 className="text-3xl font-bold">{terms.Many}</h1>
           <p className="text-muted-foreground mt-1">
-            Gestiona los registros de tus pacientes
+            Gestiona los registros de tus {terms.many}
           </p>
         </div>
         <Link href="/patients/new">
           <Button>
             <Plus className="h-4 w-4 mr-2" />
-            Nuevo Paciente
+            Nuevo {terms.One}
           </Button>
         </Link>
       </div>
@@ -53,7 +55,7 @@ function PatientsPageContent() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar por nombre, identificación, correo o teléfono"
-                aria-label="Buscar pacientes"
+                aria-label={`Buscar ${terms.many}`}
                 className="pl-10"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -190,10 +192,10 @@ function PatientsPageContent() {
             </>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
-              <p>No se encontraron pacientes</p>
+              <p>No se encontraron {terms.many}</p>
               <Link href="/patients/new">
                 <Button variant="link" className="mt-2">
-                  Agregar primer paciente
+                  Agregar primer {terms.one}
                 </Button>
               </Link>
             </div>
