@@ -129,6 +129,14 @@ function TakeConsentDialog({
               present.mutate();
             }}
           >
+            {templates.isError && (
+              <Alert variant="destructive" className="flex flex-wrap items-center justify-between gap-2">
+                <span>No se pudieron cargar las plantillas de consentimiento.</span>
+                <Button type="button" variant="outline" size="sm" onClick={() => templates.refetch()}>
+                  Reintentar
+                </Button>
+              </Alert>
+            )}
             {templates.data?.length === 0 && (
               <Alert variant="warning">
                 El consultorio no tiene plantillas de consentimiento publicadas. Se crean en Clínica › Consentimientos.

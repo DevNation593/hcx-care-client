@@ -116,6 +116,23 @@ describe('ProcedureConsents', () => {
     expect(api.sign.mock.calls[0][1]).not.toHaveProperty('marketingPhotos');
   });
 
+  it('says when the templates could not be loaded and lets the professional retry', async () => {
+    api.templates.mockRejectedValueOnce(new Error('network'));
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ProcedureConsents patientId="patient-1" openEncounterId="encounter-1" />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Tomar consentimiento/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(await within(dialog).findByText(/No se pudieron cargar las plantillas/)).toBeInTheDocument();
+
+    await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Reintentar' })));
+    expect(await within(dialog).findByRole('option', { name: /Inserción de DIU \(versión 2\)/ })).toBeInTheDocument();
+    expect(within(dialog).queryByText(/No se pudieron cargar las plantillas/)).not.toBeInTheDocument();
+  });
+
   it('lists the consents with their decision and the reason of a refusal', async () => {
     api.list.mockResolvedValue([
       {
