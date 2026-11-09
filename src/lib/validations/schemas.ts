@@ -6,6 +6,8 @@ import {
 } from '@/features/patients/patient-identity';
 import { UserRole, Gender, TaskStatus, TaskPriority, AppointmentStatus, TenantType, SECTION_KEYS, type CreatePlatformTenantInput } from '@/types';
 import { PASSWORD_MIN_LENGTH } from '@/lib/constants';
+import { normalizeIdNumber, taxIdentificationError } from '@/features/cash/tax-identification';
+import type { BillAsPatientInput } from '@/types/cash';
 
 // ==========================================
 // AUTH SCHEMAS
@@ -395,3 +397,59 @@ export type IssuerFormValues = z.input<typeof issuerSchema>;
 export type IssuerFormData = z.output<typeof issuerSchema>;
 export type EmissionPointFormValues = z.input<typeof emissionPointSchema>;
 export type EmissionPointFormData = z.output<typeof emissionPointSchema>;
+
+// ==========================================
+// BILLING IN THE PATIENT'S OWN NAME
+// ==========================================
+
+/** SRI identification type of each patient identification an invoice can carry. */
+const PATIENT_ID_SRI_TYPES = { CEDULA: '05', RUC: '04', PASSPORT: '06' } as const;
+
+/**
+ * The data a patient record lacks to be its own invoice recipient. Only the fields in `asks` are
+ * checked and sent; the identification goes out normalized, as the API stores it.
+ */
+export function patientBillingDataSchema(asks: { identification: boolean; email: boolean }) {
+  return z
+    .object({
+      identificationType: z.enum(['CEDULA', 'RUC', 'PASSPORT']),
+      identificationNumber: z.string(),
+      email: z.string(),
+    })
+    .superRefine((data, context) => {
+      if (asks.identification) {
+        const sriType = PATIENT_ID_SRI_TYPES[data.identificationType];
+        const number = normalizeIdNumber(sriType, data.identificationNumber);
+        const message = number
+          ? taxIdentificationError(sriType, number, '')
+          : 'Escribe el número de identificación';
+        if (message) {
+          context.addIssue({ code: z.ZodIssueCode.custom, message, path: ['identificationNumber'] });
+        }
+      }
+      if (asks.email && !z.string().email().safeParse(data.email.trim()).success) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Escribe un correo válido',
+          path: ['email'],
+        });
+      }
+    })
+    .transform(
+      (data): BillAsPatientInput => ({
+        ...(asks.identification
+          ? {
+              identificationType: data.identificationType,
+              identificationNumber: normalizeIdNumber(
+                PATIENT_ID_SRI_TYPES[data.identificationType],
+                data.identificationNumber,
+              ),
+            }
+          : {}),
+        ...(asks.email ? { email: data.email.trim() } : {}),
+      }),
+    );
+}
+
+export type PatientBillingDataValues = z.input<ReturnType<typeof patientBillingDataSchema>>;
+

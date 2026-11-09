@@ -4,6 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionCommandName, TreatmentSessionDetail } from '@/types/treatments';
 import { ProcedureStep } from './procedure-step';
 
+// Rendered without a QueryClient: name people as in a clinical practice.
+vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePatientTerms')>();
+  return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
+});
+
 const hooks = vi.hoisted(() => ({
   start: vi.fn(),
   complete: vi.fn(),

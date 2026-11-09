@@ -9,6 +9,7 @@ import { getRemainingSeats, getRemainingPatients, getRemainingStorageGB, isClini
 import { useSections } from '@/hooks/useSections';
 import { useAuthStore } from '@/store/authStore';
 import { ROUTES } from '@/lib/constants';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 export function PsychologistsUsageWidget() {
   const router = useRouter();
@@ -47,6 +48,7 @@ export function PsychologistsUsageWidget() {
 }
 
 export function PatientsUsageWidget() {
+  const terms = usePatientTerms();
   const router = useRouter();
   const canManage = useCanManageAccount();
   const { data: subscription } = useSubscription();
@@ -63,21 +65,21 @@ export function PatientsUsageWidget() {
   };
 
   const handleManage = () => {
-    router.push('/patients'); // Asume ruta de gestión de pacientes
+    router.push('/patients');
   };
 
   return (
     <UsageCard
-      title="Pacientes"
+      title={terms.Many}
       description="Expedientes activos"
       icon={UserPlus}
       current={activePatients}
       limit={limit}
-      unit="pacientes"
+      unit={terms.many}
       onUpgrade={canManage ? handleUpgrade : undefined}
       upgradeNotice={canManage ? undefined : 'Contacta al titular de la cuenta.'}
       onManage={handleManage}
-      manageLabel="Ver Pacientes"
+      manageLabel={`Ver ${terms.Many}`}
     />
   );
 }

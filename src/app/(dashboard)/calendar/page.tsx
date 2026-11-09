@@ -14,6 +14,7 @@ import { useAuthStore } from '@/store/authStore';
 import { canEditAppointment } from '@/types/guards';
 import { UserRole, type Appointment } from '@/types';
 import { Button } from '@/components/ui/button';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 const FullCalendarComponent = dynamic(() => import('@/features/calendar/calendar-view'), {
   ssr: false,
@@ -31,6 +32,7 @@ interface RescheduleRequest {
 }
 
 function CalendarPageContent() {
+  const terms = usePatientTerms();
   const searchParams = useSearchParams();
   const deepLinkedAppointmentId = searchParams.get('appointmentId') ?? '';
   const user = useAuthStore((state) => state.user);
@@ -131,7 +133,7 @@ function CalendarPageContent() {
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-3xl font-bold">Calendario</h1>
-          <p className="mt-1 text-muted-foreground">Gestiona las citas de tus pacientes</p>
+          <p className="mt-1 text-muted-foreground">Gestiona las citas de tus {terms.many}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {activeBranches.length > 1 && (

@@ -4,6 +4,12 @@ import { useAuthStore } from '@/store/authStore';
 import type { TreatmentSessionDetail } from '@/types/treatments';
 import { SessionWorkflow } from './session-workflow';
 
+// Rendered without a QueryClient: name people as in a clinical practice.
+vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePatientTerms')>();
+  return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
+});
+
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 
 const hooks = vi.hoisted(() => ({

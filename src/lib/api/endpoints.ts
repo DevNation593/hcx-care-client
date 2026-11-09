@@ -125,6 +125,7 @@ import type {
   BillingProfileFilters,
   LinkedBillingProfile,
   LinkBillingProfileInput,
+  BillAsPatientInput,
   CashRegister,
   CashRegisterDetail,
   CashRegisterFilters,
@@ -809,6 +810,12 @@ export const billingProfilesApi = {
   link: (patientId: string, data: LinkBillingProfileInput) =>
     apiClient.post<LinkedBillingProfile[]>(
       API_ENDPOINTS.PATIENT_BILLING_PROFILES(getTenantId(), patientId),
+      data,
+    ),
+  /** The patient's own profile, from the patient record; `data` completes what the record lacks. */
+  billAsPatient: (patientId: string, data: BillAsPatientInput = {}) =>
+    apiClient.post<LinkedBillingProfile>(
+      `${API_ENDPOINTS.PATIENT_BILLING_PROFILES(getTenantId(), patientId)}/own`,
       data,
     ),
   // The profile stays; only the link to the patient goes.

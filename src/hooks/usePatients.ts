@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { invalidateScopedLists } from './queryInvalidation';
 import { requireTenantId, useTenantId } from './useTenantScope';
 import { useTenantMutation } from './useTenantMutation';
+import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 export function usePatients(params?: Parameters<typeof patientsApi.list>[0]) {
   const tenantId = useTenantId();
@@ -28,18 +29,20 @@ export function usePatient(id: string) {
 }
 
 export function useCreatePatient() {
+  const terms = usePatientTerms();
   const client = useQueryClient();
   return useTenantMutation({
     mutationFn: (data: Partial<PatientInput>, tenantId: string) => patientsApi.create(data, tenantId),
     onSuccess: async (_result, _data, tenantId) => {
       await invalidateScopedLists(client, 'patients', tenantId);
-      toast.success('Paciente creado exitosamente');
+      toast.success(`${terms.One} creado exitosamente`);
     },
-    onError: (error: Error) => toast.error(error.message || 'Error al crear paciente'),
+    onError: (error: Error) => toast.error(error.message || `Error al crear ${terms.one}`),
   });
 }
 
 export function useUpdatePatient(id: string) {
+  const terms = usePatientTerms();
   const client = useQueryClient();
   return useTenantMutation({
     captureResource: () => id,
@@ -50,13 +53,14 @@ export function useUpdatePatient(id: string) {
         client.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_DETAIL_SCOPED(scopedTenant, capturedId), exact: true }),
         invalidateScopedLists(client, 'patients', scopedTenant),
       ]);
-      toast.success('Paciente actualizado exitosamente');
+      toast.success(`${terms.One} actualizado exitosamente`);
     },
-    onError: (error: Error) => toast.error(error.message || 'Error al actualizar paciente'),
+    onError: (error: Error) => toast.error(error.message || `Error al actualizar ${terms.one}`),
   });
 }
 
 export function useDeletePatient() {
+  const terms = usePatientTerms();
   const client = useQueryClient();
   return useTenantMutation({
     mutationFn: (id: string, tenantId: string) => patientsApi.delete(id, tenantId),
@@ -65,8 +69,8 @@ export function useDeletePatient() {
         client.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_DETAIL_SCOPED(scopedTenant, id), exact: true }),
         invalidateScopedLists(client, 'patients', scopedTenant),
       ]);
-      toast.success('Paciente eliminado');
+      toast.success(`${terms.One} eliminado`);
     },
-    onError: (error: Error) => toast.error(error.message || 'Error al eliminar paciente'),
+    onError: (error: Error) => toast.error(error.message || `Error al eliminar ${terms.one}`),
   });
 }

@@ -45,6 +45,18 @@ export interface LinkedBillingProfile extends BillingProfile {
   isDefault: boolean;
 }
 
+/** Patient data an invoice in the patient's own name may complete; fields on file are kept. */
+export interface BillAsPatientInput {
+  identificationType?: 'CEDULA' | 'RUC' | 'PASSPORT';
+  identificationNumber?: string;
+  email?: string;
+  address?: string;
+  phone?: string;
+}
+
+/** A patient datum a 422 PATIENT_BILLING_DATA_INCOMPLETE reports as missing or invalid. */
+export type PatientBillingIssue = 'identification' | 'legalName' | 'email' | 'address' | 'phone';
+
 export interface BillingProfileInput {
   kind: BillingProfileKind;
   idType: SriIdType;
