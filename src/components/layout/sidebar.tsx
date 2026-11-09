@@ -9,7 +9,13 @@ import { useUIStore } from '@/store/uiStore';
 import { useSections } from '@/hooks/useSections';
 import { useMyPermissions } from '@/hooks/usePermissions';
 import { CASHIER_PATHS } from '@/lib/cashier-routes';
-import { canManageUsers, canManageSubscription, isCashierRole, isMasterRole } from '@/types/guards';
+import {
+  canAccessClinicalNotes,
+  canManageUsers,
+  canManageSubscription,
+  isCashierRole,
+  isMasterRole,
+} from '@/types/guards';
 import {
   LayoutDashboard,
   Calendar,
@@ -34,6 +40,7 @@ import {
   Wallet,
   Package,
   Receipt,
+  Inbox,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -73,6 +80,8 @@ export function Sidebar() {
   const managesSubscription = !!user && canManageSubscription(user);
   const isMaster = !!user && isMasterRole(user.role);
   const isCashier = !!user && isCashierRole(user.role);
+  // Results to review and follow-ups are clinical content, like the record itself.
+  const seesClinical = !!user && canAccessClinicalNotes(user) && can('clinical_records.view');
 
   const navigation: NavEntry[] = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, show: !isCashier },
@@ -85,6 +94,12 @@ export function Sidebar() {
       ],
     },
     { name: 'Pacientes', href: '/patients', icon: Users, show: isEnabled('core.patients.records') },
+    {
+      name: 'Pendientes clínicos',
+      href: '/clinical/pending',
+      icon: Inbox,
+      show: seesClinical && isEnabled('core.clinical.specialties'),
+    },
     {
       name: 'Clínica',
       icon: Stethoscope,

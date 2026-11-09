@@ -1,6 +1,17 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from '@/lib/constants';
 import { useAuthStore } from '@/store/authStore';
+import type {
+  ClinicalFollowUp,
+  ClinicalInbox,
+  ClinicalOrder,
+  ClinicalOrderInput,
+  FollowUpInput,
+  InboxScope,
+  PatientContactChannel,
+  ResultInput,
+  ReviewInput,
+} from '@/types/clinical-orders';
 import {
   User,
   CreateTenantUserInput,
@@ -376,6 +387,8 @@ function normalizeTenantSettings(raw: any): TenantSettings {
     reminderRules,
     timezone: raw.timezone ?? 'America/Mexico_City',
     locale: raw.locale ?? 'es-MX',
+    resultReviewAlertDays: raw.resultReviewAlertDays ?? 3,
+    orderResultAlertDays: raw.orderResultAlertDays ?? 15,
   };
 }
 
@@ -555,6 +568,8 @@ export const tenantSettingsApi = {
       timezone: settings.timezone,
       locale: settings.locale,
       defaultAppointmentDuration: settings.defaultSessionDuration,
+      resultReviewAlertDays: settings.resultReviewAlertDays,
+      orderResultAlertDays: settings.orderResultAlertDays,
       reminderEnabled:
         settings.reminderRules !== undefined
           ? settings.reminderRules.some((r) => r.enabled)
@@ -649,6 +664,51 @@ export const encountersApi = {
       API_ENDPOINTS.PATIENT_ENCOUNTER(getTenantId(), patientId, encounterId),
       { data: { reason } },
     ),
+};
+
+const tenant = () => getTenantId();
+
+export const clinicalOrdersApi = {
+  list: (patientId: string) =>
+    apiClient.get<ClinicalOrder[]>(API_ENDPOINTS.PATIENT_CLINICAL_ORDERS(tenant(), patientId)),
+  /** Outside an encounter saving signs the order: the password is checked again. */
+  create: (patientId: string, data: ClinicalOrderInput) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.PATIENT_CLINICAL_ORDERS(tenant(), patientId), data),
+  collectSample: (orderId: string, data: { version: number; notes?: string; collectedAt?: string }) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'sample'), data),
+  sendToLab: (
+    orderId: string,
+    data: { version: number; provider?: string; externalReference?: string; sentAt?: string },
+  ) => apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'sent'), data),
+  addResult: (orderId: string, data: ResultInput) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'results'), data),
+  complete: (orderId: string, data: { version: number; note?: string }) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'complete'), data),
+  cancel: (
+    orderId: string,
+    data: { version: number; status: 'CANCELLED' | 'NOT_PERFORMED'; reason: string },
+  ) => apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'cancel'), data),
+  review: (resultId: string, data: ReviewInput) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_RESULT_ACTION(tenant(), resultId, 'review'), data),
+  communicate: (
+    resultId: string,
+    data: { channel: PatientContactChannel; note?: string; communicatedAt?: string },
+  ) =>
+    apiClient.post<ClinicalOrder>(
+      API_ENDPOINTS.CLINICAL_RESULT_ACTION(tenant(), resultId, 'communication'),
+      data,
+    ),
+  inbox: (scope: InboxScope) =>
+    apiClient.get<ClinicalInbox>(API_ENDPOINTS.CLINICAL_INBOX(tenant()), { params: { scope } }),
+  listFollowUps: (patientId: string) =>
+    apiClient.get<ClinicalFollowUp[]>(API_ENDPOINTS.PATIENT_CLINICAL_FOLLOW_UPS(tenant(), patientId)),
+  createFollowUp: (patientId: string, data: FollowUpInput) =>
+    apiClient.post<ClinicalFollowUp>(API_ENDPOINTS.PATIENT_CLINICAL_FOLLOW_UPS(tenant(), patientId), data),
+  closeFollowUp: (
+    followUpId: string,
+    data: { version: number; status: 'DONE' | 'CANCELLED'; note: string },
+  ) =>
+    apiClient.post<ClinicalFollowUp>(`${API_ENDPOINTS.CLINICAL_FOLLOW_UP(tenant(), followUpId)}/close`, data),
 };
 
 export const treatmentsApi = {
