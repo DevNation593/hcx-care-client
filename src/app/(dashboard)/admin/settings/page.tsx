@@ -18,6 +18,7 @@ import {
   Bell,
   Save,
   RotateCcw,
+  FlaskConical,
 } from 'lucide-react';
 import { type WorkingHours, type ReminderRule, type TenantSettings } from '@/types';
 import { BranchesManager } from '@/features/admin/branches/branches-manager';
@@ -82,6 +83,8 @@ export default function AdminSettingsPage() {
   const [reminders, setReminders] = useState<ReminderRule[]>(
     settings?.reminderRules || DEFAULT_REMINDERS
   );
+  const [reviewAlertDays, setReviewAlertDays] = useState(settings?.resultReviewAlertDays ?? 3);
+  const [resultAlertDays, setResultAlertDays] = useState(settings?.orderResultAlertDays ?? 15);
   const [hasChanges, setHasChanges] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -95,6 +98,8 @@ export default function AdminSettingsPage() {
     setTimezone(settings.timezone || 'America/Mexico_City');
     setLocale(settings.locale || 'es');
     setReminders(settings.reminderRules || DEFAULT_REMINDERS);
+    setReviewAlertDays(settings.resultReviewAlertDays ?? 3);
+    setResultAlertDays(settings.orderResultAlertDays ?? 15);
     setInitialized(true);
   }, [initialized, settings]);
 
@@ -144,6 +149,8 @@ export default function AdminSettingsPage() {
         timezone,
         locale,
         reminderRules: reminders,
+        resultReviewAlertDays: reviewAlertDays,
+        orderResultAlertDays: resultAlertDays,
       },
       {
         onSuccess: () => {
@@ -160,6 +167,8 @@ export default function AdminSettingsPage() {
       setTimezone(settings.timezone || 'America/Mexico_City');
       setLocale(settings.locale || 'es');
       setReminders(settings.reminderRules || DEFAULT_REMINDERS);
+      setReviewAlertDays(settings.resultReviewAlertDays ?? 3);
+      setResultAlertDays(settings.orderResultAlertDays ?? 15);
     }
     setHasChanges(false);
   };
@@ -310,6 +319,57 @@ export default function AdminSettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Clinical inbox thresholds */}
+      {isEnabled('core.clinical.specialties') && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FlaskConical className="h-5 w-5" />
+              Plazos de resultados
+            </CardTitle>
+            <CardDescription>
+              Cuándo «Pendientes clínicos» marca como vencido un resultado sin revisar o una orden sin resultado.
+              Los decide el consultorio; el sistema no clasifica la urgencia clínica.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="result-review-alert-days">Días para revisar un resultado</Label>
+                <Input
+                  id="result-review-alert-days"
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={reviewAlertDays}
+                  onChange={(e) => {
+                    setReviewAlertDays(Number(e.target.value));
+                    markChanged();
+                  }}
+                />
+              </div>
+              <div>
+                <Label htmlFor="order-result-alert-days">Días para recibir un resultado</Label>
+                <Input
+                  id="order-result-alert-days"
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={resultAlertDays}
+                  onChange={(e) => {
+                    setResultAlertDays(Number(e.target.value));
+                    markChanged();
+                  }}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Se usa cuando la orden no indica su propia fecha esperada.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Reminders */}
       <Card>
