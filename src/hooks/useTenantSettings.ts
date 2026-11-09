@@ -30,6 +30,8 @@ export function useUpdateTenantSettings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TENANT_SETTINGS });
+      // The clinical inbox carries the alert thresholds and the overdue marks computed from them.
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CLINICAL_INBOX_ALL });
       toast.success('Configuración actualizada');
     },
     onError: (error: any) => {

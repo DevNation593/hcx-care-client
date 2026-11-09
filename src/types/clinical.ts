@@ -132,6 +132,11 @@ export interface ClinicalRecordInput {
   appointmentId?: string;
   /** An open encounter of the signed-in professional; the record is written in it. */
   encounterId?: string;
+  /** Makes it an addendum to that signed record of the author, with the reason. */
+  amendsRecordId?: string;
+  amendmentReason?: string;
+  /** Required when the record is signed as it is saved: an addendum, or outside any encounter. */
+  password?: string;
 }
 
 export interface Branch {
@@ -197,6 +202,10 @@ export interface Encounter {
   summary: string | null;
   startedAt: string;
   closedAt: string | null;
+  /** The signature taken at the close; null for encounters closed before signatures. */
+  signedAt?: string | null;
+  signedById?: string | null;
+  contentHash?: string | null;
   recordCount: number;
   professional?: { id: string; firstName: string; lastName: string };
   specialty?: { id: string; code: string; name: string };
@@ -234,6 +243,11 @@ export interface PatientFile {
   sizeBytes: number;
   createdAt: string;
   uploadedBy?: { id: string; firstName: string; lastName: string };
+  /**
+   * What the antivirus said. NOT_SCANNED: uploaded before scanning existed or with no antivirus
+   * configured (scanned on its next download). INFECTED: quarantined, never served.
+   */
+  scanStatus?: 'NOT_SCANNED' | 'CLEAN' | 'INFECTED';
 }
 
 export interface DiagnosisCode {
@@ -266,6 +280,8 @@ export interface ClinicalRecordCorrection {
   data?: Record<string, unknown>;
   notes?: string | null;
   changeReason: string;
+  /** The version edited: if someone saved since, the API answers 409 instead of overwriting. */
+  version?: number;
 }
 
 export interface PatientClinicalAlert extends FormAlert {

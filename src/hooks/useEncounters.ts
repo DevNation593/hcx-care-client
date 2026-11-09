@@ -19,6 +19,7 @@ function useEncounterMutation<TInput>(
   patientId: string,
   mutationFn: (input: TInput) => Promise<unknown>,
   messages: { success: string; error: string },
+  options: { signsRecords?: boolean } = {},
 ) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -27,6 +28,11 @@ function useEncounterMutation<TInput>(
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
       // Starting and closing an encounter moves its appointment along.
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
+      if (options.signsRecords) {
+        // Closing signs the records it holds: they stop being editable and take addenda instead.
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_SPECIALTY_RECORDS(patientId) });
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_CLINICAL_ALERTS(patientId) });
+      }
       toast.success(messages.success);
     },
     onError: (error: ApiError) => {
@@ -46,9 +52,10 @@ export function useStartEncounter(patientId: string) {
 export function useCloseEncounter(patientId: string) {
   return useEncounterMutation(
     patientId,
-    ({ encounterId, summary }: { encounterId: string; summary?: string }) =>
-      encountersApi.close(patientId, encounterId, summary),
-    { success: 'Atención cerrada', error: 'No fue posible cerrar la atención' },
+    ({ encounterId, summary, password }: { encounterId: string; summary?: string; password: string }) =>
+      encountersApi.close(patientId, encounterId, password, summary),
+    { success: 'Atención cerrada y firmada', error: 'No fue posible cerrar la atención' },
+    { signsRecords: true },
   );
 }
 

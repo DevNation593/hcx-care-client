@@ -260,7 +260,10 @@ export interface SignConsentInput {
   relationship?: string;
   understood: boolean;
   questionsAnswered: boolean;
-  marketingPhotos: boolean;
+  /** Treatment sessions only: procedures take no photos for advertising. */
+  marketingPhotos?: boolean;
+  /** Clinical procedures only: who witnessed the signature. */
+  witnessName?: string;
   /** The drawn signature as a PNG data URL. */
   signature: string;
 }
@@ -310,6 +313,42 @@ export interface SessionPatient {
   guardianName: string | null;
   guardianRelationship: string | null;
   guardianIdentification: string | null;
+}
+
+/** A consent for a clinical procedure, taken in an encounter (an IUD insertion, a biopsy). */
+export interface ProcedureConsent {
+  id: string;
+  patientId: string;
+  encounterId: string;
+  procedureName: string | null;
+  title: string;
+  /** Only in the answer to presenting it: the text to read with the patient. */
+  body?: string;
+  checksum: string;
+  status: ConsentDocumentStatus;
+  presentedAt: string;
+  signedAt: string | null;
+  refusedAt: string | null;
+  revokedAt: string | null;
+  hasPdf: boolean;
+  templateVersion: { id: string; version: number; template: { name: string } };
+  encounter: { id: string; professionalId: string; status: string; startedAt: string } | null;
+  signature: {
+    signerRole: ConsentSignerRole;
+    signerName: string;
+    relationship: string | null;
+    witnessName: string | null;
+    signedAt: string;
+  } | null;
+  events: { type: string; reason: string | null; actorId: string; createdAt: string }[];
+}
+
+export interface ProcedureConsentTemplate {
+  templateId: string;
+  name: string;
+  versionId: string;
+  version: number;
+  title: string;
 }
 
 /** A photo of the session; its bytes are not part of the detail. */

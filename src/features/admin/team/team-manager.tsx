@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Stethoscope, UserCheck, UserPlus, UserX } from 'lucide-react';
+import { KeyRound, Pencil, Stethoscope, UserCheck, UserPlus, UserX } from 'lucide-react';
 import Link from 'next/link';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -204,6 +204,20 @@ export function TeamManager() {
     void runAction(actionTenantId, () => usersApi.delete(user.id, actionTenantId));
   };
 
+  // For someone who lost the phone of their second factor; they set it up again if required.
+  const resetTwoFactor = (user: User) => {
+    if (
+      !tenantId ||
+      !window.confirm(
+        `¿Restablecer la verificación en dos pasos de ${memberName(user)}? Se cerrarán sus sesiones y deberá configurarla de nuevo si el consultorio la exige.`,
+      )
+    ) {
+      return;
+    }
+    const actionTenantId = tenantId;
+    void runAction(actionTenantId, () => usersApi.resetMfa(user.id, actionTenantId));
+  };
+
   const reactivateAccount = (user: User) => {
     if (!tenantId) return;
     const actionTenantId = tenantId;
@@ -374,6 +388,19 @@ export function TeamManager() {
                                     disabled={isMutationPending}
                                   >
                                     <Stethoscope className="h-4 w-4" aria-hidden="true" />
+                                  </Button>
+                                )}
+                                {!isHolder && user.isActive && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    aria-label={`Restablecer verificación en dos pasos de ${name}`}
+                                    title="Restablecer verificación en dos pasos"
+                                    onClick={() => resetTwoFactor(user)}
+                                    disabled={isMutationPending}
+                                  >
+                                    <KeyRound className="h-4 w-4" aria-hidden="true" />
                                   </Button>
                                 )}
                                 {!isHolder && (user.isActive ? (

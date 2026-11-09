@@ -1,6 +1,18 @@
 import { apiClient } from './client';
+import { isMfaChallenge } from '@/types';
 import { API_ENDPOINTS } from '@/lib/constants';
 import { useAuthStore } from '@/store/authStore';
+import type {
+  ClinicalFollowUp,
+  ClinicalInbox,
+  ClinicalOrder,
+  ClinicalOrderInput,
+  FollowUpInput,
+  InboxScope,
+  PatientContactChannel,
+  ResultInput,
+  ReviewInput,
+} from '@/types/clinical-orders';
 import {
   User,
   CreateTenantUserInput,
@@ -25,6 +37,9 @@ import {
   Subscription,
   LoginCredentials,
   AuthResponse,
+  MfaChallenge,
+  MfaSetup,
+  MfaStatus,
   PaginatedResponse,
   SubscriptionPayment,
   PlatformPlan,
@@ -99,6 +114,8 @@ import type {
   TreatmentVersionInput,
   TreatmentWithCurrent,
   TreatmentWithVersions,
+  ProcedureConsent,
+  ProcedureConsentTemplate,
 } from '@/types/treatments';
 import type {
   Paginated,
@@ -376,6 +393,9 @@ function normalizeTenantSettings(raw: any): TenantSettings {
     reminderRules,
     timezone: raw.timezone ?? 'America/Mexico_City',
     locale: raw.locale ?? 'es-MX',
+    resultReviewAlertDays: raw.resultReviewAlertDays ?? 3,
+    orderResultAlertDays: raw.orderResultAlertDays ?? 15,
+    requireMfa: raw.requireMfa ?? false,
   };
 }
 
@@ -406,11 +426,33 @@ function normalizeUser(raw: any): User {
 // ==========================================
 
 export const authApi = {
-  login: (credentials: LoginCredentials) =>
-    apiClient.post<AuthResponse>(API_ENDPOINTS.LOGIN, credentials).then((raw) => ({
+  /** An account with two-factor sign-in gets a challenge instead of a session. */
+  login: (credentials: LoginCredentials): Promise<AuthResponse | MfaChallenge> =>
+    apiClient
+      .post<AuthResponse | MfaChallenge>(API_ENDPOINTS.LOGIN, credentials)
+      .then((raw) => (isMfaChallenge(raw) ? raw : { ...raw, user: normalizeUser(raw.user) })),
+
+  /** The second step: a code of the authenticator app or a recovery code. */
+  verifyMfa: (input: { mfaToken: string; code?: string; recoveryCode?: string }) =>
+    apiClient.post<AuthResponse>(API_ENDPOINTS.MFA_VERIFY, input).then((raw) => ({
       ...raw,
       user: normalizeUser(raw.user),
     })),
+
+  mfaStatus: () => apiClient.get<MfaStatus>(API_ENDPOINTS.MFA),
+  setupMfa: (password: string) => apiClient.post<MfaSetup>(`${API_ENDPOINTS.MFA}/setup`, { password }),
+  /**
+   * Confirms the setup. The API ends every session of the account and returns a new one for this
+   * client, with the recovery codes: the caller has to keep the new tokens.
+   */
+  enableMfa: (code: string) =>
+    apiClient
+      .post<AuthResponse & { recoveryCodes: string[] }>(`${API_ENDPOINTS.MFA}/enable`, { code })
+      .then((raw) => ({ ...raw, user: normalizeUser(raw.user) })),
+  disableMfa: (input: { password: string; code: string }) =>
+    apiClient.post<{ enabled: false }>(`${API_ENDPOINTS.MFA}/disable`, input),
+  regenerateRecoveryCodes: (code: string) =>
+    apiClient.post<{ recoveryCodes: string[] }>(`${API_ENDPOINTS.MFA}/recovery-codes`, { code }),
 
   refresh: (refreshToken: string) =>
     apiClient
@@ -555,6 +597,9 @@ export const tenantSettingsApi = {
       timezone: settings.timezone,
       locale: settings.locale,
       defaultAppointmentDuration: settings.defaultSessionDuration,
+      resultReviewAlertDays: settings.resultReviewAlertDays,
+      orderResultAlertDays: settings.orderResultAlertDays,
+      requireMfa: settings.requireMfa,
       reminderEnabled:
         settings.reminderRules !== undefined
           ? settings.reminderRules.some((r) => r.enabled)
@@ -638,16 +683,96 @@ export const encountersApi = {
   start: (patientId: string, data: EncounterInput) =>
     apiClient.post<Encounter>(API_ENDPOINTS.PATIENT_ENCOUNTERS(getTenantId(), patientId), data),
   // Closing is the professional's sign-off: the encounter takes no more records.
-  close: (patientId: string, encounterId: string, summary?: string) =>
+  /** Closing signs the encounter: the professional's password is checked again. */
+  close: (patientId: string, encounterId: string, password: string, summary?: string) =>
     apiClient.post<Encounter>(
       API_ENDPOINTS.PATIENT_ENCOUNTER_CLOSE(getTenantId(), patientId, encounterId),
-      summary ? { summary } : {},
+      summary ? { summary, password } : { password },
     ),
   remove: (patientId: string, encounterId: string, reason: string) =>
     apiClient.delete<{ message: string }>(
       API_ENDPOINTS.PATIENT_ENCOUNTER(getTenantId(), patientId, encounterId),
       { data: { reason } },
     ),
+};
+
+const tenant = () => getTenantId();
+
+export const clinicalOrdersApi = {
+  list: (patientId: string) =>
+    apiClient.get<ClinicalOrder[]>(API_ENDPOINTS.PATIENT_CLINICAL_ORDERS(tenant(), patientId)),
+  /** Outside an encounter saving signs the order: the password is checked again. */
+  create: (patientId: string, data: ClinicalOrderInput) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.PATIENT_CLINICAL_ORDERS(tenant(), patientId), data),
+  collectSample: (orderId: string, data: { version: number; notes?: string; collectedAt?: string }) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'sample'), data),
+  sendToLab: (
+    orderId: string,
+    data: { version: number; provider?: string; externalReference?: string; sentAt?: string },
+  ) => apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'sent'), data),
+  addResult: (orderId: string, data: ResultInput) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'results'), data),
+  complete: (orderId: string, data: { version: number; note?: string }) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'complete'), data),
+  cancel: (
+    orderId: string,
+    data: { version: number; status: 'CANCELLED' | 'NOT_PERFORMED'; reason: string },
+  ) => apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_ORDER_ACTION(tenant(), orderId, 'cancel'), data),
+  review: (resultId: string, data: ReviewInput) =>
+    apiClient.post<ClinicalOrder>(API_ENDPOINTS.CLINICAL_RESULT_ACTION(tenant(), resultId, 'review'), data),
+  communicate: (
+    resultId: string,
+    data: { channel: PatientContactChannel; note?: string; communicatedAt?: string },
+  ) =>
+    apiClient.post<ClinicalOrder>(
+      API_ENDPOINTS.CLINICAL_RESULT_ACTION(tenant(), resultId, 'communication'),
+      data,
+    ),
+  inbox: (scope: InboxScope, page = 1) =>
+    apiClient.get<ClinicalInbox>(API_ENDPOINTS.CLINICAL_INBOX(tenant()), { params: { scope, page } }),
+  listFollowUps: (patientId: string) =>
+    apiClient.get<ClinicalFollowUp[]>(API_ENDPOINTS.PATIENT_CLINICAL_FOLLOW_UPS(tenant(), patientId)),
+  createFollowUp: (patientId: string, data: FollowUpInput) =>
+    apiClient.post<ClinicalFollowUp>(API_ENDPOINTS.PATIENT_CLINICAL_FOLLOW_UPS(tenant(), patientId), data),
+  closeFollowUp: (
+    followUpId: string,
+    data: { version: number; status: 'DONE' | 'CANCELLED'; note: string },
+  ) =>
+    apiClient.post<ClinicalFollowUp>(`${API_ENDPOINTS.CLINICAL_FOLLOW_UP(tenant(), followUpId)}/close`, data),
+};
+
+export const procedureConsentsApi = {
+  templates: () =>
+    apiClient.get<ProcedureConsentTemplate[]>(API_ENDPOINTS.PROCEDURE_CONSENT_TEMPLATES(getTenantId())),
+  list: (patientId: string) =>
+    apiClient.get<ProcedureConsent[]>(API_ENDPOINTS.PATIENT_PROCEDURE_CONSENTS(getTenantId(), patientId)),
+  /** One consent with its text: a presented one is taken up where it was left. */
+  get: (documentId: string) =>
+    apiClient.get<ProcedureConsent>(API_ENDPOINTS.PROCEDURE_CONSENT(getTenantId(), documentId)),
+  present: (patientId: string, encounterId: string, input: { templateId: string; procedureName: string }) =>
+    apiClient.post<ProcedureConsent>(
+      API_ENDPOINTS.ENCOUNTER_PROCEDURE_CONSENTS(getTenantId(), patientId, encounterId),
+      input,
+    ),
+  sign: (documentId: string, input: SignConsentInput) =>
+    apiClient.post<ProcedureConsent>(
+      API_ENDPOINTS.PROCEDURE_CONSENT_COMMAND(getTenantId(), documentId, 'sign'),
+      input,
+    ),
+  refuse: (documentId: string, reason: string) =>
+    apiClient.post<ProcedureConsent>(
+      API_ENDPOINTS.PROCEDURE_CONSENT_COMMAND(getTenantId(), documentId, 'refuse'),
+      { reason },
+    ),
+  revoke: (documentId: string, reason: string) =>
+    apiClient.post<ProcedureConsent>(
+      API_ENDPOINTS.PROCEDURE_CONSENT_COMMAND(getTenantId(), documentId, 'revoke'),
+      { reason },
+    ),
+  pdf: (documentId: string) =>
+    apiClient.get<Blob>(API_ENDPOINTS.PROCEDURE_CONSENT_COMMAND(getTenantId(), documentId, 'pdf'), {
+      responseType: 'blob',
+    }),
 };
 
 export const treatmentsApi = {
@@ -953,6 +1078,11 @@ export const formDefinitionsApi = {
 // ==========================================
 
 export const usersApi = {
+  /** The account holder removes the second factor of someone who lost it. */
+  resetMfa: (userId: string, tenantId?: string) =>
+    apiClient.post<{ userId: string; enabled: false }>(
+      API_ENDPOINTS.USER_MFA_RESET(getTenantId(tenantId), userId),
+    ),
   list: (params?: { role?: string; isActive?: boolean; page?: number; limit?: number }, tenantId?: string) =>
     apiClient
       .get<PaginatedResponse<User> | User[]>(API_ENDPOINTS.USERS(getTenantId(tenantId)), { params })

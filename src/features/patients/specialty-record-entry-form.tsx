@@ -13,6 +13,7 @@ import {
 import { issuesByField, toRecordData, type FormValues } from '@/features/clinical-forms/form-values';
 import type { ApiError } from '@/types';
 import type { ClinicalModuleDefinition, ClinicalRecordInput } from '@/types/clinical';
+import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 
 const GROUP_LABELS: Record<ClinicalModuleDefinition['scope'], string> = {
   GENERAL: 'Generales',
@@ -29,6 +30,8 @@ export interface SpecialtyRecordEntryFormProps {
   /** The module versions the signed-in professional may record. */
   modules: ClinicalModuleDefinition[];
   isSaving: boolean;
+  /** Saved outside any encounter, the record is signed at once: the password is asked. */
+  signsOnSave?: boolean;
   onSubmit: (payload: ClinicalRecordInput) => void | Promise<unknown>;
   /**
    * Extra tools for the chosen module, e.g. the templates of the clinic. `fill` writes into the
@@ -52,6 +55,7 @@ function SpecialtyRecordEntryFormState({
   configurationError,
   modules,
   isSaving,
+  signsOnSave = false,
   onSubmit,
   renderTools,
 }: SpecialtyRecordEntryFormProps) {
@@ -59,6 +63,8 @@ function SpecialtyRecordEntryFormState({
   const [values, setValues] = useState<FormValues>({});
   const [notes, setNotes] = useState('');
   const [issues, setIssues] = useState<Record<string, string>>({});
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string>();
 
   const selected = modules.find((module) => module.moduleKey === selectedKey);
   const configurationReady = configurationStatus === 'ready' && Boolean(tenantId);
@@ -73,19 +79,26 @@ function SpecialtyRecordEntryFormState({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!configurationReady || isSaving || !selected) return;
+    if (signsOnSave && !password) return;
     setIssues({});
+    setPasswordError(undefined);
     try {
       await onSubmit({
         moduleKey: selected.moduleKey,
         schemaVersion: selected.schemaVersion,
         data: toRecordData(selected.schema, values),
         notes: notes.trim() || undefined,
+        ...(signsOnSave ? { password } : {}),
       });
       setValues(initialModuleValues(selected));
       setNotes('');
     } catch (error) {
       // Keep the attempted values for correction; the API says which fields to fix.
       setIssues(issuesByField((error as ApiError | undefined)?.issues));
+      setPasswordError(signaturePasswordError(error));
+    } finally {
+      // Typed again for every signature: it is never kept.
+      setPassword('');
     }
   };
 
@@ -174,8 +187,21 @@ function SpecialtyRecordEntryFormState({
                     : `Hay ${issueCount} campos por corregir antes de guardar.`}
                 </Alert>
               )}
-              <Button type="submit" disabled={!configurationReady || isSaving} loading={isSaving}>
-                Guardar registro
+              {signsOnSave && (
+                <SignaturePasswordField
+                  id="record-password"
+                  value={password}
+                  onChange={setPassword}
+                  error={passwordError}
+                  disabled={!configurationReady}
+                />
+              )}
+              <Button
+                type="submit"
+                disabled={!configurationReady || isSaving || (signsOnSave && !password)}
+                loading={isSaving}
+              >
+                {signsOnSave ? 'Guardar y firmar' : 'Guardar registro'}
               </Button>
             </>
           )}
