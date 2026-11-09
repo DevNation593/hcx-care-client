@@ -84,6 +84,10 @@ function OrderLine({ order, children }: { order: InboxOrder; children?: React.Re
   );
 }
 
+/** How many pages the longest list of the inbox needs. */
+export const pageCount = (data: ClinicalInbox) =>
+  Math.max(1, ...Object.values(data.totals).map((total) => Math.ceil(total / data.pageSize)));
+
 /**
  * The order a dialog of the inbox acts on, as the inbox shows it now. After someone else moves it
  * the inbox reloads: the order may be in another list (a result arrived), or in none (it was
@@ -103,7 +107,12 @@ export function currentInboxOrder(data: ClinicalInbox, opened: OrderRef): { orde
  */
 export function ClinicalInboxView() {
   const [scope, setScope] = useState<InboxScope>('mine');
-  const inbox = useClinicalInbox(scope);
+  const [page, setPage] = useState(1);
+  const inbox = useClinicalInbox(scope, page);
+  const changeScope = (next: InboxScope) => {
+    setScope(next);
+    setPage(1);
+  };
   const [acting, setActing] = useState<{ order: OrderRef; action: OrderAction } | null>(null);
   const [closing, setClosing] = useState<ClinicalFollowUp | null>(null);
   const data = inbox.data;
@@ -122,10 +131,10 @@ export function ClinicalInboxView() {
           </p>
         </div>
         <div className="flex gap-2" role="group" aria-label="Alcance">
-          <Button variant={scope === 'mine' ? 'default' : 'outline'} onClick={() => setScope('mine')} aria-pressed={scope === 'mine'}>
+          <Button variant={scope === 'mine' ? 'default' : 'outline'} onClick={() => changeScope('mine')} aria-pressed={scope === 'mine'}>
             Míos
           </Button>
-          <Button variant={scope === 'all' ? 'default' : 'outline'} onClick={() => setScope('all')} aria-pressed={scope === 'all'}>
+          <Button variant={scope === 'all' ? 'default' : 'outline'} onClick={() => changeScope('all')} aria-pressed={scope === 'all'}>
             Todo el consultorio
           </Button>
         </div>
@@ -140,7 +149,7 @@ export function ClinicalInboxView() {
           <Section
             title="Resultados por revisar"
             description="Recibidos y sin revisión de un profesional. Registrarlos no informa al paciente."
-            count={data.pendingReview.length}
+            count={data.totals.pendingReview}
           >
             {data.pendingReview.map((result) => (
               <OrderLine key={result.id} order={result.order}>
@@ -165,7 +174,7 @@ export function ClinicalInboxView() {
           <Section
             title="Revisados, falta informar al paciente"
             description="El resultado ya tiene conducta; registra cuándo y cómo se informó."
-            count={data.toCommunicate.length}
+            count={data.totals.toCommunicate}
           >
             {data.toCommunicate.map((order) => (
               <OrderLine key={order.id} order={order}>
@@ -182,7 +191,7 @@ export function ClinicalInboxView() {
           <Section
             title="Órdenes sin resultado"
             description="Ordenadas, con muestra tomada o enviadas al laboratorio."
-            count={data.awaitingResult.length}
+            count={data.totals.awaitingResult}
           >
             {data.awaitingResult.map((order) => (
               <OrderLine key={order.id} order={order}>
@@ -201,7 +210,7 @@ export function ClinicalInboxView() {
           <Section
             title="Seguimientos abiertos"
             description="Se cierran solo a mano: cancelar una cita no los cierra."
-            count={data.followUps.length}
+            count={data.totals.followUps}
           >
             {data.followUps.map((followUp) => (
               <li key={followUp.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
@@ -220,13 +229,41 @@ export function ClinicalInboxView() {
               </li>
             ))}
           </Section>
+
+          {pageCount(data) > 1 && (
+            <nav aria-label="Páginas de pendientes" className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="text-muted-foreground">
+                Página {data.page} de {pageCount(data)}: cada lista muestra hasta {data.pageSize}, los más antiguos primero.
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                  Anteriores
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= pageCount(data)}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Siguientes
+                </Button>
+              </div>
+            </nav>
+          )}
         </>
       )}
 
       {acting && data && (
         <OrderActionDialog {...currentInboxOrder(data, acting.order)} action={acting.action} onClose={() => setActing(null)} />
       )}
-      {closing && <CloseFollowUpDialog followUp={closing} onClose={() => setClosing(null)} />}
+      {closing && data && (
+        <CloseFollowUpDialog
+          // As the inbox shows it now; gone once someone else closed it.
+          followUp={data.followUps.find((followUp) => followUp.id === closing.id) ?? closing}
+          gone={!data.followUps.some((followUp) => followUp.id === closing.id)}
+          onClose={() => setClosing(null)}
+        />
+      )}
     </div>
   );
 }

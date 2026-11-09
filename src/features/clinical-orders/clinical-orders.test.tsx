@@ -36,8 +36,8 @@ vi.mock('@/hooks/useClinicalOrders', () => ({
     ...hooks.followUpsState,
     refetch: hooks.refetchFollowUps,
   }),
-  useClinicalInbox: (scope: string) => {
-    hooks.inboxScope.push(scope);
+  useClinicalInbox: (scope: string, page = 1) => {
+    hooks.inboxScope.push(`${scope}:${page}`);
     return { data: hooks.inbox, isLoading: false, isError: false };
   },
   useCreateClinicalOrder: () => mutation(hooks.create, hooks.createError),
@@ -321,6 +321,9 @@ describe('ClinicalInboxView', () => {
   it('shows the report, and opens its file, before a review is recorded from the inbox', () => {
     hooks.inbox = {
       scope: 'mine',
+      page: 1,
+      pageSize: 200,
+      totals: { pendingReview: 1, awaitingResult: 0, toCommunicate: 0, followUps: 0 },
       thresholds: { resultReviewAlertDays: 3, orderResultAlertDays: 15 },
       pendingReview: [
         {
@@ -349,6 +352,9 @@ describe('ClinicalInboxView', () => {
   it('lists what waits, flags what is overdue and switches to the whole clinic', () => {
     const inbox: ClinicalInbox = {
       scope: 'mine',
+      page: 1,
+      pageSize: 200,
+      totals: { pendingReview: 0, awaitingResult: 1, toCommunicate: 0, followUps: 0 },
       thresholds: { resultReviewAlertDays: 3, orderResultAlertDays: 15 },
       pendingReview: [],
       awaitingResult: [{ ...inboxOrder, overdue: true }],
@@ -363,6 +369,68 @@ describe('ClinicalInboxView', () => {
     expect(screen.getByText('Vencido')).toBeInTheDocument();
     expect(screen.getByText('Urgente')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Todo el consultorio' }));
-    expect(hooks.inboxScope.at(-1)).toBe('all');
+    expect(hooks.inboxScope.at(-1)).toBe('all:1');
+  });
+
+  const followUp = {
+    id: 'fu-1',
+    patientId: 'patient-1',
+    orderId: null,
+    resultId: null,
+    title: 'Llamar a la paciente',
+    description: null,
+    assignedToId: 'me',
+    assignedTo: { id: 'me', firstName: 'Ana', lastName: 'Gómez' },
+    createdById: 'me',
+    dueDate: '2026-12-01T12:00:00.000Z',
+    status: 'OPEN' as const,
+    closedAt: null,
+    closedById: null,
+    closureNote: null,
+    version: 1,
+    createdAt: '2026-11-01T12:00:00.000Z',
+    patient: { id: 'patient-1', firstName: 'Lucía', lastName: 'Mora' },
+    overdue: false,
+  };
+  const inboxWith = (overrides: Partial<ClinicalInbox> = {}): ClinicalInbox => ({
+    scope: 'mine',
+    page: 1,
+    pageSize: 200,
+    totals: { pendingReview: 0, awaitingResult: 0, toCommunicate: 0, followUps: 1 },
+    thresholds: { resultReviewAlertDays: 3, orderResultAlertDays: 15 },
+    pendingReview: [],
+    awaitingResult: [],
+    toCommunicate: [],
+    followUps: [followUp],
+    ...overrides,
+  });
+
+  it('counts every pending item and pages past the first 200', () => {
+    hooks.inbox = inboxWith({ totals: { pendingReview: 0, awaitingResult: 0, toCommunicate: 0, followUps: 450 } });
+    render(<ClinicalInboxView />);
+
+    expect(screen.getByText('450')).toBeInTheDocument();
+    expect(screen.getByText(/Página 1 de 3/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Siguientes' }));
+    expect(hooks.inboxScope.at(-1)).toBe('mine:2');
+    // Changing the scope starts again at the first page.
+    fireEvent.click(screen.getByRole('button', { name: 'Todo el consultorio' }));
+    expect(hooks.inboxScope.at(-1)).toBe('all:1');
+  });
+
+  it('blocks closing a follow-up that someone else closed meanwhile', () => {
+    hooks.inbox = inboxWith();
+    const { rerender } = render(<ClinicalInboxView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText(/Qué se hizo/), {
+      target: { value: 'Se llamó' },
+    });
+
+    hooks.inbox = inboxWith({ followUps: [], totals: { pendingReview: 0, awaitingResult: 0, toCommunicate: 0, followUps: 0 } });
+    rerender(<ClinicalInboxView />);
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Alguien más cerró este seguimiento/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cerrar seguimiento' })).toBeDisabled();
   });
 });
