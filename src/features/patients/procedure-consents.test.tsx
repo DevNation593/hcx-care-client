@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/store/authStore';
+import { QUERY_KEYS } from '@/lib/constants';
 import { ProcedureConsents } from './procedure-consents';
 
 const api = vi.hoisted(() => ({
@@ -10,6 +11,7 @@ const api = vi.hoisted(() => ({
   present: vi.fn(),
   sign: vi.fn(),
   refuse: vi.fn(),
+  get: vi.fn(),
 }));
 
 vi.mock('@/lib/api/endpoints', () => ({
@@ -19,6 +21,7 @@ vi.mock('@/lib/api/endpoints', () => ({
     present: api.present,
     sign: api.sign,
     refuse: api.refuse,
+    get: api.get,
     revoke: vi.fn(),
     pdf: vi.fn(),
   },
@@ -135,5 +138,48 @@ describe('ProcedureConsents', () => {
     expect(await screen.findByText('Biopsia de cérvix')).toBeInTheDocument();
     expect(screen.getByText('Rechazado')).toBeInTheDocument();
     expect(screen.getByText('Motivo: Prefiere pensarlo.')).toBeInTheDocument();
+  });
+
+  it('takes up a presented consent from its text instead of presenting another one', async () => {
+    api.list.mockResolvedValue([
+      {
+        id: 'doc-3',
+        encounterId: 'encounter-1',
+        procedureName: 'Colposcopia',
+        title: 'Consentimiento',
+        status: 'PRESENTED',
+        presentedAt: '2026-11-08T15:00:00.000Z',
+        refusedAt: null,
+        signedAt: null,
+        hasPdf: false,
+        signature: null,
+        encounter: { professionalId: 'me' },
+        templateVersion: { version: 1, template: { name: 'Colposcopia' } },
+        events: [],
+      },
+    ]);
+    api.get.mockResolvedValue({
+      id: 'doc-3',
+      encounterId: 'encounter-1',
+      title: 'Consentimiento para Colposcopia',
+      body: 'Texto presentado antes.',
+      status: 'PRESENTED',
+      events: [],
+    });
+    render$();
+
+    const continueButton = await screen.findByRole('button', { name: 'Continuar' });
+    await act(async () => fireEvent.click(continueButton));
+
+    expect(api.get).toHaveBeenCalledWith('doc-3');
+    expect(screen.getByText('Texto presentado antes.')).toBeInTheDocument();
+    expect(api.present).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the templates whenever the consent templates change', () => {
+    // The mutations of the template editor invalidate CONSENT_TEMPLATES, a prefix of this key.
+    expect(QUERY_KEYS.PROCEDURE_CONSENT_TEMPLATES.slice(0, QUERY_KEYS.CONSENT_TEMPLATES.length)).toEqual(
+      QUERY_KEYS.CONSENT_TEMPLATES,
+    );
   });
 });

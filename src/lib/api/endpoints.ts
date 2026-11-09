@@ -740,6 +740,9 @@ export const procedureConsentsApi = {
     apiClient.get<ProcedureConsentTemplate[]>(API_ENDPOINTS.PROCEDURE_CONSENT_TEMPLATES(getTenantId())),
   list: (patientId: string) =>
     apiClient.get<ProcedureConsent[]>(API_ENDPOINTS.PATIENT_PROCEDURE_CONSENTS(getTenantId(), patientId)),
+  /** One consent with its text: a presented one is taken up where it was left. */
+  get: (documentId: string) =>
+    apiClient.get<ProcedureConsent>(API_ENDPOINTS.PROCEDURE_CONSENT(getTenantId(), documentId)),
   present: (patientId: string, encounterId: string, input: { templateId: string; procedureName: string }) =>
     apiClient.post<ProcedureConsent>(
       API_ENDPOINTS.ENCOUNTER_PROCEDURE_CONSENTS(getTenantId(), patientId, encounterId),

@@ -143,6 +143,8 @@ export const API_ENDPOINTS = {
     `/tenants/${requiredPathSegment(tenantId, 'tenant')}/patients/${requiredPathSegment(patientId, 'patient')}/encounters/${requiredPathSegment(encounterId, 'encounter')}/procedure-consents`,
   PROCEDURE_CONSENT_TEMPLATES: (tenantId: string) =>
     `/tenants/${requiredPathSegment(tenantId, 'tenant')}/procedure-consents/templates`,
+  PROCEDURE_CONSENT: (tenantId: string, documentId: string) =>
+    `/tenants/${requiredPathSegment(tenantId, 'tenant')}/procedure-consents/${requiredPathSegment(documentId, 'consent')}`,
   PROCEDURE_CONSENT_COMMAND: (tenantId: string, documentId: string, command: string) =>
     `/tenants/${requiredPathSegment(tenantId, 'tenant')}/procedure-consents/${requiredPathSegment(documentId, 'consent')}/${command}`,
   MFA: '/auth/mfa',
@@ -337,7 +339,8 @@ export const QUERY_KEYS = {
   CLINICAL_INBOX_ALL: ['clinical-inbox'] as const,
   PATIENT_FILES: (patientId: string) => ['patients', patientId, 'files'],
   PATIENT_PROCEDURE_CONSENTS: (patientId: string) => ['patients', patientId, 'procedure-consents'],
-  PROCEDURE_CONSENT_TEMPLATES: ['procedure-consent-templates'] as const,
+  // Under CONSENT_TEMPLATES: publishing or retiring a version refreshes it too.
+  PROCEDURE_CONSENT_TEMPLATES: ['consent-templates', 'procedure'] as const,
   MFA_STATUS: ['auth', 'mfa'] as const,
   TREATMENTS: ['treatments'],
   TREATMENT: (id: string) => ['treatments', id],

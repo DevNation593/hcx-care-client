@@ -55,10 +55,13 @@ function useProcedureConsents(patientId: string) {
 function TakeConsentDialog({
   patientId,
   encounterId,
+  resume,
   onClose,
 }: {
   patientId: string;
   encounterId: string;
+  /** A consent presented earlier and not decided yet: the dialog opens on its text. */
+  resume?: ProcedureConsent;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -71,7 +74,7 @@ function TakeConsentDialog({
   const { data: patient } = usePatient(patientId);
   const [templateId, setTemplateId] = useState('');
   const [procedureName, setProcedureName] = useState('');
-  const [document, setDocument] = useState<ProcedureConsent | null>(null);
+  const [document, setDocument] = useState<ProcedureConsent | null>(resume ?? null);
   const [refusing, setRefusing] = useState(false);
   const present = useMutation({
     mutationFn: () =>
@@ -231,7 +234,18 @@ export function ProcedureConsents({
   const queryClient = useQueryClient();
   const consents = useProcedureConsents(patientId);
   const [taking, setTaking] = useState(false);
+  const [resuming, setResuming] = useState<ProcedureConsent | null>(null);
   const [revoking, setRevoking] = useState<ProcedureConsent | null>(null);
+
+  // A consent presented and left without a decision (the dialog closed, the tab changed) is taken
+  // up from its text instead of presenting another one.
+  const resume = async (document: ProcedureConsent) => {
+    try {
+      setResuming(await procedureConsentsApi.get(document.id));
+    } catch (error) {
+      toast.error(errorMessage(error, 'No se pudo abrir el consentimiento.'));
+    }
+  };
 
   const download = async (document: ProcedureConsent) => {
     try {
@@ -269,6 +283,8 @@ export function ProcedureConsents({
             <ul className="space-y-2">
               {items.map((document) => {
                 const lastReason = [...document.events].reverse().find((event) => event.reason)?.reason;
+                const canResume =
+                  document.status === 'PRESENTED' && document.encounter?.professionalId === userId;
                 const canRevoke =
                   document.status === 'SIGNED' &&
                   (document.encounter?.professionalId === userId || role === 'MASTER');
@@ -291,6 +307,11 @@ export function ProcedureConsents({
                           <Download className="h-4 w-4" />
                         </Button>
                       )}
+                      {canResume && (
+                        <Button size="sm" onClick={() => resume(document)}>
+                          Continuar
+                        </Button>
+                      )}
                       {canRevoke && (
                         <Button size="sm" variant="ghost" onClick={() => setRevoking(document)}>
                           Revocar
@@ -307,6 +328,14 @@ export function ProcedureConsents({
 
       {taking && openEncounterId && (
         <TakeConsentDialog patientId={patientId} encounterId={openEncounterId} onClose={() => setTaking(false)} />
+      )}
+      {resuming && (
+        <TakeConsentDialog
+          patientId={patientId}
+          encounterId={resuming.encounterId}
+          resume={resuming}
+          onClose={() => setResuming(null)}
+        />
       )}
       {revoking && (
         <ReasonDialog
