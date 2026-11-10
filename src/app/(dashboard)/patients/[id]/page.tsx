@@ -22,6 +22,7 @@ import { canAccessClinicalNotes, canDeletePatient, isMasterRole, isProfessionalR
 import { PatientInvoicesTab } from '@/features/billing/patient-invoices-tab';
 import { PatientBillingProfiles } from '@/features/billing/patient-billing-profiles';
 import { PatientTreatmentsTab } from '@/features/treatment-sessions/patient-treatments-tab';
+import { ProcedureHistory } from '@/features/treatment-sessions/procedure-history';
 import { FeatureLockedNotice, isFeatureLockedError } from '@/features/subscription/feature-locked-notice';
 import { formatDate, formatRelativeDate, getInitials, cn } from '@/lib/utils';
 import {
@@ -165,6 +166,10 @@ function PatientDetailPageContent() {
   // Orders and results are health care: the API refuses them to an aesthetic profile.
   const canSeeHealthRecord =
     canSeeClinical && isHealthSpecialtyCode(user?.professionalProfile?.specialty?.code);
+  // The procedures of the treatment sessions belong to the clinical history: in "Historia
+  // Clínica" when the clinic has clinical notes (health only), otherwise in "Registros clínicos".
+  const canSeeProcedures = canSeeClinical && isEnabled('core.treatments.sessions');
+  const proceduresInHistory = isEnabled('core.clinical.notes');
   const visibleTabs = TABS.filter(
     (tab) =>
       (tab.id !== 'billing' || canSeeInvoices) &&
@@ -274,9 +279,17 @@ function PatientDetailPageContent() {
       <div>
         {activeTab === 'overview' && <OverviewTab patient={patient} />}
         {activeTab === 'team' && <PatientTeamTab patientId={patientId} />}
-        {activeTab === 'clinical' && <ClinicalHistoryTab patientId={patientId} />}
+        {activeTab === 'clinical' && (
+          <ClinicalHistoryTab
+            patientId={patientId}
+            showProcedures={canSeeProcedures && proceduresInHistory}
+          />
+        )}
         {activeTab === 'specialties' && canSeeClinical && (
-          <ClinicalRecordsTab patientId={patientId} startAppointmentId={startAppointmentId} />
+          <div className="space-y-6">
+            <ClinicalRecordsTab patientId={patientId} startAppointmentId={startAppointmentId} />
+            {canSeeProcedures && !proceduresInHistory && <ProcedureHistory patientId={patientId} />}
+          </div>
         )}
         {/* Like the menu: a tab named in the URL is mounted only if it is one the user may see. */}
         {activeTab === 'orders' && visibleTabs.some((tab) => tab.id === 'orders') && (
@@ -468,7 +481,14 @@ function OverviewTab({ patient }: { patient: any }) {
 // ==========================================
 // CLINICAL HISTORY TAB
 // ==========================================
-function ClinicalHistoryTab({ patientId }: { patientId: string }) {
+function ClinicalHistoryTab({
+  patientId,
+  showProcedures = false,
+}: {
+  patientId: string;
+  /** The procedures of the treatment sessions, with their notes, when the clinic uses them. */
+  showProcedures?: boolean;
+}) {
   const user = useAuthStore((state) => state.user);
   const { data: notes, isLoading, error: notesError } = usePatientClinicalNotes(patientId);
   const createNote = useCreateClinicalNote();
@@ -607,6 +627,8 @@ function ClinicalHistoryTab({ patientId }: { patientId: string }) {
           </CardContent>
         </Card>
       )}
+
+      {showProcedures && <ProcedureHistory patientId={patientId} />}
 
       {/* New Note Dialog */}
       <Dialog open={showNewNote} onOpenChange={setShowNewNote}>
