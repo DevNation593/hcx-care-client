@@ -994,6 +994,12 @@ export const treatmentSessionsApi = {
       API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'start'),
       {},
     ),
+  // The notes typed so far; an empty text clears them.
+  saveNotes: (id: string, procedureNotes: string) =>
+    apiClient.put<TreatmentSessionDetail>(
+      API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'notes'),
+      { procedureNotes },
+    ),
   complete: (id: string, procedureNotes?: string) =>
     apiClient.post<TreatmentSessionDetail>(
       API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'complete'),

@@ -41,6 +41,7 @@ export type SessionCommandName =
   | 'UPLOAD_AFTER'
   | 'UPLOAD_OTHER'
   | 'START'
+  | 'SAVE_NOTES'
   | 'COMPLETE'
   | 'CANCEL'
   | 'NO_SHOW';
@@ -298,8 +299,9 @@ interface TreatmentSessionBase {
   updatedAt: string;
 }
 
-/** A session in the patient's list: no clinical text. */
+/** A session in the patient's list: its procedure notes, never the cancellation reason. */
 export interface TreatmentSessionSummary extends TreatmentSessionBase {
+  procedureNotes: string | null;
   treatment: SessionTreatment;
   professional: { id: string; firstName: string; lastName: string };
 }

@@ -22,6 +22,7 @@ const hooks = vi.hoisted(() => ({
   complete: vi.fn(),
   cancel: vi.fn(),
   noShow: vi.fn(),
+  saveNotes: vi.fn(),
 }));
 
 const mutation = (mutateAsync: unknown) => ({ mutateAsync, isPending: false });
@@ -44,6 +45,7 @@ vi.mock('@/hooks/useTreatmentSessions', () => ({
     cancel: mutation(hooks.cancel),
     noShow: mutation(hooks.noShow),
   }),
+  useSaveProcedureNotes: () => mutation(hooks.saveNotes),
 }));
 
 const document = {
@@ -104,6 +106,7 @@ beforeEach(() => {
   hooks.session = session();
   hooks.updatedAt = 1;
   hooks.presentConsent.mockResolvedValue(document);
+  hooks.saveNotes.mockResolvedValue({});
   hooks.signConsent.mockImplementation(async () => {
     const signed = { ...document, status: 'SIGNED', signedAt: '2026-10-15T15:10:00.000Z' };
     // What the refetched detail says once the signature is stored.
@@ -344,9 +347,116 @@ describe('SessionWorkflow', () => {
         startedAt: '2026-10-15T15:00:00.000Z',
         consentDocumentId: 'doc-1',
         requirements: { start: [], complete: [] },
-        allowedCommands: ['UPLOAD_AFTER', 'UPLOAD_OTHER', 'COMPLETE', 'CANCEL'],
+        allowedCommands: ['UPLOAD_AFTER', 'UPLOAD_OTHER', 'SAVE_NOTES', 'COMPLETE', 'CANCEL'],
         ...overrides,
       });
+    const notesField = () => screen.getByLabelText(/Notas del procedimiento/);
+
+    describe('draft of the notes', () => {
+      beforeEach(() => vi.useFakeTimers());
+      afterEach(() => vi.useRealTimers());
+
+      it('saves the notes a moment after the user stops typing, and says so', async () => {
+        hooks.session = started();
+        hooks.saveNotes.mockResolvedValue({});
+        render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Aplicación en tres' } });
+        fireEvent.change(notesField(), { target: { value: 'Aplicación en tres puntos.' } });
+        await act(async () => vi.advanceTimersByTime(999));
+        expect(hooks.saveNotes).not.toHaveBeenCalled();
+
+        await act(async () => vi.advanceTimersByTime(1));
+        expect(hooks.saveNotes).toHaveBeenCalledTimes(1);
+        expect(hooks.saveNotes).toHaveBeenCalledWith('Aplicación en tres puntos.');
+        expect(screen.getByText('Borrador guardado')).toBeInTheDocument();
+      });
+
+      it('does not save notes equal to the ones the server holds', async () => {
+        hooks.session = started({ procedureNotes: 'Notas guardadas' });
+        render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Notas guardadas ' } });
+        await act(async () => vi.advanceTimersByTime(5000));
+
+        expect(hooks.saveNotes).not.toHaveBeenCalled();
+      });
+
+      it('does not save when the session does not take a draft', async () => {
+        hooks.session = started({ allowedCommands: ['UPLOAD_AFTER', 'COMPLETE', 'CANCEL'] });
+        render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Algo' } });
+        await act(async () => vi.advanceTimersByTime(5000));
+
+        expect(hooks.saveNotes).not.toHaveBeenCalled();
+      });
+
+      it('warns when the draft could not be saved', async () => {
+        hooks.session = started();
+        hooks.saveNotes.mockRejectedValue({ status: 500, message: 'Error del servidor' });
+        render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Algo' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+
+        expect(screen.getByText(/No se pudo guardar el borrador/)).toBeInTheDocument();
+      });
+
+      it('saves a pending draft at once when the page closes', () => {
+        hooks.session = started();
+        hooks.saveNotes.mockResolvedValue({});
+        const { unmount } = render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Sin terminar' } });
+        unmount();
+
+        expect(hooks.saveNotes).toHaveBeenCalledWith('Sin terminar');
+      });
+
+      it('waits for the save in progress and then sends only the latest notes', async () => {
+        hooks.session = started();
+        let finish!: () => void;
+        hooks.saveNotes.mockImplementationOnce(
+          () => new Promise<void>((resolve) => (finish = resolve)),
+        );
+        render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Primera' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+        fireEvent.change(notesField(), { target: { value: 'Segunda' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+        fireEvent.change(notesField(), { target: { value: 'Tercera' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+        expect(hooks.saveNotes.mock.calls).toEqual([['Primera']]);
+        expect(screen.getByText('Guardando borrador…')).toBeInTheDocument();
+
+        await act(async () => finish());
+
+        expect(hooks.saveNotes.mock.calls).toEqual([['Primera'], ['Tercera']]);
+        expect(screen.getByText('Borrador guardado')).toBeInTheDocument();
+      });
+
+      it('asks before leaving the page with unsaved notes, and starts saving them', async () => {
+        hooks.session = started();
+        const leave = () => {
+          const event = new Event('beforeunload', { cancelable: true });
+          window.dispatchEvent(event);
+          return event.defaultPrevented;
+        };
+        render(<SessionWorkflow id="session-1" />);
+        expect(leave()).toBe(false);
+
+        fireEvent.change(notesField(), { target: { value: 'Sin terminar' } });
+        expect(leave()).toBe(true);
+        expect(hooks.saveNotes).toHaveBeenCalledWith('Sin terminar');
+
+        // Saved: nothing left to lose, and the pause does not send it twice.
+        await act(async () => vi.advanceTimersByTime(1000));
+        expect(leave()).toBe(false);
+        expect(hooks.saveNotes).toHaveBeenCalledTimes(1);
+      });
+    });
 
     it('keeps the notes typed in the procedure when the user visits other steps and comes back', () => {
       hooks.session = started();
