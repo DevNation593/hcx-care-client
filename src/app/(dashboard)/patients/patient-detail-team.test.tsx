@@ -120,6 +120,11 @@ vi.mock('@/features/patients/patient-files-tab', () => ({
     <div data-testid="files-tab">{patientId}</div>
   ),
 }));
+vi.mock('@/features/treatment-sessions/procedure-history', () => ({
+  ProcedureHistory: ({ patientId }: { patientId: string }) => (
+    <div data-testid="procedure-history">{patientId}</div>
+  ),
+}));
 vi.mock('@/hooks/useSpecialties', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/hooks/useSpecialties')>()),
   useTenantModules: () => ({
@@ -172,6 +177,9 @@ beforeEach(() => {
     }
     if (url.endsWith('/specialty-records/alerts')) {
       return Promise.resolve(mocks.alerts);
+    }
+    if (url.endsWith('/clinical-notes') || url.endsWith('/encounters')) {
+      return Promise.resolve([]);
     }
     throw new Error(`Unexpected request: ${url}`);
   });
@@ -270,6 +278,51 @@ describe('patient detail opened from the agenda', () => {
     renderPage();
     expect(screen.queryByTestId('files-tab')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Archivos' })).not.toBeInTheDocument();
+  });
+});
+
+describe('patient detail procedures of the treatment sessions', () => {
+  const procedures = () => screen.queryByTestId('procedure-history');
+
+  it('shows them in Historia Clínica when the clinic keeps clinical notes', () => {
+    mocks.search = 'tab=clinical';
+    const { unmount } = renderPage();
+    expect(procedures()).toHaveTextContent('patient-1');
+    unmount();
+
+    mocks.search = 'tab=specialties';
+    renderPage();
+    expect(screen.getByTestId('records-tab')).toBeInTheDocument();
+    expect(procedures()).not.toBeInTheDocument();
+  });
+
+  it('shows them in Registros clínicos when the clinic has no Historia Clínica', () => {
+    mocks.disabledSections = ['core.clinical.notes'];
+    mocks.search = 'tab=specialties';
+    renderPage();
+
+    expect(screen.queryByRole('button', { name: 'Historia Clínica' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('records-tab')).toBeInTheDocument();
+    expect(procedures()).toHaveTextContent('patient-1');
+  });
+
+  it.each([
+    ['tab=clinical', []],
+    ['tab=specialties', ['core.clinical.notes']],
+  ])('hides them on %s without the treatment sessions section', (search, disabled) => {
+    mocks.search = search;
+    mocks.disabledSections = [...disabled, 'core.treatments.sessions'];
+    renderPage();
+
+    expect(procedures()).not.toBeInTheDocument();
+  });
+
+  it('hides them from an account whose clinical records permission was withdrawn', () => {
+    mocks.search = 'tab=clinical';
+    permissions.withdrawn = ['clinical_records.view'];
+    renderPage();
+
+    expect(procedures()).not.toBeInTheDocument();
   });
 });
 

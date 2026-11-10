@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/store/authStore';
 import { QUERY_KEYS } from '@/lib/constants';
 import { treatmentSessionsApi } from '@/lib/api/endpoints';
-import { useSessionCommand, usePatientTreatmentSessions } from './useTreatmentSessions';
+import {
+  useSaveProcedureNotes,
+  useSessionCommand,
+  usePatientTreatmentSessions,
+} from './useTreatmentSessions';
 
 const http = vi.hoisted(() => ({
   get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(), upload: vi.fn(),
@@ -161,6 +165,38 @@ describe('useSessionCommand', () => {
       '/tenants/tenant-1/treatment-sessions/session-1/media', file, undefined,
       { phase: 'BEFORE', description: 'Frente' },
     );
+  });
+});
+
+describe('useSaveProcedureNotes', () => {
+  const key = QUERY_KEYS.TREATMENT_SESSION('session-1');
+
+  it('saves with PUT and keeps the answer when it is newer than the cached session', async () => {
+    http.put.mockResolvedValue({ id: 'session-1', version: 3, procedureNotes: 'Borrador' });
+    const { client, wrapper } = setup();
+    client.setQueryData(key, { id: 'session-1', version: 2, procedureNotes: null });
+    client.setQueryData(QUERY_KEYS.PATIENT_TREATMENT_SESSIONS('patient-1'), []);
+    const { result } = renderHook(() => useSaveProcedureNotes('session-1'), { wrapper });
+
+    await act(async () => { await result.current.mutateAsync('Borrador'); });
+
+    expect(http.put).toHaveBeenCalledWith('/tenants/tenant-1/treatment-sessions/session-1/notes', {
+      procedureNotes: 'Borrador',
+    });
+    expect(client.getQueryData(key)).toMatchObject({ version: 3, procedureNotes: 'Borrador' });
+    expect(client.getQueryState(QUERY_KEYS.PATIENT_TREATMENT_SESSIONS('patient-1'))?.isInvalidated).toBe(true);
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('never puts back an answer older than the cached session, which a close already moved on', async () => {
+    http.put.mockResolvedValue({ id: 'session-1', version: 3, status: 'IN_PROGRESS' });
+    const { client, wrapper } = setup();
+    client.setQueryData(key, { id: 'session-1', version: 4, status: 'CLINICAL_COMPLETE' });
+    const { result } = renderHook(() => useSaveProcedureNotes('session-1'), { wrapper });
+
+    await act(async () => { await result.current.mutateAsync('Borrador'); });
+
+    expect(client.getQueryData(key)).toMatchObject({ version: 4, status: 'CLINICAL_COMPLETE' });
   });
 });
 

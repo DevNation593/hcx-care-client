@@ -23,7 +23,9 @@ import {
   type TreatmentSessionDetail,
   type TreatmentSessionStatus,
 } from '@/types/treatments';
+import { cn } from '@/lib/utils';
 import { ReasonDialog } from './consent-step';
+import { NOTES_DRAFT_LABELS, type NotesDraftState } from './use-notes-draft';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 // The limit of the API's DTO.
@@ -37,6 +39,8 @@ export interface ProcedureStepProps {
   /** The notes being typed; kept by the page so they survive moving between steps. */
   notes: string;
   onNotesChange: (notes: string) => void;
+  /** Where the draft of the notes stands, when the page saves it while typing. */
+  notesDraft?: NotesDraftState;
   /** Called once the session was closed, cancelled or marked as a no-show. */
   onDone?: () => void;
 }
@@ -51,6 +55,7 @@ export function ProcedureStep({
   readOnly = false,
   notes,
   onNotesChange,
+  notesDraft = 'idle',
   onDone,
 }: ProcedureStepProps) {
   const commands = useSessionCommand(session.id);
@@ -135,7 +140,18 @@ export function ProcedureStep({
               value={notes}
               onChange={(event) => onNotesChange(event.target.value)}
               disabled={commands.complete.isPending}
+              aria-describedby="procedure-notes-draft"
             />
+            <p
+              id="procedure-notes-draft"
+              role="status"
+              className={cn(
+                'mt-1 min-h-5 text-xs',
+                notesDraft === 'error' ? 'text-destructive' : 'text-muted-foreground',
+              )}
+            >
+              {notesDraft !== 'idle' && NOTES_DRAFT_LABELS[notesDraft]}
+            </p>
           </div>
           <Button
             type="submit"

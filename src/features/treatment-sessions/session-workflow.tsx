@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useTreatmentSession } from '@/hooks/useTreatmentSessions';
+import { useSaveProcedureNotes, useTreatmentSession } from '@/hooks/useTreatmentSessions';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { ApiError } from '@/types';
@@ -25,6 +25,7 @@ import { SESSION_STATUS_VARIANTS } from './patient-treatments-tab';
 import { PhotosStep } from './photos-step';
 import { ProcedureStep } from './procedure-step';
 import { buildSessionSteps, type SessionStep, type SessionStepId } from './session-steps';
+import { useNotesDraft } from './use-notes-draft';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
 
 // What a refusal or revocation did to the document, when the session's status does not say it.
@@ -60,6 +61,14 @@ export function SessionWorkflow({ id }: { id: string }) {
   const [announcement, setAnnouncement] = useState('');
   // The procedure notes being typed; null until the user types, so the saved ones show meanwhile.
   const [typedNotes, setTypedNotes] = useState<string | null>(null);
+  // Saved as a draft while typing, so that leaving the page does not lose them.
+  const saveNotes = useSaveProcedureNotes(id);
+  const notesDraft = useNotesDraft({
+    typed: typedNotes,
+    stored: session?.procedureNotes,
+    enabled: Boolean(session?.allowedCommands.includes('SAVE_NOTES')),
+    save: saveNotes.mutateAsync,
+  });
 
   const steps = session ? buildSessionSteps(session) : [];
   const reachable = steps.filter((step) => step.state !== 'skipped');
@@ -238,6 +247,7 @@ export function SessionWorkflow({ id }: { id: string }) {
               readOnly={readOnly}
               notes={typedNotes ?? session.procedureNotes ?? ''}
               onNotesChange={setTypedNotes}
+              notesDraft={notesDraft}
               onDone={showClose}
             />
           )}
