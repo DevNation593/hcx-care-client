@@ -13,6 +13,7 @@ import { useSaveRecordDocument } from '@/hooks/useDocuments';
 import { usePatient } from '@/hooks/usePatients';
 import { usePatientSpecialtyRecord } from '@/hooks/useSpecialtyRecords';
 import { useAuthStore } from '@/store/authStore';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 function RecordPrintContent() {
   const params = useParams();
@@ -31,7 +32,11 @@ function RecordPrintContent() {
 
   if (recordQuery.isError || patientQuery.isError) {
     return (
-      <Alert variant="destructive" title="No se pudo cargar el documento">
+      <Alert
+        variant="destructive"
+        title="No se pudo cargar el documento"
+        description={getErrorMessage(recordQuery.error ?? patientQuery.error, 'Intenta de nuevo.')}
+      >
         <Button variant="outline" size="sm" className="mt-2" onClick={() => router.back()}>
           Volver
         </Button>

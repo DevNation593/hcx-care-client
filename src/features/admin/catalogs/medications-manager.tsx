@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMedications, useSaveMedication } from '@/hooks/useCatalogs';
 import type { Medication, MedicationInput } from '@/types/clinical';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 type Editing = null | 'new' | Medication;
 
@@ -136,7 +137,7 @@ export function MedicationsManager() {
       </div>
 
       {medicationsQuery.isError ? (
-        <Alert variant="destructive" title="No se pudo cargar el catálogo">
+        <Alert variant="destructive" title="No se pudo cargar el catálogo" description={getErrorMessage(medicationsQuery.error, 'Intenta de nuevo.')}>
           <Button variant="outline" size="sm" className="mt-2" onClick={() => medicationsQuery.refetch()}>
             Reintentar
           </Button>

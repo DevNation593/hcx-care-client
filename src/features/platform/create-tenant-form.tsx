@@ -19,6 +19,7 @@ import { formatMoney } from './labels';
 import { planDefaults } from './plan-defaults';
 import { SectionChecklist } from './section-checklist';
 import { TemporaryPasswordNotice } from './temporary-password-notice';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 const TYPE_LABELS: Record<TenantType, string> = {
   [TenantType.PERSONAL]: 'Personal',
@@ -45,7 +46,11 @@ const DEFAULT_VALUES: CreatePlatformTenantInput = {
 
 const sameKeys = (a: SectionKey[], b: SectionKey[]) => a.length === b.length && a.every((key) => b.includes(key));
 
-type FieldName = Exclude<keyof CreatePlatformTenantInput, 'specialtyCodes' | 'sections'>;
+type FieldName = Exclude<keyof CreatePlatformTenantInput, 'specialtyCodes' | 'sections' | 'masterSpecialtyCode'>;
+
+/** The specialty a personal practice's master attends with: the one chosen, or else the first ticked. */
+const ownerSpecialty = (chosen: string | undefined, codes: string[]) =>
+  chosen && codes.includes(chosen) ? chosen : codes[0];
 
 /** The temporary password lives only here, in component state, until the admin leaves the notice. */
 interface CreatedTenant {
@@ -77,6 +82,7 @@ export function CreateTenantForm() {
   const planId = watch('planId');
   const sections = watch('sections') ?? [];
   const specialtyCodes = watch('specialtyCodes');
+  const masterSpecialtyCode = ownerSpecialty(watch('masterSpecialtyCode'), specialtyCodes);
 
   const plansOf = (type: TenantType): PlatformPlan[] =>
     (plans.data ?? []).filter((plan) => plan.tenantType === type && !plan.archivedAt);
@@ -130,12 +136,15 @@ export function CreateTenantForm() {
 
   const submit = handleSubmit(async (values) => {
     setSubmitError(null);
-    const { phone, address, sections: chosen, trialDays, ...rest } = values;
+    const { phone, address, sections: chosen, trialDays, masterSpecialtyCode: chosenOwner, ...rest } = values;
+    const owner = ownerSpecialty(chosenOwner, values.specialtyCodes);
     const payload: CreatePlatformTenantInput = {
       ...rest,
       ...(phone ? { phone } : {}),
       ...(address ? { address } : {}),
       ...(trialDays !== undefined ? { trialDays } : {}),
+      // Only a personal practice's master attends; the API refuses it for a clinic.
+      ...(values.tenantType === TenantType.PERSONAL && owner ? { masterSpecialtyCode: owner } : {}),
       // Untouched, the API turns on what the plan gives; edited, the differences become overrides.
       ...(sectionsEdited.current ? { sections: chosen } : {}),
     };
@@ -265,8 +274,28 @@ export function CreateTenantForm() {
             {errors.specialtyCodes && <p id="specialtyCodes-error" role="alert" className="text-sm text-destructive">{errors.specialtyCodes.message}</p>}
           </fieldset>
 
+          {tenantType === TenantType.PERSONAL && masterSpecialtyCode && (
+            <div className="space-y-2">
+              <Label htmlFor="masterSpecialtyCode">Especialidad del titular</Label>
+              <select
+                id="masterSpecialtyCode"
+                className="h-10 w-full rounded-md border px-3"
+                value={masterSpecialtyCode}
+                onChange={(event) => setValue('masterSpecialtyCode', event.target.value)}
+                aria-describedby="masterSpecialtyCode-hint"
+              >
+                {specialtyCodes.map((code) => (
+                  <option key={code} value={code}>{specialties.data?.find((item) => item.code === code)?.name ?? code}</option>
+                ))}
+              </select>
+              <p id="masterSpecialtyCode-hint" className="text-xs text-muted-foreground">
+                En un consultorio personal, el titular es quien atiende: queda como profesional de esta especialidad.
+              </p>
+            </div>
+          )}
+
           {sectionCatalog.isLoading && <p role="status">Cargando módulos…</p>}
-          {sectionCatalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos.</p>}
+          {sectionCatalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos. {getErrorMessage(sectionCatalog.error, 'Intenta de nuevo.')}</p>}
           {sectionCatalog.data && (
             <SectionChecklist
               catalog={sectionCatalog.data.sections}

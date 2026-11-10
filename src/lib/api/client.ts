@@ -3,6 +3,12 @@ import { API_BASE_URL, STORAGE_KEYS } from '@/lib/constants';
 import { ApiError } from '@/types';
 import { MISSING_REQUIREMENT_LABELS, type MissingRequirement } from '@/types/treatments';
 import type { BillingCode, ClinicalBillingCode } from '@/types/cash';
+import {
+  messageFromBody,
+  NETWORK_ERROR_MESSAGE,
+  TIMEOUT_ERROR_MESSAGE,
+  UNKNOWN_ERROR_MESSAGE,
+} from './error-messages';
 
 const CLINICAL_BILLING_CODES: ClinicalBillingCode[] = [
   'FINALIZED_MEDICAL_FORM', 'SIGNED_APPLICABLE_CONSENT', 'CLINICAL_COMPLETION', 'SESSION_NOT_BILLABLE',
@@ -190,7 +196,7 @@ class ApiClient {
       const data = body && typeof body === 'object' && !Array.isArray(body)
         ? body as Record<string, unknown> : {};
       const normalized: ApiError = {
-        message: typeof data.message === 'string' && data.message.trim() ? data.message : 'Ocurrió un error',
+        message: messageFromBody(data.message, error.response.status),
         status: error.response.status,
       };
       if (typeof data.code === 'string') normalized.code = data.code;
@@ -252,17 +258,16 @@ class ApiClient {
       return normalized;
     }
 
-    if (error.request) {
-      return {
-        message: 'No se recibió respuesta del servidor. Verifica tu conexión a internet.',
-        code: 'NETWORK_ERROR',
-      };
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      return { message: TIMEOUT_ERROR_MESSAGE, code: 'TIMEOUT' };
     }
 
-    return {
-      message: error.message || 'Ocurrió un error inesperado',
-      code: 'UNKNOWN_ERROR',
-    };
+    if (error.request) {
+      return { message: NETWORK_ERROR_MESSAGE, code: 'NETWORK_ERROR' };
+    }
+
+    // Axios' own texts ("canceled", "Network Error") are English and say nothing to the user.
+    return { message: UNKNOWN_ERROR_MESSAGE, code: 'UNKNOWN_ERROR' };
   }
 
   // ==========================================
