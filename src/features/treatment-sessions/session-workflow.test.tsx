@@ -413,6 +413,49 @@ describe('SessionWorkflow', () => {
 
         expect(hooks.saveNotes).toHaveBeenCalledWith('Sin terminar');
       });
+
+      it('waits for the save in progress and then sends only the latest notes', async () => {
+        hooks.session = started();
+        let finish!: () => void;
+        hooks.saveNotes.mockImplementationOnce(
+          () => new Promise<void>((resolve) => (finish = resolve)),
+        );
+        render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Primera' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+        fireEvent.change(notesField(), { target: { value: 'Segunda' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+        fireEvent.change(notesField(), { target: { value: 'Tercera' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+        expect(hooks.saveNotes.mock.calls).toEqual([['Primera']]);
+        expect(screen.getByText('Guardando borrador…')).toBeInTheDocument();
+
+        await act(async () => finish());
+
+        expect(hooks.saveNotes.mock.calls).toEqual([['Primera'], ['Tercera']]);
+        expect(screen.getByText('Borrador guardado')).toBeInTheDocument();
+      });
+
+      it('asks before leaving the page with unsaved notes, and starts saving them', async () => {
+        hooks.session = started();
+        const leave = () => {
+          const event = new Event('beforeunload', { cancelable: true });
+          window.dispatchEvent(event);
+          return event.defaultPrevented;
+        };
+        render(<SessionWorkflow id="session-1" />);
+        expect(leave()).toBe(false);
+
+        fireEvent.change(notesField(), { target: { value: 'Sin terminar' } });
+        expect(leave()).toBe(true);
+        expect(hooks.saveNotes).toHaveBeenCalledWith('Sin terminar');
+
+        // Saved: nothing left to lose, and the pause does not send it twice.
+        await act(async () => vi.advanceTimersByTime(1000));
+        expect(leave()).toBe(false);
+        expect(hooks.saveNotes).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('keeps the notes typed in the procedure when the user visits other steps and comes back', () => {
