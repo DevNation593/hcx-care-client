@@ -66,6 +66,7 @@ export const createPlatformTenantSchema: z.ZodType<CreatePlatformTenantInput> = 
   planId: z.string().min(1, 'Selecciona un plan'),
   trialDays: z.number({ invalid_type_error: 'Ingresa los días de prueba' }).int('Ingresa un número entero').min(0, 'Ingresa 0 o más días').max(365, 'Hasta 365 días').optional(),
   specialtyCodes: z.array(specialtyCode).min(1, 'Selecciona al menos una especialidad'),
+  masterSpecialtyCode: specialtyCode.optional(),
   sections: z.array(z.enum(SECTION_KEYS)).optional(),
 }).strict();
 

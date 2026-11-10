@@ -1337,5 +1337,7 @@ export interface CreatePlatformTenantInput {
   /** Days of trial; the plan suggests its own and 0 starts a paid month. */
   trialDays?: number;
   specialtyCodes: string[];
+  /** PERSONAL only: the specialty the master attends with, one of specialtyCodes (the first by default). */
+  masterSpecialtyCode?: string;
   sections?: SectionKey[];
 }
