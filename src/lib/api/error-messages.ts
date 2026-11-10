@@ -35,12 +35,92 @@ export function statusMessage(status?: number): string {
   return STATUS_MESSAGES[status] ?? (status >= 500 ? STATUS_MESSAGES[500] : STATUS_MESSAGES[400]);
 }
 
+/** How many validation issues the message names before it only counts the rest. */
+const VALIDATION_SUMMARY_LIMIT = 3;
+
+/** Spanish names of the fields forms send most; any other field is named generically. */
+const FIELD_LABELS: Record<string, string> = {
+  email: 'Correo electrónico',
+  password: 'Contraseña',
+  name: 'Nombre',
+  firstName: 'Nombre',
+  lastName: 'Apellido',
+  phone: 'Teléfono',
+  address: 'Dirección',
+  documentNumber: 'Número de documento',
+  birthDate: 'Fecha de nacimiento',
+  startTime: 'Hora de inicio',
+  endTime: 'Hora de fin',
+  notes: 'Notas',
+  quantity: 'Cantidad',
+  price: 'Precio',
+  amount: 'Monto',
+};
+
+/**
+ * class-validator's default texts after "<property> ", and what each asks for in Spanish. Only the
+ * digits a template captures reach the message: nothing else of the API's text is shown.
+ */
+const VALIDATION_RULES: ReadonlyArray<[RegExp, (n: string) => string]> = [
+  [/^(?:should not be empty|should not be null or undefined)$/, () => 'es obligatorio'],
+  [/^must be a string$/, () => 'debe ser texto'],
+  [/^must be shorter than or equal to (\d+) characters$/, (n) => `debe tener como máximo ${n} caracteres`],
+  [/^must be longer than or equal to (\d+) characters$/, (n) => `debe tener al menos ${n} caracteres`],
+  [/^must not be less than (-?\d+(?:\.\d+)?)$/, (n) => `debe ser mayor o igual a ${n}`],
+  [/^must not be greater than (-?\d+(?:\.\d+)?)$/, (n) => `debe ser menor o igual a ${n}`],
+  [/^must be an integer number$/, () => 'debe ser un número entero'],
+  [/^(?:must be a number conforming to the specified constraints|must be a number string)$/, () => 'debe ser un número'],
+  [/^must be a positive number$/, () => 'debe ser mayor que 0'],
+  [/^must be a boolean value$/, () => 'debe ser verdadero o falso'],
+  [/^must be one of the following values: .*$/, () => 'tiene un valor no permitido'],
+  [/^must be an array$/, () => 'debe ser una lista'],
+  [/^must contain at least (\d+) elements$/, (n) => `debe tener al menos ${n} elemento${n === '1' ? '' : 's'}`],
+  [/^must contain no more than (\d+) elements$/, (n) => `debe tener como máximo ${n} elemento${n === '1' ? '' : 's'}`],
+  [/^must be an email$/, () => 'debe ser un correo electrónico válido'],
+  [/^must be a valid ISO 8601 date string$/, () => 'debe ser una fecha válida'],
+  [/^must be a URL address$/, () => 'debe ser una URL válida'],
+  [/^must be a UUID$/, () => 'debe ser un identificador válido'],
+];
+
+const ISSUE = /^(each value in )?([A-Za-z_$][\w$]*) (.+)$/;
+const NOT_ALLOWED = /^property [\w$.[\]]+ should not exist$/;
+
+/** A controlled Spanish text for a class-validator default message, or undefined if unknown. */
+function translateIssue(text: string): string | undefined {
+  if (NOT_ALLOWED.test(text)) return 'La solicitud incluye un campo no permitido.';
+  const issue = ISSUE.exec(text);
+  if (!issue) return undefined;
+  const [, each, property, rest] = issue;
+  for (const [template, describe] of VALIDATION_RULES) {
+    const match = template.exec(rest);
+    if (!match) continue;
+    const label = Object.hasOwn(FIELD_LABELS, property) ? FIELD_LABELS[property] : undefined;
+    const subject = label
+      ? `${each ? 'Cada valor del campo' : 'El campo'} «${label}»`
+      : each ? 'Cada valor de un campo' : 'Un campo';
+    return `${subject} ${describe(match[1] ?? '')}.`;
+  }
+  return undefined;
+}
+
+/**
+ * A validation list (a pipe without the API's Spanish exceptionFactory): the issues it recognizes,
+ * in controlled Spanish, and the reason of the status for the rest. Its own texts are never shown.
+ */
+function validationMessage(issues: unknown[], status?: number): string {
+  const texts = issues.filter((m): m is string => typeof m === 'string' && !!m.trim());
+  const known = [...new Set(texts.map((text) => translateIssue(text.trim())))];
+  const translated = known.filter((text): text is string => text !== undefined);
+  const shown = translated.slice(0, VALIDATION_SUMMARY_LIMIT);
+  const rest = translated.length - shown.length;
+  if (rest > 0) shown.push(`Y ${rest} problema${rest === 1 ? '' : 's'} más.`);
+  if (known.includes(undefined) || shown.length === 0) shown.push(statusMessage(status));
+  return shown.join(' ');
+}
+
 /** The message of an API error body: its own text, or the reason of its status. */
 export function messageFromBody(message: unknown, status?: number): string {
-  if (Array.isArray(message)) {
-    const texts = message.filter((m): m is string => typeof m === 'string' && !!m.trim());
-    if (texts.length) return texts.join('. ');
-  }
+  if (Array.isArray(message)) return validationMessage(message, status);
   if (typeof message === 'string' && message.trim() && !ENGLISH_DEFAULTS.test(message.trim())) {
     return message;
   }

@@ -11,10 +11,65 @@ describe('messageFromBody', () => {
     expect(messageFromBody('El horario ya está ocupado', 409)).toBe('El horario ya está ocupado');
   });
 
-  it('joins the issues of a validation list', () => {
-    expect(messageFromBody(['email must be an email', 'name should not be empty'], 400)).toBe(
-      'email must be an email. name should not be empty',
-    );
+  describe('a validation list', () => {
+    it('shows the issues it recognizes in controlled Spanish, never the raw texts', () => {
+      const message = messageFromBody(['email must be an email', 'name should not be empty'], 400);
+      expect(message).toBe(
+        'El campo «Correo electrónico» debe ser un correo electrónico válido. El campo «Nombre» es obligatorio.',
+      );
+      expect(message).not.toMatch(/must be|should not/);
+    });
+
+    it('names an unknown field generically and keeps only the limit a rule captures', () => {
+      expect(
+        messageFromBody(
+          [
+            'internalCode must be longer than or equal to 8 characters',
+            'each value in tags must be a string',
+            'role must be one of the following values: <b>ADMIN</b>, MASTER',
+          ],
+          400,
+        ),
+      ).toBe(
+        'Un campo debe tener al menos 8 caracteres. Cada valor de un campo debe ser texto. Un campo tiene un valor no permitido.',
+      );
+    });
+
+    it('says a field is not allowed without naming it', () => {
+      expect(messageFromBody(['property isAdmin should not exist'], 400)).toBe(
+        'La solicitud incluye un campo no permitido.',
+      );
+    });
+
+    it('uses the reason of the status for issues it does not recognize', () => {
+      const raw = ['<img src=x onerror=alert(1)>', 'email debe ser válido según el proveedor'];
+      expect(messageFromBody(raw, 400)).toBe(statusMessage(400));
+      expect(messageFromBody(['email must be an email', ...raw], 422)).toBe(
+        `El campo «Correo electrónico» debe ser un correo electrónico válido. ${statusMessage(422)}`,
+      );
+    });
+
+    it('drops repeated issues and counts what it does not list', () => {
+      expect(
+        messageFromBody(
+          [
+            'email must be an email',
+            'email must be an email',
+            'name should not be empty',
+            'phone must be a string',
+            'quantity must not be less than 1',
+            'price must be a positive number',
+          ],
+          400,
+        ),
+      ).toBe(
+        'El campo «Correo electrónico» debe ser un correo electrónico válido. El campo «Nombre» es obligatorio. El campo «Teléfono» debe ser texto. Y 2 problemas más.',
+      );
+    });
+
+    it.each([[[]], [['', '  ', 42, null]]])('falls back to the reason of the status for %p', (list) => {
+      expect(messageFromBody(list, 400)).toBe(statusMessage(400));
+    });
   });
 
   it.each([
