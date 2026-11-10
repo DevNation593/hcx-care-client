@@ -27,6 +27,7 @@ import {
   SUSPENDED_LABEL,
   tenantStatusLabel,
 } from './labels';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -85,7 +86,7 @@ export function TenantsTable() {
   if (status === SUSPENDED) params.isActive = false;
   else if (status) params.status = status;
 
-  const { data, isPending, isError, isFetching, refetch } = usePlatformTenants(params);
+  const { data, error, isPending, isError, isFetching, refetch } = usePlatformTenants(params);
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
   return (
@@ -161,7 +162,7 @@ export function TenantsTable() {
         <Skeleton className="h-48" aria-busy="true" />
       ) : isError || !data ? (
         <div className="space-y-3">
-          <Alert variant="destructive" title="No se pudo cargar el listado de consultorios" />
+          <Alert variant="destructive" title="No se pudo cargar el listado de consultorios" description={getErrorMessage(error, 'Intenta de nuevo.')} />
           <Button variant="outline" onClick={() => void refetch()}>
             Reintentar
           </Button>

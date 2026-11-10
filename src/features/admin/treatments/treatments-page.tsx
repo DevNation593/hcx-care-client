@@ -28,6 +28,7 @@ import type {
 import { formatDate } from '@/lib/utils';
 import type { ApiError } from '@/types';
 import { TreatmentVersionForm, type ChoicesStatus } from './treatment-version-form';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 type Dialogs =
   | null
@@ -306,7 +307,7 @@ function HistoryDialog({ treatment, onClose }: { treatment: TreatmentWithCurrent
           <DialogDescription>Cada cambio de precio o requisitos es una versión nueva.</DialogDescription>
         </DialogHeader>
         {detail.isError ? (
-          <Alert variant="destructive" title="No se pudo cargar el historial">
+          <Alert variant="destructive" title="No se pudo cargar el historial" description={getErrorMessage(detail.error, 'Intenta de nuevo.')}>
             <Button variant="outline" size="sm" className="mt-2 min-h-[44px]" onClick={() => detail.refetch()}>
               Reintentar
             </Button>

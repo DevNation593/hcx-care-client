@@ -12,6 +12,7 @@ import { useActivityReport } from '@/hooks/useReports';
 import type { ActivityCounts, ActivityReportParams } from '@/lib/api/reports-api';
 import { APPOINTMENT_STATUS_LABELS } from '@/lib/constants';
 import { ENCOUNTER_TYPE_LABELS } from '@/types/clinical';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 const MAX_DAYS = 366;
 
@@ -202,7 +203,7 @@ export function ActivityReport() {
       </Card>
 
       {problem ? null : report.isError ? (
-        <Alert variant="destructive" title="No se pudo cargar el reporte">
+        <Alert variant="destructive" title="No se pudo cargar el reporte" description={getErrorMessage(report.error, 'Intenta de nuevo.')}>
           <Button variant="outline" size="sm" className="mt-2" onClick={() => report.refetch()}>
             Reintentar
           </Button>

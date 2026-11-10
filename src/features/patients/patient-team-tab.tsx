@@ -14,6 +14,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 const HISTORICAL_SPECIALTY = 'Sin especialidad vigente';
 const BLOCKED_CODE = 'PROFESSIONAL_HAS_FUTURE_APPOINTMENTS';
@@ -233,6 +234,7 @@ export function PatientTeamTab({ patientId }: { patientId: string }) {
   if (team.isError) return (
     <div role="alert" className="space-y-3">
       <p>No se pudo cargar el equipo tratante.</p>
+      <p className="text-sm text-muted-foreground">{getErrorMessage(team.error, 'Intenta de nuevo.')}</p>
       <Button type="button" variant="outline" aria-label="Reintentar equipo tratante" onClick={() => void team.refetch()}>
         Reintentar equipo tratante
       </Button>

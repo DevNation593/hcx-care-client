@@ -26,6 +26,7 @@ import { formatDate } from '@/lib/utils';
 import { paymentReferenceSchema, paymentRejectReasonSchema } from '@/lib/validations/schemas';
 import type { PlatformPayment, SubscriptionPayment } from '@/types';
 import { PAYMENT_KIND_LABELS, PAYMENT_STATUS_LABELS } from './labels';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 type PaymentStatus = SubscriptionPayment['status'];
 
@@ -55,7 +56,7 @@ export function PaymentsTable() {
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data, isPending, isError, isFetching, refetch } = usePlatformPayments(status);
+  const { data, error: loadError, isPending, isError, isFetching, refetch } = usePlatformPayments(status);
   const pagination = usePagination(data ?? [], { resetKey: status });
   const confirm = useConfirmPayment();
   const reject = useRejectPayment();
@@ -131,7 +132,7 @@ export function PaymentsTable() {
         <Skeleton className="h-48" aria-busy="true" />
       ) : isError || !data ? (
         <div className="space-y-3">
-          <Alert variant="destructive" title="No se pudo cargar el listado de pagos" />
+          <Alert variant="destructive" title="No se pudo cargar el listado de pagos" description={getErrorMessage(loadError, 'Intenta de nuevo.')} />
           <Button variant="outline" onClick={() => void refetch()}>
             Reintentar
           </Button>

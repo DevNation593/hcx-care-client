@@ -19,6 +19,7 @@ import {
 } from '@/hooks/useConsentTemplates';
 import type { ConsentTemplateSummary } from '@/types/treatments';
 import { ConsentTemplateEditor } from './consent-template-editor';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 type View = { mode: 'list' } | { mode: 'create' } | { mode: 'edit'; id: string };
 
@@ -90,7 +91,7 @@ function EditTemplateView({ id, canManage, onBack }: { id: string; canManage: bo
         <h1 className="text-3xl font-bold">{template?.name ?? 'Consentimiento'}</h1>
       </div>
       {templateQuery.isError ? (
-        <Alert variant="destructive" title="No se pudo cargar la plantilla">
+        <Alert variant="destructive" title="No se pudo cargar la plantilla" description={getErrorMessage(templateQuery.error, 'Intenta de nuevo.')}>
           <Button variant="outline" size="sm" className="mt-2 min-h-[44px]" onClick={() => templateQuery.refetch()}>
             Reintentar
           </Button>

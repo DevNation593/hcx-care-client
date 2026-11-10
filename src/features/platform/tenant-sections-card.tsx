@@ -7,6 +7,7 @@ import { usePlatformPlans, useSectionCatalog, useSetTenantSections } from '@/hoo
 import type { PlatformTenantDetail, SectionKey } from '@/types';
 import { planDefaults } from './plan-defaults';
 import { SectionChecklist } from './section-checklist';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 const sameKeys = (a: SectionKey[], b: SectionKey[]) => a.length === b.length && a.every((key) => b.includes(key));
 
@@ -49,7 +50,7 @@ export function TenantSectionsCard({ tenantId, planId, specialtyCodes, sections 
           Siguen al plan del consultorio. Lo que cambies aquí queda como ajuste de este consultorio y se mantiene aunque edites el plan.
         </p>
         {catalog.isLoading && <p role="status">Cargando módulos…</p>}
-        {catalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos.</p>}
+        {catalog.isError && <p role="alert">No se pudo cargar el catálogo de módulos. {getErrorMessage(catalog.error, 'Intenta de nuevo.')}</p>}
         {catalog.data && (
           <SectionChecklist
             catalog={catalog.data.sections}

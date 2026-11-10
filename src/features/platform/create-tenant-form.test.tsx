@@ -210,6 +210,67 @@ describe('CreateTenantForm', () => {
     });
   });
 
+  it('does not ask a clinic for the specialty of its master', async () => {
+    renderForm();
+    await fillRequired();
+    expect(screen.queryByLabelText('Especialidad del titular')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Crear consultorio' }));
+    await waitFor(() => expect(platformApi.createTenant).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(platformApi.createTenant).mock.calls[0][0]).not.toHaveProperty('masterSpecialtyCode');
+  });
+
+  describe('on a personal plan', () => {
+    const ownerOptions = () =>
+      within(screen.getByLabelText('Especialidad del titular'))
+        .getAllByRole('option')
+        .map((option) => option.textContent);
+
+    it('makes the master the professional of the first ticked specialty by default', async () => {
+      renderForm();
+      await fillRequired();
+      type('Tipo de consultorio', 'PERSONAL');
+      expect(ownerOptions()).toEqual(['Psicología']);
+      expect(screen.getByText(/el titular es quien atiende/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Crear consultorio' }));
+      await waitFor(() => expect(platformApi.createTenant).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(platformApi.createTenant).mock.calls[0][0]).toMatchObject({
+        tenantType: 'PERSONAL',
+        planId: 'plan_personal_basic',
+        specialtyCodes: ['PSICOLOGIA'],
+        masterSpecialtyCode: 'PSICOLOGIA',
+      });
+    });
+
+    it('sends the specialty chosen among the ticked ones, and falls back when it is unticked', async () => {
+      renderForm();
+      await fillRequired();
+      type('Tipo de consultorio', 'PERSONAL');
+      fireEvent.click(screen.getByLabelText('Nutrición'));
+      expect(ownerOptions()).toEqual(['Psicología', 'Nutrición']);
+      type('Especialidad del titular', 'NUTRICION');
+      expect((screen.getByLabelText('Especialidad del titular') as HTMLSelectElement).value).toBe('NUTRICION');
+
+      fireEvent.click(screen.getByLabelText('Nutrición'));
+      expect((screen.getByLabelText('Especialidad del titular') as HTMLSelectElement).value).toBe('PSICOLOGIA');
+      fireEvent.click(screen.getByLabelText('Nutrición'));
+      type('Especialidad del titular', 'NUTRICION');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Crear consultorio' }));
+      await waitFor(() => expect(platformApi.createTenant).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(platformApi.createTenant).mock.calls[0][0]).toMatchObject({
+        specialtyCodes: ['PSICOLOGIA', 'NUTRICION'],
+        masterSpecialtyCode: 'NUTRICION',
+      });
+    });
+
+    it('hides the choice until a specialty is ticked', async () => {
+      renderForm();
+      await ready();
+      type('Tipo de consultorio', 'PERSONAL');
+      expect(screen.queryByLabelText('Especialidad del titular')).not.toBeInTheDocument();
+    });
+  });
+
   it('sends the modules only once they were edited by hand, and the trial days typed', async () => {
     renderForm();
     await fillRequired();

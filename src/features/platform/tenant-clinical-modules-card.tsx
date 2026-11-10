@@ -8,6 +8,7 @@ import { describeModule } from '@/features/admin/specialties/module-labels';
 import { platformApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
 import type { PlatformTenantDetail } from '@/types';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 export function TenantClinicalModulesCard({ tenantId, detail }: { tenantId: string; detail: PlatformTenantDetail }) {
   const client = useQueryClient();
@@ -44,7 +45,7 @@ export function TenantClinicalModulesCard({ tenantId, detail }: { tenantId: stri
       <CardContent className="space-y-5">
         <p className="text-sm text-muted-foreground">Selecciona las especialidades contratadas y los módulos que puede usar el consultorio.</p>
         {catalog.isLoading && <p role="status">Cargando especialidades…</p>}
-        {catalog.isError && <p role="alert">No se pudo cargar el catálogo de especialidades.</p>}
+        {catalog.isError && <p role="alert">No se pudo cargar el catálogo de especialidades. {getErrorMessage(catalog.error, 'Intenta de nuevo.')}</p>}
         {catalog.data && (
           <fieldset className="space-y-2">
             <legend className="font-medium">Especialidades</legend>
