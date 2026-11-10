@@ -23,20 +23,28 @@ interface NotesDraftOptions {
   save: (notes: string) => Promise<unknown>;
 }
 
+const same = (a: string | null | undefined, b: string | null | undefined) =>
+  (a ?? '').trim() === (b ?? '').trim();
+
 /**
  * Saves the procedure notes as a draft once the user pauses typing, so leaving the session
- * does not lose them. Saves go one at a time: notes typed while one is in flight wait for it,
- * and only the latest are sent, so an older draft never lands after a newer one. A draft still
- * pending is sent at once when the page unmounts, and leaving the document (reload, closing the
- * tab) asks first while one is unsaved. Notes equal to the stored ones (the server trims them)
- * are not sent.
+ * does not lose them.
+ *
+ * - Saves go one at a time: notes typed while one is in flight wait for it and only the latest
+ *   are sent, so an older draft never lands after a newer one.
+ * - Whether there is something to send is judged against what the server will hold once the
+ *   saves in flight and queued land, not only against the stored notes: typing the stored text
+ *   back while a different draft is saving still sends it.
+ * - A draft stays pending until a save confirms it: a failed one is tried again when the page
+ *   unmounts or the document is left, and leaving the document (reload, closing the tab) asks
+ *   first while anything is unsaved.
  */
 export function useNotesDraft({ typed, stored, enabled, save }: NotesDraftOptions): NotesDraftState {
   const [state, setState] = useState<NotesDraftState>('idle');
   const saveRef = useRef(save);
-  // The draft waiting for the pause, the save in flight, and the draft waiting for that save.
+  // The draft not sent yet, the text in flight, and the text waiting for that save.
   const pending = useRef<string | null>(null);
-  const inFlight = useRef(false);
+  const sending = useRef<string | null>(null);
   const queued = useRef<string | null>(null);
 
   useEffect(() => {
@@ -45,11 +53,11 @@ export function useNotesDraft({ typed, stored, enabled, save }: NotesDraftOption
 
   // Kept in a ref so the timer, the unmount and the unload listener share one sender.
   const send = useRef((notes: string) => {
-    if (inFlight.current) {
+    if (sending.current !== null) {
       queued.current = notes;
       return;
     }
-    inFlight.current = true;
+    sending.current = notes;
     setState('saving');
     // Started right away: on unload there is no later turn to start it in.
     let request: Promise<unknown>;
@@ -61,29 +69,42 @@ export function useNotesDraft({ typed, stored, enabled, save }: NotesDraftOption
     request
       .then(
         () => queued.current === null && setState('saved'),
-        () => queued.current === null && setState('error'),
+        () => {
+          // Not saved: still pending unless something newer replaces it.
+          if (queued.current !== null) return;
+          if (pending.current === null) pending.current = notes;
+          setState('error');
+        },
       )
       .finally(() => {
-        inFlight.current = false;
+        sending.current = null;
         const next = queued.current;
         queued.current = null;
         if (next !== null) send.current(next);
       });
   });
 
-  const draft = enabled && typed !== null && typed.trim() !== (stored ?? '').trim() ? typed : null;
-
   useEffect(() => {
-    pending.current = draft;
-    if (draft === null) return;
+    if (!enabled || typed === null) {
+      pending.current = null;
+      return;
+    }
+    // What the server will hold once the saves in flight and queued land.
+    const target = queued.current ?? sending.current ?? stored;
+    if (same(typed, target)) {
+      pending.current = null;
+      return;
+    }
+    pending.current = typed;
     const timer = setTimeout(() => {
       // Sent already when the user tried to leave the page.
       if (pending.current === null) return;
+      const notes = pending.current;
       pending.current = null;
-      send.current(draft);
+      send.current(notes);
     }, NOTES_DRAFT_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [draft]);
+  }, [typed, stored, enabled]);
 
   useEffect(() => {
     const sendDraft = send.current;
@@ -94,7 +115,7 @@ export function useNotesDraft({ typed, stored, enabled, save }: NotesDraftOption
         pending.current = null;
         sendDraft(notes);
       }
-      if (!inFlight.current && queued.current === null) return;
+      if (sending.current === null && queued.current === null) return;
       event.preventDefault();
       event.returnValue = '';
     };
