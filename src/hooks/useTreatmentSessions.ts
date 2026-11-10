@@ -31,14 +31,18 @@ export function useTreatmentSession(id: string) {
 
 /**
  * Keeps the procedure notes typed so far, without toasts: the page says whether the draft was
- * saved. The answer replaces the cached session; a 409 (the session moved on) reads it again.
+ * saved. The answer replaces the cached session unless the cache holds a newer version (a close
+ * or another command answered after this save was processed); a 409 (the session moved on)
+ * reads it again.
  */
 export function useSaveProcedureNotes(id: string) {
   const queryClient = useQueryClient();
   return useMutation<TreatmentSessionDetail, ApiError, string>({
     mutationFn: (procedureNotes) => treatmentSessionsApi.saveNotes(id, procedureNotes),
     onSuccess: (session) => {
-      queryClient.setQueryData(QUERY_KEYS.TREATMENT_SESSION(id), session);
+      queryClient.setQueryData<TreatmentSessionDetail>(QUERY_KEYS.TREATMENT_SESSION(id), (cached) =>
+        cached && cached.version > session.version ? cached : session,
+      );
       // The patients' lists show the notes in the clinical history.
       queryClient.invalidateQueries({
         predicate: ({ queryKey }) =>

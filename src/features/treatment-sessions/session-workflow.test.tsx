@@ -437,6 +437,48 @@ describe('SessionWorkflow', () => {
         expect(screen.getByText('Borrador guardado')).toBeInTheDocument();
       });
 
+      it('sends notes typed back to the stored ones while a different draft is being saved', async () => {
+        hooks.session = started({ procedureNotes: 'Original' });
+        let finish!: () => void;
+        hooks.saveNotes.mockImplementationOnce(
+          () => new Promise<void>((resolve) => (finish = resolve)),
+        );
+        render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Cambio' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+        fireEvent.change(notesField(), { target: { value: 'Original' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+        await act(async () => finish());
+
+        expect(hooks.saveNotes.mock.calls).toEqual([['Cambio'], ['Original']]);
+      });
+
+      it('keeps a draft that failed to save: leaving asks first and tries it again', async () => {
+        hooks.session = started();
+        hooks.saveNotes
+          .mockRejectedValueOnce({ status: 0, message: 'Sin conexión' })
+          .mockRejectedValueOnce({ status: 0, message: 'Sin conexión' });
+        const { unmount } = render(<SessionWorkflow id="session-1" />);
+        const leave = () => {
+          const event = new Event('beforeunload', { cancelable: true });
+          window.dispatchEvent(event);
+          return event.defaultPrevented;
+        };
+
+        fireEvent.change(notesField(), { target: { value: 'Sin red' } });
+        await act(async () => vi.advanceTimersByTime(1000));
+        expect(screen.getByText(/No se pudo guardar el borrador/)).toBeInTheDocument();
+
+        expect(leave()).toBe(true);
+        expect(hooks.saveNotes.mock.calls).toEqual([['Sin red'], ['Sin red']]);
+
+        // Failed again and then left inside the app: the draft goes out once more.
+        await act(async () => undefined);
+        unmount();
+        expect(hooks.saveNotes).toHaveBeenCalledTimes(3);
+      });
+
       it('asks before leaving the page with unsaved notes, and starts saving them', async () => {
         hooks.session = started();
         const leave = () => {
