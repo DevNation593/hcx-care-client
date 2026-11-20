@@ -26,6 +26,7 @@ import { formatDate } from '@/lib/utils';
 import {
   AddTreatmentDialog,
   canRecordNoShow,
+  countedSessions,
   EncounterTreatmentList,
   MAX_TREATMENTS_PER_ENCOUNTER,
   NoShowDialog,
@@ -83,6 +84,7 @@ export function EncounterPanel({
   const sessions = openEncounter?.treatmentSessions ?? [];
   const unfinished = unfinishedSessions(sessions);
   const closeBlocked = unfinished.length > 0;
+  const addLimitReached = countedSessions(sessions).length >= MAX_TREATMENTS_PER_ENCOUNTER;
 
   return (
     <Card className={openEncounter ? 'border-primary/50' : undefined}>
@@ -131,10 +133,15 @@ export function EncounterPanel({
                 Cerrar atención
               </Button>
               {isEnabled(TREATMENT_SESSIONS_SECTION) && (
-                <Button variant="outline" onClick={() => setAdding(true)}>
+                <Button variant="outline" onClick={() => setAdding(true)} disabled={addLimitReached}>
                   <Plus className="mr-2 h-4 w-4" />
                   Añadir tratamiento
                 </Button>
+              )}
+              {isEnabled(TREATMENT_SESSIONS_SECTION) && addLimitReached && (
+                <span className="self-center text-sm text-muted-foreground">
+                  Máximo {MAX_TREATMENTS_PER_ENCOUNTER} tratamientos por atención
+                </span>
               )}
               {canRecordNoShow(sessions) && (
                 <Button variant="outline" onClick={() => setMarkingNoShow(true)}>

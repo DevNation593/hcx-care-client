@@ -397,6 +397,56 @@ describe('EncounterPanel', () => {
       expect(screen.getByText('Máximo 10 tratamientos por atención')).toBeInTheDocument();
     });
 
+    it('offers again a treatment whose session was cancelled and does not count it', () => {
+      hooks.treatments = [
+        { id: 't-s1', name: 'Toxina', isActive: true },
+        { id: 't-s2', name: 'Peeling', isActive: true },
+        { id: 'c1', name: 'Catálogo 1', isActive: true },
+        { id: 'c2', name: 'Catálogo 2', isActive: true },
+      ];
+      const counted = Array.from({ length: 7 }, (_, index) =>
+        session(`k${index}`, `Presente ${index}`, 'CLINICAL_COMPLETE'),
+      );
+      renderOpen(
+        withSessions([
+          session('s1', 'Toxina', 'CANCELLED'),
+          session('s2', 'Peeling', 'NO_SHOW'),
+          ...counted,
+        ]),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Añadir tratamiento' }));
+      const dialog = screen.getByRole('dialog', { name: 'Añadir tratamiento' });
+      expect(within(dialog).getByRole('checkbox', { name: 'Toxina' })).toBeInTheDocument();
+      expect(within(dialog).getByRole('checkbox', { name: 'Peeling' })).toBeInTheDocument();
+      // 7 counted: three more fit, so the fourth box is the first one refused.
+      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Toxina' }));
+      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Peeling' }));
+      expect(within(dialog).getByRole('checkbox', { name: 'Catálogo 1' })).toBeEnabled();
+      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Catálogo 1' }));
+      expect(within(dialog).getByRole('checkbox', { name: 'Catálogo 2' })).toBeDisabled();
+    });
+
+    it('disables "Añadir tratamiento" and says why when ten treatments are already counted', () => {
+      const ten = Array.from({ length: 10 }, (_, index) =>
+        session(`k${index}`, `Presente ${index}`, 'CLINICAL_COMPLETE'),
+      );
+      renderOpen(withSessions([...ten, session('x', 'Cancelado', 'CANCELLED')]));
+
+      expect(screen.getByRole('button', { name: 'Añadir tratamiento' })).toBeDisabled();
+      expect(screen.getByText('Máximo 10 tratamientos por atención')).toBeInTheDocument();
+    });
+
+    it('keeps "Añadir tratamiento" enabled when cancelled sessions are the ones over ten', () => {
+      const nine = Array.from({ length: 9 }, (_, index) =>
+        session(`k${index}`, `Presente ${index}`, 'CLINICAL_COMPLETE'),
+      );
+      renderOpen(withSessions([...nine, session('x', 'Cancelado', 'CANCELLED')]));
+
+      expect(screen.getByRole('button', { name: 'Añadir tratamiento' })).toBeEnabled();
+      expect(screen.queryByText('Máximo 10 tratamientos por atención')).not.toBeInTheDocument();
+    });
+
     it('hides "Añadir tratamiento" when the sessions section is off', () => {
       hooks.sessionsOn = false;
       hooks.treatments = [{ id: 't2', name: 'Peeling', isActive: true }];

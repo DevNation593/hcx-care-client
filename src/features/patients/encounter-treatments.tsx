@@ -36,6 +36,11 @@ const BEFORE_PROCEDURE: TreatmentSessionStatus[] = ['INTAKE_IN_PROGRESS', 'READY
 
 type EncounterSessions = NonNullable<Encounter['treatmentSessions']>;
 
+/** Cancelled and no-show sessions neither count toward the limit nor block re-adding their treatment. */
+export function countedSessions(sessions: EncounterSessions = []): EncounterSessions {
+  return sessions.filter((session) => session.status !== 'CANCELLED' && session.status !== 'NO_SHOW');
+}
+
 export function unfinishedSessions(sessions: EncounterSessions = []): EncounterSessions {
   return sessions.filter((session) => UNFINISHED.includes(session.status));
 }
@@ -132,7 +137,7 @@ export function AddTreatmentDialog({
   const { data: catalog = [] } = useTreatments({ active: true });
   const [treatmentIds, setTreatmentIds] = useState<string[]>([]);
 
-  const present = encounter.treatmentSessions ?? [];
+  const present = countedSessions(encounter.treatmentSessions);
   const presentIds = new Set(present.map((session) => session.treatment.id));
   const available = catalog.filter((item) => !presentIds.has(item.id));
   const limitReached = present.length + treatmentIds.length >= MAX_TREATMENTS_PER_ENCOUNTER;
