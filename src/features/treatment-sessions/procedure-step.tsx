@@ -26,10 +26,12 @@ import {
 import { cn } from '@/lib/utils';
 import { ReasonDialog } from './consent-step';
 import { NOTES_DRAFT_LABELS, type NotesDraftState } from './use-notes-draft';
-import { usePatientTerms } from '@/hooks/usePatientTerms';
+import { SignaturePasswordField, signaturePasswordError } from '@/features/patients/signature-password-field';
+import { unfinishedSiblings } from './encounter-navigation';
 
-// The limit of the API's DTO.
+// The limits of the API's DTOs.
 const PROCEDURE_NOTES_MAX = 10000;
+const ENCOUNTER_SUMMARY_MAX = 5000;
 const BEFORE_START: TreatmentSessionStatus[] = ['INTAKE_IN_PROGRESS', 'READY_FOR_CONSENT', 'CONSENTED'];
 
 export interface ProcedureStepProps {
@@ -41,14 +43,14 @@ export interface ProcedureStepProps {
   onNotesChange: (notes: string) => void;
   /** Where the draft of the notes stands, when the page saves it while typing. */
   notesDraft?: NotesDraftState;
-  /** Called once the session was closed, cancelled or marked as a no-show. */
+  /** Called once the session was completed or cancelled. */
   onDone?: () => void;
 }
 
 /**
- * Starts the procedure, takes its notes and closes it, or ends the session by cancelling it or
- * marking the patient as absent. What can be done comes from `allowedCommands`; what is missing
- * for a start or a close comes from the API's 422.
+ * Starts the procedure, takes its notes and completes it (closing the encounter too when it is the
+ * last pending treatment), or ends the session by cancelling it. What can be done comes from
+ * `allowedCommands`; what is missing for a start or a completion comes from the API's 422.
  */
 export function ProcedureStep({
   session,
@@ -59,16 +61,15 @@ export function ProcedureStep({
   onDone,
 }: ProcedureStepProps) {
   const commands = useSessionCommand(session.id);
-  const terms = usePatientTerms();
   const [failure, setFailure] = useState<ApiError | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  // Closing and marking an absence cannot be undone: both ask first.
-  const [confirming, setConfirming] = useState<'complete' | 'noShow' | null>(null);
+  // Completing cannot be undone: it asks first.
+  const [confirming, setConfirming] = useState(false);
 
   const can = (command: SessionCommandName) =>
     !readOnly && session.allowedCommands.includes(command);
   const { status } = session;
-  const busy = commands.start.isPending || commands.complete.isPending || commands.noShow.isPending;
+  const busy = commands.start.isPending || commands.complete.isPending;
 
   const run = async (action: () => Promise<unknown>, done?: () => void) => {
     setFailure(null);
@@ -81,6 +82,32 @@ export function ProcedureStep({
   };
 
   const trimmedNotes = notes.trim();
+  // Notes left empty are not sent: the API decides whether they were required.
+  const notesInput = trimmedNotes ? { procedureNotes: trimmedNotes } : {};
+  const lastPending = unfinishedSiblings(session).length === 0;
+
+  // Completes and closes the encounter. A wrong password is answered inside the dialog, which stays
+  // open to retry; any other failure is shown by the step.
+  const completeAndClose = async (password: string, summary: string): Promise<string | undefined> => {
+    setFailure(null);
+    try {
+      await commands.complete.mutateAsync({
+        ...notesInput,
+        closeEncounter: true,
+        password,
+        ...(summary ? { encounterSummary: summary } : {}),
+      });
+    } catch (error) {
+      const passwordMessage = signaturePasswordError(error);
+      if (passwordMessage) return passwordMessage;
+      setFailure(error as ApiError);
+      setConfirming(false);
+      return undefined;
+    }
+    setConfirming(false);
+    onDone?.();
+    return undefined;
+  };
 
   return (
     <div className="space-y-6">
@@ -123,7 +150,7 @@ export function ProcedureStep({
           onSubmit={(event) => {
             event.preventDefault();
             if (!can('COMPLETE') || busy) return;
-            setConfirming('complete');
+            setConfirming(true);
           }}
         >
           <div>
@@ -160,75 +187,57 @@ export function ProcedureStep({
             disabled={!can('COMPLETE') || busy}
             loading={commands.complete.isPending}
           >
-            Cerrar atención
+            Completar tratamiento
           </Button>
         </form>
       )}
 
       {!BEFORE_START.includes(status) && status !== 'IN_PROGRESS' && (
         <p className="text-sm text-muted-foreground">
-          {SESSION_STATUS_LABELS[status]}: esta atención ya no admite cambios.
+          {SESSION_STATUS_LABELS[status]}: este tratamiento ya no admite cambios.
         </p>
       )}
 
-      {(can('CANCEL') || can('NO_SHOW')) && (
+      {can('CANCEL') && (
         <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row">
-          {can('CANCEL') && (
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              disabled={busy}
-              onClick={() => setCancelling(true)}
-            >
-              Cancelar atención
-            </Button>
-          )}
-          {can('NO_SHOW') && (
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              disabled={busy}
-              loading={commands.noShow.isPending}
-              onClick={() => setConfirming('noShow')}
-            >
-              No asistió
-            </Button>
-          )}
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            disabled={busy}
+            onClick={() => setCancelling(true)}
+          >
+            Cancelar tratamiento
+          </Button>
         </div>
       )}
 
-      {confirming === 'complete' && (
+      {confirming && !lastPending && (
         <ConfirmDialog
-          title="Cerrar atención"
-          description="Se registran las notas y la atención queda cerrada. No se puede deshacer."
-          confirmLabel="Confirmar cierre"
-          onConfirm={() => {
-            // Notes left empty are not sent: the API decides whether they were required.
-            void run(
-              () => commands.complete.mutateAsync(trimmedNotes ? { procedureNotes: trimmedNotes } : {}),
-              onDone,
-            );
-          }}
-          onClose={() => setConfirming(null)}
+          title="Completar tratamiento"
+          description="Se registran las notas y el tratamiento queda completado. La atención sigue abierta. No se puede deshacer."
+          confirmLabel="Completar"
+          onConfirm={() => void run(() => commands.complete.mutateAsync(notesInput), onDone)}
+          onClose={() => setConfirming(false)}
         />
       )}
 
-      {confirming === 'noShow' && (
-        <ConfirmDialog
-          title="Registrar inasistencia"
-          description={`El ${terms.one} no asistió y la atención termina. No se puede deshacer.`}
-          confirmLabel="Confirmar inasistencia"
-          onConfirm={() => void run(() => commands.noShow.mutateAsync(), onDone)}
-          onClose={() => setConfirming(null)}
+      {confirming && lastPending && (
+        <LastPendingDialog
+          busy={busy}
+          onCompleteAndStay={() => {
+            setConfirming(false);
+            void run(() => commands.complete.mutateAsync(notesInput), onDone);
+          }}
+          onCompleteAndClose={completeAndClose}
+          onClose={() => setConfirming(false)}
         />
       )}
 
       {cancelling && (
         <ReasonDialog
-          title="Cancelar atención"
-          description="La atención termina y el motivo queda registrado. No se puede deshacer."
+          title="Cancelar tratamiento"
+          description="El tratamiento termina y el motivo queda registrado. La atención sigue abierta."
           confirmLabel="Confirmar cancelación"
           onConfirm={async (reason) => {
             await commands.cancel.mutateAsync(reason);
@@ -276,6 +285,88 @@ function ConfirmDialog({
             }}
           >
             {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Completing the last pending treatment of an encounter: close the encounter too (it signs, so it
+ * asks the password again) or complete the treatment and stay in the encounter.
+ */
+function LastPendingDialog({
+  busy,
+  onCompleteAndStay,
+  onCompleteAndClose,
+  onClose,
+}: {
+  busy: boolean;
+  onCompleteAndStay: () => void;
+  onCompleteAndClose: (password: string, summary: string) => Promise<string | undefined>;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  const summaryId = useId();
+  const passwordId = useId();
+  const [summary, setSummary] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | undefined>();
+
+  const closeEncounter = async () => {
+    setPasswordError(undefined);
+    const error = await onCompleteAndClose(password, summary.trim());
+    // Typed again for every attempt: the password is never kept.
+    setPassword('');
+    setPasswordError(error);
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <DialogHeader>
+          <DialogTitle id={titleId}>Completar tratamiento</DialogTitle>
+          <DialogDescription>
+            Es el último tratamiento pendiente de la atención. Puedes cerrar la atención ahora o
+            completar solo el tratamiento y seguir en ella. No se puede deshacer.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor={summaryId}>Resumen de la atención</Label>
+            <Textarea
+              id={summaryId}
+              rows={3}
+              maxLength={ENCOUNTER_SUMMARY_MAX}
+              value={summary}
+              disabled={busy}
+              onChange={(event) => setSummary(event.target.value)}
+            />
+          </div>
+          <SignaturePasswordField
+            id={passwordId}
+            value={password}
+            onChange={setPassword}
+            error={passwordError}
+            disabled={busy}
+          />
+        </div>
+        <DialogFooter className="gap-2">
+          <Button type="button" size="lg" variant="outline" onClick={onClose}>
+            Volver
+          </Button>
+          <Button type="button" size="lg" variant="outline" disabled={busy} onClick={onCompleteAndStay}>
+            Completar y seguir en la atención
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            disabled={busy || !password}
+            loading={busy}
+            onClick={() => void closeEncounter()}
+          >
+            Completar y cerrar atención
           </Button>
         </DialogFooter>
       </DialogContent>

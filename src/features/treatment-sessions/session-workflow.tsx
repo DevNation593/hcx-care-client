@@ -27,6 +27,8 @@ import { ProcedureStep } from './procedure-step';
 import { buildSessionSteps, type SessionStep, type SessionStepId } from './session-steps';
 import { useNotesDraft } from './use-notes-draft';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
+import { useSections } from '@/hooks/useSections';
+import { encounterBackHref } from './encounter-navigation';
 
 // What a refusal or revocation did to the document, when the session's status does not say it.
 const CONSENT_OUTCOME_LABELS: Record<Exclude<ConsentOutcome, 'signed'>, string> = {
@@ -125,7 +127,7 @@ export function SessionWorkflow({ id }: { id: string }) {
     }
     followSession();
   };
-  // A closed, cancelled or absent session ends at the summary; the focus follows like any new step.
+  // A completed or cancelled session ends at the summary; the focus follows like any new step.
   const showClose = () => setSelected('close');
 
   if (isPending) {
@@ -262,10 +264,11 @@ export function SessionWorkflow({ id }: { id: string }) {
 function SessionHeader({ session }: { session: TreatmentSessionDetail }) {
   const { patient, treatment } = session;
   const terms = usePatientTerms();
+  const { isEnabled } = useSections();
   return (
     <div className="flex flex-wrap items-center gap-3">
       <Link
-        href={`/patients/${session.patientId}?tab=treatments`}
+        href={encounterBackHref(session.patientId, isEnabled('core.clinical.specialties'))}
         aria-label={`Volver al ${terms.one}`}
         className="inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent"
       >
