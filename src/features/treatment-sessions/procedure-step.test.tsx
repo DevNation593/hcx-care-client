@@ -15,6 +15,7 @@ const hooks = vi.hoisted(() => ({
   complete: vi.fn(),
   cancel: vi.fn(),
   noShow: vi.fn(),
+  reset: vi.fn(),
 }));
 
 // A mutation that reports isPending while its promise is unsettled, like the real one.
@@ -24,6 +25,7 @@ vi.mock('@/hooks/useTreatmentSessions', async () => {
     const [isPending, setPending] = useLocalState(false);
     return {
       isPending,
+      reset: () => hooks.reset(),
       mutateAsync: async (input?: unknown) => {
         setPending(true);
         try {
@@ -406,6 +408,46 @@ describe('ProcedureStep complete as the last pending treatment', () => {
     expect(within(still).getByLabelText(/Tu contraseña para firmar/)).toHaveValue('');
     expect(within(still).getByRole('button', { name: 'Completar y cerrar atención' })).toBeDisabled();
     expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('closes the dialog and shows the message when a sibling treatment is still unfinished', async () => {
+    const onDone = vi.fn();
+    hooks.complete.mockRejectedValue({
+      status: 409,
+      code: 'ENCOUNTER_HAS_UNFINISHED_TREATMENTS',
+      message: 'Quedan tratamientos sin terminar',
+    });
+    render(<Step session={lastPending()} onDone={onDone} />);
+    const dialog = await open();
+
+    typePassword(dialog, 'secreto');
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Quedan tratamientos sin terminar');
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('drops the password from the mutation after the attempt, whether it worked or not', async () => {
+    hooks.complete.mockRejectedValueOnce({ status: 403, code: 'SIGNATURE_PASSWORD_INVALID', message: 'No' });
+    render(<Step session={lastPending()} />);
+    const dialog = await open();
+
+    typePassword(dialog, 'mala');
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+    );
+    expect(hooks.reset).toHaveBeenCalledTimes(1);
+
+    typePassword(screen.getByRole('dialog'), 'buena');
+    await act(async () =>
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', { name: 'Completar y cerrar atención' }),
+      ),
+    );
+    expect(hooks.reset).toHaveBeenCalledTimes(2);
   });
 
   it('closes the dialog and lists what is missing when the API blocks the completion', async () => {

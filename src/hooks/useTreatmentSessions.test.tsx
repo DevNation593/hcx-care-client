@@ -205,6 +205,26 @@ describe('encounter commands', () => {
     });
   });
 
+  it('refreshes the session when closing the encounter finds an unfinished treatment', async () => {
+    http.post.mockRejectedValue({
+      message: 'Quedan tratamientos sin terminar',
+      status: 409,
+      code: 'ENCOUNTER_HAS_UNFINISHED_TREATMENTS',
+    });
+    const { client, wrapper } = setup();
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-1'), { id: 'session-1' });
+    const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
+
+    await act(async () => {
+      await result.current.complete
+        .mutateAsync({ closeEncounter: true, password: 'pw' })
+        .catch(() => undefined);
+    });
+
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-1'))?.isInvalidated).toBe(true);
+    expect(toast.error).toHaveBeenCalledWith('Quedan tratamientos sin terminar');
+  });
+
   it('records the no-show of an encounter and refreshes encounters, sessions and appointments', async () => {
     http.post.mockResolvedValue([{ id: 'session-1' }]);
     const { client, wrapper } = setup();

@@ -394,6 +394,24 @@ describe('SessionWorkflow', () => {
         expect(hooks.saveNotes).not.toHaveBeenCalled();
       });
 
+      it('does not send a pending draft once the session was completed', async () => {
+        hooks.session = started();
+        hooks.complete.mockResolvedValue({});
+        const { unmount } = render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Notas finales' } });
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Completar tratamiento' })));
+        await act(async () =>
+          fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Completar' })),
+        );
+        // The refetched session has not arrived yet: the draft must still not be sent.
+        await act(async () => vi.advanceTimersByTime(5000));
+        unmount();
+
+        expect(hooks.complete).toHaveBeenCalledWith({ procedureNotes: 'Notas finales' });
+        expect(hooks.saveNotes).not.toHaveBeenCalled();
+      });
+
       it('does not save when the session does not take a draft', async () => {
         hooks.session = started({ allowedCommands: ['UPLOAD_AFTER', 'COMPLETE', 'CANCEL'] });
         render(<SessionWorkflow id="session-1" />);

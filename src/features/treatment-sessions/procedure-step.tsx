@@ -98,12 +98,15 @@ export function ProcedureStep({
         ...(summary ? { encounterSummary: summary } : {}),
       });
     } catch (error) {
+      // The mutation cache keeps the variables of the attempt: drop the password from it.
+      commands.complete.reset();
       const passwordMessage = signaturePasswordError(error);
       if (passwordMessage) return passwordMessage;
       setFailure(error as ApiError);
       setConfirming(false);
       return undefined;
     }
+    commands.complete.reset();
     setConfirming(false);
     onDone?.();
     return undefined;

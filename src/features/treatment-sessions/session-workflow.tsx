@@ -64,11 +64,14 @@ export function SessionWorkflow({ id }: { id: string }) {
   // The procedure notes being typed; null until the user types, so the saved ones show meanwhile.
   const [typedNotes, setTypedNotes] = useState<string | null>(null);
   // Saved as a draft while typing, so that leaving the page does not lose them.
+  const [sessionEnded, setSessionEnded] = useState(false);
   const saveNotes = useSaveProcedureNotes(id);
   const notesDraft = useNotesDraft({
     typed: typedNotes,
     stored: session?.procedureNotes,
-    enabled: Boolean(session?.allowedCommands.includes('SAVE_NOTES')),
+    // Off as soon as the session ended, without waiting for the refetch: a draft must not land
+    // on a session that was just completed or cancelled.
+    enabled: Boolean(session?.allowedCommands.includes('SAVE_NOTES')) && !sessionEnded,
     save: saveNotes.mutateAsync,
   });
 
@@ -128,7 +131,10 @@ export function SessionWorkflow({ id }: { id: string }) {
     followSession();
   };
   // A completed or cancelled session ends at the summary; the focus follows like any new step.
-  const showClose = () => setSelected('close');
+  const showClose = () => {
+    setSessionEnded(true);
+    setSelected('close');
+  };
 
   if (isPending) {
     return (
