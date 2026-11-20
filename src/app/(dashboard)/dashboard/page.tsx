@@ -22,6 +22,7 @@ import {
   AlertCircle,
   CheckCircle2,
 } from 'lucide-react';
+import { endOfWeek, format, startOfWeek } from 'date-fns';
 import { formatDate, formatRelativeDate } from '@/lib/utils';
 import { APPOINTMENT_STATUS_COLORS, TASK_PRIORITY_COLORS } from '@/lib/constants';
 import Link from 'next/link';
@@ -40,17 +41,16 @@ export default function DashboardPage() {
   const tasksOn = isEnabled('core.agenda.tasks');
   const patientsOn = isEnabled('core.patients.records');
   const teamOn = isEnabled('core.admin.team');
-  const today = new Date().toISOString().split('T')[0];
-
-  // Get start of week (Monday)
+  // Calendar days as the user lives them, like the calendar shows them. toISOString() would
+  // give the UTC day, which in the Americas turns into tomorrow every evening. The API reads
+  // a date-only bound as that whole day in the clinic's time zone.
   const now = new Date();
-  const dayOfWeek = now.getDay();
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-  const weekStart = startOfWeek.toISOString().split('T')[0];
+  const today = format(now, 'yyyy-MM-dd');
+  const weekStart = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+  const weekEnd = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
 
   const { data: todayAppointments, isLoading: appointmentsLoading } = useQuery({
-    queryKey: [...QUERY_KEYS.APPOINTMENTS, 'today'],
+    queryKey: [...QUERY_KEYS.APPOINTMENTS, 'today', today],
     queryFn: async (): Promise<Appointment[]> => {
       const response = await appointmentsApi.list({ from: today, to: today });
       return extractArray(response);
@@ -59,11 +59,9 @@ export default function DashboardPage() {
   });
 
   const { data: weekAppointments } = useQuery({
-    queryKey: [...QUERY_KEYS.APPOINTMENTS, 'week'],
+    queryKey: [...QUERY_KEYS.APPOINTMENTS, 'week', weekStart],
     queryFn: async (): Promise<Appointment[]> => {
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
-      const response = await appointmentsApi.list({ from: weekStart, to: endOfWeek.toISOString().split('T')[0] });
+      const response = await appointmentsApi.list({ from: weekStart, to: weekEnd });
       return extractArray(response);
     },
     enabled: appointmentsOn,
