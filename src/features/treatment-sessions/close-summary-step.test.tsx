@@ -1,7 +1,12 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionMedia, TreatmentSessionDetail } from '@/types/treatments';
 import { CloseSummaryStep } from './close-summary-step';
+
+const sections = vi.hoisted(() => ({ enabled: new Set<string>() }));
+vi.mock('@/hooks/useSections', () => ({
+  useSections: () => ({ isEnabled: (key: string) => sections.enabled.has(key) }),
+}));
 
 // Rendered without a QueryClient: name people as in a clinical practice.
 vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
@@ -31,8 +36,13 @@ const session = (overrides: Partial<TreatmentSessionDetail> = {}): TreatmentSess
     },
     media: [photo('1', 'BEFORE'), photo('2', 'BEFORE'), photo('3', 'AFTER'), photo('4', 'OTHER')],
     timezone: 'America/Guayaquil',
+    patientId: 'patient-1',
+    encounterStatus: 'OPEN',
+    encounterSessions: [],
     ...overrides,
   }) as TreatmentSessionDetail;
+
+beforeEach(() => sections.enabled.clear());
 
 const value = (term: string) => screen.getByText(term).nextElementSibling;
 
@@ -74,12 +84,12 @@ describe('CloseSummaryStep', () => {
     expect(value('Consentimiento')).toHaveTextContent('Pendiente');
     expect(value('Fotos antes')).toHaveTextContent('0');
     expect(value('Notas del procedimiento')).toHaveTextContent('Sin notas');
-    expect(screen.getByText('La atención fue cancelada.')).toBeInTheDocument();
-    expect(screen.queryByText(/se completa al cerrar la atención/)).not.toBeInTheDocument();
+    expect(screen.getByText('El tratamiento fue cancelado.')).toBeInTheDocument();
+    expect(screen.queryByText(/se completa al terminar el tratamiento/)).not.toBeInTheDocument();
   });
 
   it.each([
-    ['CANCELLED', 'La atención fue cancelada.'],
+    ['CANCELLED', 'El tratamiento fue cancelado.'],
     ['NO_SHOW', 'El paciente no asistió.'],
     ['CONSENT_REFUSED', 'Consentimiento rechazado.'],
     ['CONSENT_REVOKED', 'Consentimiento revocado.'],
@@ -87,7 +97,7 @@ describe('CloseSummaryStep', () => {
     render(<CloseSummaryStep session={session({ status })} />);
 
     expect(screen.getByText(text)).toBeInTheDocument();
-    expect(screen.queryByText(/se completa al cerrar la atención/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/se completa al terminar el tratamiento/)).not.toBeInTheDocument();
   });
 
   it.each(['IN_PROGRESS', 'CONSENTED'] as const)(
@@ -95,7 +105,7 @@ describe('CloseSummaryStep', () => {
     (status) => {
       render(<CloseSummaryStep session={session({ status, completedAt: null })} />);
 
-      expect(screen.getByText(/solo lectura y se completa al cerrar la atención/)).toBeInTheDocument();
+      expect(screen.getByText(/solo lectura y se completa al terminar el tratamiento/)).toBeInTheDocument();
     },
   );
 
@@ -120,5 +130,78 @@ describe('CloseSummaryStep', () => {
     );
 
     expect(value('Consentimiento')).toHaveTextContent('No requerido');
+  });
+
+  describe('moving on', () => {
+    const pending = [
+      { id: 'session-2', status: 'CONSENTED', treatmentName: 'Relleno' },
+      { id: 'session-3', status: 'READY_FOR_CONSENT', treatmentName: 'Peeling' },
+    ] as TreatmentSessionDetail['encounterSessions'];
+
+    it('links to the first unfinished treatment of an open encounter', () => {
+      render(<CloseSummaryStep session={session({ encounterSessions: pending })} />);
+
+      expect(screen.getByRole('link', { name: 'Siguiente tratamiento: Relleno' })).toHaveAttribute(
+        'href',
+        '/treatment-sessions/session-2',
+      );
+    });
+
+    it('skips the siblings that are already finished', () => {
+      render(
+        <CloseSummaryStep
+          session={session({
+            encounterSessions: [
+              { id: 's2', status: 'CLINICAL_COMPLETE', treatmentName: 'Hecho' },
+              ...pending,
+            ] as TreatmentSessionDetail['encounterSessions'],
+          })}
+        />,
+      );
+
+      expect(screen.getByRole('link', { name: 'Siguiente tratamiento: Relleno' })).toBeInTheDocument();
+    });
+
+    it('offers no next treatment when none is pending', () => {
+      render(
+        <CloseSummaryStep
+          session={session({
+            encounterSessions: [
+              { id: 's2', status: 'CANCELLED', treatmentName: 'Relleno' },
+            ] as TreatmentSessionDetail['encounterSessions'],
+          })}
+        />,
+      );
+
+      expect(screen.queryByRole('link', { name: /Siguiente tratamiento/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Volver a la atención' })).toBeInTheDocument();
+    });
+
+    it('offers no next treatment once the encounter is closed', () => {
+      render(
+        <CloseSummaryStep session={session({ encounterStatus: 'CLOSED', encounterSessions: pending })} />,
+      );
+
+      expect(screen.queryByRole('link', { name: /Siguiente tratamiento/ })).not.toBeInTheDocument();
+    });
+
+    it('goes back to the treatments tab without the specialties section', () => {
+      render(<CloseSummaryStep session={session()} />);
+
+      expect(screen.getByRole('link', { name: 'Volver a la atención' })).toHaveAttribute(
+        'href',
+        '/patients/patient-1?tab=treatments',
+      );
+    });
+
+    it('goes back to the specialties tab with the specialties section', () => {
+      sections.enabled.add('core.clinical.specialties');
+      render(<CloseSummaryStep session={session()} />);
+
+      expect(screen.getByRole('link', { name: 'Volver a la atención' })).toHaveAttribute(
+        'href',
+        '/patients/patient-1?tab=specialties',
+      );
+    });
   });
 });

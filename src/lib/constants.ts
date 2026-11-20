@@ -137,6 +137,8 @@ export const API_ENDPOINTS = {
     `/tenants/${tenantId}/patients/${patientId}/encounters/${encounterId}`,
   PATIENT_ENCOUNTER_CLOSE: (tenantId: string, patientId: string, encounterId: string) =>
     `/tenants/${tenantId}/patients/${patientId}/encounters/${encounterId}/close`,
+  PATIENT_ENCOUNTER_NO_SHOW: (tenantId: string, patientId: string, encounterId: string) =>
+    `/tenants/${tenantId}/patients/${patientId}/encounters/${encounterId}/no-show`,
   PATIENT_PROCEDURE_CONSENTS: (tenantId: string, patientId: string) =>
     `/tenants/${requiredPathSegment(tenantId, 'tenant')}/patients/${requiredPathSegment(patientId, 'patient')}/procedure-consents`,
   ENCOUNTER_PROCEDURE_CONSENTS: (tenantId: string, patientId: string, encounterId: string) =>
