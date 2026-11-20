@@ -102,8 +102,17 @@ export function TreatmentCheckboxes({
   );
 }
 
-/** The treatments of the encounter in course, each with its status and a way to continue it. */
-export function EncounterTreatmentList({ sessions }: { sessions: EncounterSessions }) {
+/**
+ * The treatments of the encounter and their status. `linked` offers to continue each one; it is
+ * off while the treatment sessions section is disabled, as their page is not available then.
+ */
+export function EncounterTreatmentList({
+  sessions,
+  linked = true,
+}: {
+  sessions: EncounterSessions;
+  linked?: boolean;
+}) {
   if (sessions.length === 0) return null;
   return (
     <ul aria-label="Tratamientos de la atención" className="divide-y rounded-md border border-input">
@@ -115,14 +124,16 @@ export function EncounterTreatmentList({ sessions }: { sessions: EncounterSessio
               {SESSION_STATUS_LABELS[session.status]}
             </Badge>
           </div>
-          <Link
-            href={`/treatment-sessions/${session.id}`}
-            aria-label={`Continuar ${session.treatment.name}`}
-            className="inline-flex min-h-[44px] items-center gap-1 text-sm font-medium text-primary hover:underline"
-          >
-            Continuar
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
+          {linked && (
+            <Link
+              href={`/treatment-sessions/${session.id}`}
+              aria-label={`Continuar ${session.treatment.name}`}
+              className="inline-flex min-h-[44px] items-center gap-1 text-sm font-medium text-primary hover:underline"
+            >
+              Continuar
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          )}
         </li>
       ))}
     </ul>

@@ -122,7 +122,7 @@ export function EncounterPanel({
               </span>
             </div>
             <p className="whitespace-pre-wrap text-sm">{openEncounter.reason}</p>
-            <EncounterTreatmentList sessions={sessions} />
+            <EncounterTreatmentList sessions={sessions} linked={isEnabled(TREATMENT_SESSIONS_SECTION)} />
             <div className="flex flex-wrap gap-2">
               <Button
                 onClick={() => setClosing(true)}

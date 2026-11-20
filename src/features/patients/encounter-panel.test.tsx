@@ -332,6 +332,15 @@ describe('EncounterPanel', () => {
       );
     });
 
+    it('keeps the statuses but offers no links while the sessions section is off', () => {
+      hooks.sessionsOn = false;
+      renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]));
+
+      const list = screen.getByRole('list', { name: 'Tratamientos de la atención' });
+      expect(within(list).getByText('Ficha en curso')).toBeInTheDocument();
+      expect(within(list).queryByRole('link')).not.toBeInTheDocument();
+    });
+
     it('blocks closing while a treatment is unfinished and names it', () => {
       renderOpen(
         withSessions([

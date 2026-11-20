@@ -202,6 +202,19 @@ describe('useCreateTreatmentSessions', () => {
     expect(client.getQueryData(QUERY_KEYS.TREATMENT_SESSION('session-1'))).toEqual({ id: 'session-1' });
   });
 
+  it('refreshes the visited sessions of the encounter a treatment is added to, and no others', async () => {
+    http.post.mockResolvedValue([{ id: 'session-2' }, { id: 'session-3' }]);
+    const { client, wrapper } = setup();
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-a'), { id: 'session-a', encounterId: 'enc-1' });
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-b'), { id: 'session-b', encounterId: 'enc-2' });
+    const { result } = renderHook(() => useCreateTreatmentSessions('patient-1'), { wrapper });
+
+    await act(async () => { await result.current.mutateAsync({ treatmentIds: ['t-1', 't-2'], encounterId: 'enc-1' }); });
+
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-a'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-b'))?.isInvalidated).toBe(false);
+  });
+
   it('says a treatment was added when the encounter id is sent, and that an encounter began otherwise', async () => {
     http.post.mockResolvedValue([{ id: 'session-1' }]);
     const { wrapper } = setup();
@@ -253,6 +266,18 @@ describe('encounter commands', () => {
     expect(http.post).toHaveBeenCalledWith('/tenants/tenant-1/treatment-sessions/session-1/complete', {
       procedureNotes: 'Notas', closeEncounter: true, password: 'pw',
     });
+  });
+
+  it('keeps no copy of the signing password in the mutation cache once the command settles', async () => {
+    const { client, wrapper } = setup();
+    const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
+
+    await act(async () => {
+      await result.current.complete.mutateAsync({ closeEncounter: true, password: 'pw' });
+    });
+    act(() => result.current.complete.reset());
+
+    await waitFor(() => expect(client.getMutationCache().getAll()).toHaveLength(0));
   });
 
   it('says the treatment was completed, and the encounter closed when it was', async () => {

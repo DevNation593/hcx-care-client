@@ -70,6 +70,15 @@ export function useCreateTreatmentSessions(patientId: string) {
         queryClient.setQueryData(QUERY_KEYS.TREATMENT_SESSION(sessions[0].id), sessions[0]);
       }
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId) });
+      // The sessions already visited list their siblings: a new one changes what they offer next.
+      if (input.encounterId) {
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey, state }) =>
+            queryKey[0] === 'treatment-sessions' &&
+            queryKey.length === 2 &&
+            (state.data as TreatmentSessionDetail | undefined)?.encounterId === input.encounterId,
+        });
+      }
       // The session opens an encounter and moves its appointment along.
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
@@ -125,6 +134,9 @@ function useSessionMutation<TInput, TResult>(
   const queryClient = useQueryClient();
   return useMutation<TResult, ApiError, TInput>({
     mutationFn,
+    // The variables of a command can hold a signing password: the cache keeps no copy of them
+    // once the command settles.
+    gcTime: 0,
     onSuccess: (result, input) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TREATMENT_SESSION(id) });
       // The hook knows the session, not its patient: refresh the lists of every patient.
