@@ -153,6 +153,27 @@ describe('useSessionCommand', () => {
     expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-2'))?.isInvalidated).toBe(false);
   });
 
+  it('refreshes the visited sibling sessions of the encounter after completing or cancelling', async () => {
+    const { client, wrapper } = setup();
+    const seed = () => {
+      client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-1'), { id: 'session-1', encounterId: 'enc-1' });
+      client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-2'), { id: 'session-2', encounterId: 'enc-1' });
+      client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-3'), { id: 'session-3', encounterId: 'enc-2' });
+    };
+    const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
+
+    seed();
+    await act(async () => { await result.current.complete.mutateAsync({}); });
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-2'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-3'))?.isInvalidated).toBe(false);
+
+    client.clear();
+    seed();
+    await act(async () => { await result.current.cancel.mutateAsync('Motivo'); });
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-2'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-3'))?.isInvalidated).toBe(false);
+  });
+
   it('uploads a photo as multipart fields file, phase and description', async () => {
     http.upload.mockResolvedValue({ id: 'file-1', patientId: 'patient-1' });
     const { wrapper } = setup();

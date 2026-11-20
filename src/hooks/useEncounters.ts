@@ -6,7 +6,7 @@ import { encountersApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
 import type { ApiError } from '@/types';
 import type { EncounterInput } from '@/types/clinical';
-import { invalidateSignedEncounter } from './queryInvalidation';
+import { invalidateEncounterSessions, invalidateSignedEncounter } from './queryInvalidation';
 
 export function usePatientEncounters(patientId: string) {
   return useQuery({
@@ -20,12 +20,12 @@ function useEncounterMutation<TInput>(
   patientId: string,
   mutationFn: (input: TInput) => Promise<unknown>,
   messages: { success: string; error: string },
-  options: { signsRecords?: boolean } = {},
+  options: { signsRecords?: boolean; encounterOf?: (input: TInput) => string } = {},
 ) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: () => {
+    onSuccess: (_data, input) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
       // Starting and closing an encounter moves its appointment along.
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
@@ -33,6 +33,8 @@ function useEncounterMutation<TInput>(
         // Closing signs the records it holds: they stop being editable and take addenda instead.
         invalidateSignedEncounter(queryClient, patientId);
       }
+      // Its treatment sessions, visited before, carry the status of the encounter.
+      if (options.encounterOf) invalidateEncounterSessions(queryClient, options.encounterOf(input));
       toast.success(messages.success);
     },
     onError: (error: ApiError) => {
@@ -59,7 +61,7 @@ export function useCloseEncounter(patientId: string) {
     ({ encounterId, summary, password }: { encounterId: string; summary?: string; password: string }) =>
       encountersApi.close(patientId, encounterId, password, summary),
     { success: 'Atención cerrada y firmada', error: 'No fue posible cerrar la atención' },
-    { signsRecords: true },
+    { signsRecords: true, encounterOf: ({ encounterId }) => encounterId },
   );
 }
 
