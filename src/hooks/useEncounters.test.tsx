@@ -44,6 +44,21 @@ describe('encounter mutations', () => {
     );
   });
 
+  it('refreshes the visited treatment sessions of the encounter it closes', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-1'), { id: 'session-1', encounterId: 'encounter-1' });
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-2'), { id: 'session-2', encounterId: 'encounter-2' });
+    const close = renderHook(() => useCloseEncounter('patient-1'), { wrapper });
+
+    await act(() => close.result.current.mutateAsync({ encounterId: 'encounter-1', password: 'clave' }));
+
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-1'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-2'))?.isInvalidated).toBe(false);
+  });
+
   it('reads the encounters again after a 409 when closing', async () => {
     http.post.mockRejectedValue({ status: 409, message: 'La atención ya está cerrada' });
     const { wrapper, keys } = setup();

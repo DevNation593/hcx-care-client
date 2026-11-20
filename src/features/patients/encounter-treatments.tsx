@@ -179,15 +179,21 @@ export function AddTreatmentDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent role="dialog" aria-modal="true" aria-labelledby={`${legendId}-title`}>
-        <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      {/* The page does not scroll under a dialog: the catalog scrolls inside it, the buttons stay in reach. */}
+      <DialogContent
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${legendId}-title`}
+        className="flex max-h-[90dvh] flex-col"
+      >
+        <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col gap-4">
           <DialogHeader>
             <DialogTitle id={`${legendId}-title`}>Añadir tratamiento</DialogTitle>
             <DialogDescription>
               Elige los tratamientos que también se realizarán en esta atención.
             </DialogDescription>
           </DialogHeader>
-          <fieldset aria-labelledby={legendId} className="space-y-2">
+          <fieldset aria-labelledby={legendId} className="min-h-0 flex-1 space-y-2 overflow-y-auto">
             <legend id={legendId} className="text-sm font-medium">
               Tratamientos
             </legend>

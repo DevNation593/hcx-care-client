@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { treatmentSessionsApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
 import type { ApiError } from '@/types';
-import { invalidateSignedEncounter } from './queryInvalidation';
+import { invalidateEncounterSessions, invalidateSignedEncounter } from './queryInvalidation';
 import type {
   CompleteSessionInput,
   ConsentDocument,
@@ -71,14 +71,7 @@ export function useCreateTreatmentSessions(patientId: string) {
       }
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId) });
       // The sessions already visited list their siblings: a new one changes what they offer next.
-      if (input.encounterId) {
-        queryClient.invalidateQueries({
-          predicate: ({ queryKey, state }) =>
-            queryKey[0] === 'treatment-sessions' &&
-            queryKey.length === 2 &&
-            (state.data as TreatmentSessionDetail | undefined)?.encounterId === input.encounterId,
-        });
-      }
+      if (input.encounterId) invalidateEncounterSessions(queryClient, input.encounterId);
       // The session opens an encounter and moves its appointment along.
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
@@ -142,7 +135,12 @@ function useSessionMutation<TInput, TResult>(
     // once the command settles.
     gcTime: 0,
     onSuccess: (result, input) => {
+      // A transition changes what the sibling sessions of the encounter list and offer next.
+      const encounterId = queryClient.getQueryData<TreatmentSessionDetail>(
+        QUERY_KEYS.TREATMENT_SESSION(id),
+      )?.encounterId;
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TREATMENT_SESSION(id) });
+      if (encounterId) invalidateEncounterSessions(queryClient, encounterId);
       // The hook knows the session, not its patient: refresh the lists of every patient.
       queryClient.invalidateQueries({
         predicate: ({ queryKey }) =>
