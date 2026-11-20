@@ -111,7 +111,6 @@ export function Sidebar() {
       name: 'Clínica',
       icon: Stethoscope,
       items: [
-        { name: 'Módulos clínicos', href: '/admin/specialties', icon: LayoutGrid, show: isEnabled('core.clinical.specialties') && managesUsers },
         { name: 'Formularios', href: '/admin/forms', icon: ListChecks, show: isEnabled('core.clinical.forms') && managesSubscription },
         { name: 'Tratamientos', href: '/admin/treatments', icon: Syringe, show: isEnabled('core.treatments.catalog') && can('treatments.manage', isMaster) },
         { name: 'Consentimientos', href: '/admin/consents', icon: FileSignature, show: isEnabled('core.treatments.consents') && can('treatments.manage', isMaster) },
@@ -135,6 +134,7 @@ export function Sidebar() {
         { name: 'Reportes', href: '/admin/reports', icon: BarChart3, show: isEnabled('core.admin.reports') && isMaster },
         { name: 'Suscripción', href: '/admin/subscription', icon: CreditCard, show: managesSubscription },
         { name: 'Almacenamiento', href: '/admin/storage', icon: HardDrive, show: isEnabled('core.patients.files') && managesUsers },
+        { name: 'Módulos clínicos', href: '/admin/specialties', icon: LayoutGrid, show: isEnabled('core.clinical.specialties') && managesUsers },
         { name: 'Configuración', href: '/admin/settings', icon: Settings, show: managesUsers },
       ],
     },
