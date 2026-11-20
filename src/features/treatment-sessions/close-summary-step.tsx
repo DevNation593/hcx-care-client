@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Alert } from '@/components/ui/alert';
 import {
   SESSION_STATUS_LABELS,
@@ -9,10 +10,12 @@ import {
 } from '@/types/treatments';
 import { DOCUMENT_STATUS_LABELS, formatSignedAt } from './consent-step';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
+import { useSections } from '@/hooks/useSections';
+import { encounterBackHref, unfinishedSiblings } from './encounter-navigation';
 
 // Statuses that end a session without closing it clinically.
 const ENDED_NOTICES: Partial<Record<TreatmentSessionStatus, string>> = {
-  CANCELLED: 'La atención fue cancelada.',
+  CANCELLED: 'El tratamiento fue cancelado.',
   NO_SHOW: 'El {one} no asistió.',
   CONSENT_REFUSED: 'Consentimiento rechazado.',
   CONSENT_REVOKED: 'Consentimiento revocado.',
@@ -35,6 +38,10 @@ function consentState(session: TreatmentSessionDetail): string {
 /** A read-only summary of how the session stands; it changes nothing. */
 export function CloseSummaryStep({ session }: { session: TreatmentSessionDetail }) {
   const terms = usePatientTerms();
+  const { isEnabled } = useSections();
+  // Only an open encounter has a next treatment to go to.
+  const nextSession =
+    session.encounterStatus === 'OPEN' ? unfinishedSiblings(session)[0] : undefined;
   const count = (phase: 'BEFORE' | 'AFTER') =>
     session.media.filter((media) => media.phase === phase).length;
   const times: [string, string | null][] = [
@@ -50,7 +57,7 @@ export function CloseSummaryStep({ session }: { session: TreatmentSessionDetail 
       ) : (
         !['CLINICAL_COMPLETE', 'BILLING_PENDING', 'BILLED', 'BILLING_FAILED'].includes(session.status) && (
           <Alert variant="default">
-            Este resumen es de solo lectura y se completa al cerrar la atención.
+            Este resumen es de solo lectura y se completa al terminar el tratamiento.
           </Alert>
         )
       )}
@@ -81,6 +88,22 @@ export function CloseSummaryStep({ session }: { session: TreatmentSessionDetail 
           )}
         </dd>
       </dl>
+      <div className="flex flex-col gap-2 border-t pt-4 text-sm sm:flex-row sm:items-center">
+        {nextSession && (
+          <Link
+            href={`/treatment-sessions/${nextSession.id}`}
+            className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Siguiente tratamiento: {nextSession.treatmentName}
+          </Link>
+        )}
+        <Link
+          href={encounterBackHref(session.patientId, isEnabled('core.clinical.specialties'))}
+          className="inline-flex min-h-11 items-center justify-center rounded-md border border-input px-4 font-medium hover:bg-accent"
+        >
+          Volver a la atención
+        </Link>
+      </div>
     </div>
   );
 }

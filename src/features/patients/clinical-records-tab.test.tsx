@@ -40,6 +40,8 @@ vi.mock('@/hooks/useEncounters', () => ({
   useRemoveEncounter: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/hooks/useBranches', () => ({ useBranches: () => ({ data: [] }) }));
+// The encounter panel reads the enabled sections; this suite renders without a QueryClient.
+vi.mock('@/hooks/useSections', () => ({ useSections: () => ({ isEnabled: () => true }) }));
 vi.mock('@/hooks/useAppointments', () => ({ useAppointments: () => ({ data: [] }) }));
 vi.mock('@/hooks/useClinicalModules', () => ({
   useClinicalModules: () => ({ data: hooks.modules, isError: false, isPending: false, error: null }),

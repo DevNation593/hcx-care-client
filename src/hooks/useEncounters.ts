@@ -6,6 +6,7 @@ import { encountersApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
 import type { ApiError } from '@/types';
 import type { EncounterInput } from '@/types/clinical';
+import { invalidateSignedEncounter } from './queryInvalidation';
 
 export function usePatientEncounters(patientId: string) {
   return useQuery({
@@ -30,12 +31,15 @@ function useEncounterMutation<TInput>(
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
       if (options.signsRecords) {
         // Closing signs the records it holds: they stop being editable and take addenda instead.
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_SPECIALTY_RECORDS(patientId) });
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_CLINICAL_ALERTS(patientId) });
+        invalidateSignedEncounter(queryClient, patientId);
       }
       toast.success(messages.success);
     },
     onError: (error: ApiError) => {
+      // The encounter changed elsewhere (closed, removed): read the list again.
+      if (error.status === 409) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
+      }
       toast.error(error.message || messages.error);
     },
   });

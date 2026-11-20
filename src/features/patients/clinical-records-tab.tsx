@@ -127,6 +127,7 @@ export function ClinicalRecordsTab({
         encounters={encounters}
         openEncounter={openEncounter}
         initialAppointmentId={startAppointmentId}
+        mode="specialties"
       />
 
       {healthProfile && (
