@@ -222,6 +222,36 @@ describe('getAppointmentErrorMessage', () => {
     expect(getAppointmentErrorMessage({ code, message: 'unsafe backend text' })).toBe(message);
   });
 
+  it('explains a non-working day using the configured working days', () => {
+    expect(
+      getAppointmentErrorMessage({
+        code: 'NON_WORKING_DAY',
+        message: 'unsafe backend text',
+        details: { dayOfWeek: 'SATURDAY', workingDays: ['MONDAY', 'TUESDAY', 'FRIDAY'] },
+      }),
+    ).toBe('No se pueden programar citas el día Sábado. Días laborales: Lunes, Martes, Viernes.');
+  });
+
+  it('explains a time outside working hours using the configured hours', () => {
+    expect(
+      getAppointmentErrorMessage({
+        code: 'OUTSIDE_WORKING_HOURS',
+        details: { workingHoursStart: '08:00', workingHoursEnd: '18:00' },
+      }),
+    ).toBe('La cita debe estar dentro del horario laboral: 08:00 - 18:00.');
+  });
+
+  it('falls back to safe working-time copy when details are missing or unexpected', () => {
+    expect(getAppointmentErrorMessage({ code: 'NON_WORKING_DAY', details: { dayOfWeek: '<b>' } }))
+      .toBe('No se pueden programar citas en un día no laboral.');
+    expect(
+      getAppointmentErrorMessage({
+        code: 'OUTSIDE_WORKING_HOURS',
+        details: { workingHoursStart: 'DROP', workingHoursEnd: '18:00' },
+      }),
+    ).toBe('La cita debe estar dentro del horario laboral.');
+  });
+
   it('does not expose unknown raw server messages', () => {
     expect(getAppointmentErrorMessage({ code: 'UNKNOWN', message: 'SQL table appointments' }))
       .toBe('No se pudo completar la operación. Inténtalo nuevamente.');
