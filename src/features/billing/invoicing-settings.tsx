@@ -352,8 +352,12 @@ function CertificateCard({
         {certificate && validTo && (
           <div className="space-y-2">
             <dl className="grid max-w-xl gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
-              <dt className="text-muted-foreground">Titular</dt>
-              <dd className="break-all">{certificate.subject}</dd>
+              {certificate.holderName && (
+                <>
+                  <dt className="text-muted-foreground">Titular</dt>
+                  <dd>{certificate.holderName}</dd>
+                </>
+              )}
               <dt className="text-muted-foreground">Serie</dt>
               <dd className="break-all">{certificate.serial}</dd>
               <dt className="text-muted-foreground">Vence</dt>

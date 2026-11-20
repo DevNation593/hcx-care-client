@@ -48,6 +48,20 @@ describe('describeModule', () => {
     for (const label of names) expect(label.description).toMatch(/\S/);
   });
 
+  it('names every orthodontic module of dentistry in Spanish', () => {
+    const names = ['assessment', 'cephalometry', 'treatment-plan', 'control'].map((key) =>
+      describeModule(`dentistry.ortho-${key}`),
+    );
+
+    expect(names.map((label) => label.name)).toEqual([
+      'Diagnóstico ortodóntico',
+      'Análisis cefalométrico',
+      'Plan ortodóntico',
+      'Control ortodóntico',
+    ]);
+    for (const label of names) expect(label.description).toMatch(/\S/);
+  });
+
   it('turns an unknown key into readable text instead of showing the raw key', () => {
     expect(describeModule('laboratory.blood_tests')).toEqual({ name: 'Blood tests' });
     expect(describeModule('imaging.x-ray').name).toBe('X ray');
