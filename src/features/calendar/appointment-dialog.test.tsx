@@ -290,12 +290,16 @@ describe('AppointmentDialog canonical cascade', () => {
 
   it('keeps values and the dialog open when the server rejects the create', async () => {
     mocks.create.mockImplementation((_data, options) => {
-      options.onError({ code: 'APPOINTMENT_CONFLICT', message: 'raw database response' });
+      options.onError({
+        code: 'APPOINTMENT_CONFLICT',
+        status: 409,
+        message: 'Este horario tiene conflicto con cita(s) existente(s)',
+      });
     });
     const { onOpenChange } = renderDialog();
     completeCreateForm();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('El profesional ya tiene una cita en ese horario.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Este horario tiene conflicto con cita(s) existente(s)');
     expect(screen.getByLabelText('Profesional')).toHaveValue('nutrition-1');
     expect(screen.getByLabelText('Título de la cita')).toHaveValue('Consulta nutricional');
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
