@@ -6,6 +6,7 @@ import { treatmentSessionsApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
 import type { ApiError } from '@/types';
 import type {
+  CompleteSessionInput,
   ConsentDocument,
   SessionMediaPhase,
   SignConsentInput,
@@ -57,13 +58,15 @@ export function useSaveProcedureNotes(id: string) {
   });
 }
 
-/** Opens a session of a treatment on a new procedure encounter of the patient. */
-export function useCreateTreatmentSession(patientId: string) {
+/** Opens one session per treatment on one procedure encounter of the patient. */
+export function useCreateTreatmentSessions(patientId: string) {
   const queryClient = useQueryClient();
-  return useMutation<Awaited<ReturnType<typeof treatmentSessionsApi.create>>, ApiError, TreatmentSessionInput>({
+  return useMutation<TreatmentSessionDetail[], ApiError, TreatmentSessionInput>({
     mutationFn: (data) => treatmentSessionsApi.create(patientId, data),
-    onSuccess: (session) => {
-      queryClient.setQueryData(QUERY_KEYS.TREATMENT_SESSION(session.id), session);
+    onSuccess: (sessions) => {
+      sessions.forEach((session) =>
+        queryClient.setQueryData(QUERY_KEYS.TREATMENT_SESSION(session.id), session),
+      );
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId) });
       // The session opens an encounter and moves its appointment along.
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
@@ -72,6 +75,23 @@ export function useCreateTreatmentSession(patientId: string) {
     },
     onError: (error) => {
       toast.error(error.message);
+    },
+  });
+}
+
+/** Records the no-show of the whole encounter: every session without activity. */
+export function useEncounterNoShow(patientId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<TreatmentSessionDetail[], ApiError, string>({
+    mutationFn: (encounterId) => treatmentSessionsApi.encounterNoShow(patientId, encounterId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
+      toast.success('Inasistencia registrada');
+    },
+    onError: (error) => {
+      toast.error(error.message || 'No fue posible registrar la inasistencia');
     },
   });
 }
@@ -172,7 +192,7 @@ export function useSessionCommand(id: string) {
     ),
     complete: useSessionMutation(
       id,
-      (procedureNotes?: string) => treatmentSessionsApi.complete(id, procedureNotes),
+      (input: CompleteSessionInput) => treatmentSessionsApi.complete(id, input),
       'Atención cerrada',
     ),
     cancel: useSessionMutation(

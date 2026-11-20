@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useAppointments } from '@/hooks/useAppointments';
-import { useCreateTreatmentSession, usePatientTreatmentSessions } from '@/hooks/useTreatmentSessions';
+import { useCreateTreatmentSessions, usePatientTreatmentSessions } from '@/hooks/useTreatmentSessions';
 import { useTreatments } from '@/hooks/useTreatments';
 import { formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -142,7 +142,7 @@ function NewSessionDialog({
   onCreated: (sessionId: string) => void;
 }) {
   const userId = useAuthStore((state) => state.user?.id);
-  const create = useCreateTreatmentSession(patientId);
+  const create = useCreateTreatmentSessions(patientId);
   const { data: treatments = [] } = useTreatments({ active: true });
   const { data: appointments = [] } = useAppointments({ patientId });
   const [treatmentId, setTreatmentId] = useState('');
@@ -161,8 +161,8 @@ function NewSessionDialog({
     if (!treatmentId || create.isPending) return;
     setError(null);
     try {
-      const session = await create.mutateAsync({
-        treatmentId,
+      const [session] = await create.mutateAsync({
+        treatmentIds: [treatmentId],
         ...(appointmentId ? { appointmentId } : {}),
       });
       onCreated(session.id);

@@ -1,4 +1,4 @@
-import type { FormSchema } from './clinical';
+import type { EncounterType, FormSchema } from './clinical';
 
 // Mirrors the API JSON of treatments, consent templates and treatment sessions.
 // Dates are ISO strings; money fields are numbers.
@@ -393,10 +393,26 @@ export interface TreatmentSessionDetail extends TreatmentSessionBase {
   allowedCommands: SessionCommandName[];
   /** IANA zone of the clinic, for showing server times; absent from APIs that predate it. */
   timezone?: string;
+  /** State of the encounter that holds the session. */
+  encounterStatus: 'OPEN' | 'CLOSED';
+  /** The other sessions of the same encounter. */
+  encounterSessions: { id: string; status: TreatmentSessionStatus; treatmentName: string }[];
 }
 
+/** Opens one session per treatment (1 to 10) on one encounter, new or the given one. */
 export interface TreatmentSessionInput {
-  treatmentId: string;
+  treatmentIds: string[];
+  encounterId?: string;
+  encounterType?: EncounterType;
+  reason?: string;
   appointmentId?: string;
   branchId?: string;
+}
+
+/** What closing a session may carry: the encounter closes with it when asked. */
+export interface CompleteSessionInput {
+  procedureNotes?: string;
+  closeEncounter?: boolean;
+  password?: string;
+  encounterSummary?: string;
 }

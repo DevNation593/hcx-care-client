@@ -6,6 +6,8 @@ import { useAuthStore } from '@/store/authStore';
 import { QUERY_KEYS } from '@/lib/constants';
 import { treatmentSessionsApi } from '@/lib/api/endpoints';
 import {
+  useCreateTreatmentSessions,
+  useEncounterNoShow,
   useSaveProcedureNotes,
   useSessionCommand,
   usePatientTreatmentSessions,
@@ -165,6 +167,69 @@ describe('useSessionCommand', () => {
       '/tenants/tenant-1/treatment-sessions/session-1/media', file, undefined,
       { phase: 'BEFORE', description: 'Frente' },
     );
+  });
+});
+
+describe('useCreateTreatmentSessions', () => {
+  it('sends treatmentIds, caches every session and refreshes the lists', async () => {
+    http.post.mockResolvedValue([{ id: 'session-1' }, { id: 'session-2' }]);
+    const { client, wrapper } = setup();
+    client.setQueryData(QUERY_KEYS.PATIENT_TREATMENT_SESSIONS('patient-1'), []);
+    client.setQueryData(QUERY_KEYS.PATIENT_ENCOUNTERS('patient-1'), []);
+    client.setQueryData(QUERY_KEYS.APPOINTMENTS, []);
+    const { result } = renderHook(() => useCreateTreatmentSessions('patient-1'), { wrapper });
+
+    await act(async () => { await result.current.mutateAsync({ treatmentIds: ['t-1', 't-2'] }); });
+
+    expect(http.post).toHaveBeenCalledWith('/tenants/tenant-1/patients/patient-1/treatment-sessions', {
+      treatmentIds: ['t-1', 't-2'],
+    });
+    expect(client.getQueryData(QUERY_KEYS.TREATMENT_SESSION('session-2'))).toEqual({ id: 'session-2' });
+    expect(client.getQueryState(QUERY_KEYS.PATIENT_TREATMENT_SESSIONS('patient-1'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.PATIENT_ENCOUNTERS('patient-1'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.APPOINTMENTS)?.isInvalidated).toBe(true);
+  });
+});
+
+describe('encounter commands', () => {
+  it('completes a session with the close request of the encounter', async () => {
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useSessionCommand('session-1'), { wrapper });
+
+    await act(async () => {
+      await result.current.complete.mutateAsync({ procedureNotes: 'Notas', closeEncounter: true, password: 'pw' });
+    });
+
+    expect(http.post).toHaveBeenCalledWith('/tenants/tenant-1/treatment-sessions/session-1/complete', {
+      procedureNotes: 'Notas', closeEncounter: true, password: 'pw',
+    });
+  });
+
+  it('records the no-show of an encounter and refreshes encounters, sessions and appointments', async () => {
+    http.post.mockResolvedValue([{ id: 'session-1' }]);
+    const { client, wrapper } = setup();
+    client.setQueryData(QUERY_KEYS.PATIENT_ENCOUNTERS('patient-1'), []);
+    client.setQueryData(QUERY_KEYS.PATIENT_TREATMENT_SESSIONS('patient-1'), []);
+    client.setQueryData(QUERY_KEYS.APPOINTMENTS, []);
+    const { result } = renderHook(() => useEncounterNoShow('patient-1'), { wrapper });
+
+    await act(async () => { await result.current.mutateAsync('enc-1'); });
+
+    expect(http.post).toHaveBeenCalledWith('/tenants/tenant-1/patients/patient-1/encounters/enc-1/no-show', {});
+    expect(client.getQueryState(QUERY_KEYS.PATIENT_ENCOUNTERS('patient-1'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.PATIENT_TREATMENT_SESSIONS('patient-1'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.APPOINTMENTS)?.isInvalidated).toBe(true);
+    expect(toast.success).toHaveBeenCalledWith('Inasistencia registrada');
+  });
+
+  it('shows the message of a failed no-show', async () => {
+    http.post.mockRejectedValue({ message: 'Hay actividad', status: 409, code: 'ENCOUNTER_HAS_ACTIVITY' });
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useEncounterNoShow('patient-1'), { wrapper });
+
+    await act(async () => { await result.current.mutateAsync('enc-1').catch(() => undefined); });
+
+    expect(toast.error).toHaveBeenCalledWith('Hay actividad');
   });
 });
 

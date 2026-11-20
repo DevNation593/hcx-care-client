@@ -207,7 +207,7 @@ export function ProcedureStep({
           onConfirm={() => {
             // Notes left empty are not sent: the API decides whether they were required.
             void run(
-              () => commands.complete.mutateAsync(trimmedNotes ? trimmedNotes : undefined),
+              () => commands.complete.mutateAsync(trimmedNotes ? { procedureNotes: trimmedNotes } : {}),
               onDone,
             );
           }}

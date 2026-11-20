@@ -97,6 +97,7 @@ import type {
 } from '@/types/clinical';
 import type {
   ConsentDocument,
+  CompleteSessionInput,
   ConsentDraftInput,
   ConsentTemplate,
   ConsentTemplateInput,
@@ -944,7 +945,7 @@ export const treatmentSessionsApi = {
       API_ENDPOINTS.PATIENT_TREATMENT_SESSIONS(getTenantId(), patientId),
     ),
   create: (patientId: string, data: TreatmentSessionInput) =>
-    apiClient.post<TreatmentSessionDetail>(
+    apiClient.post<TreatmentSessionDetail[]>(
       API_ENDPOINTS.PATIENT_TREATMENT_SESSIONS(getTenantId(), patientId),
       data,
     ),
@@ -1000,10 +1001,17 @@ export const treatmentSessionsApi = {
       API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'notes'),
       { procedureNotes },
     ),
-  complete: (id: string, procedureNotes?: string) =>
+  complete: (id: string, input: CompleteSessionInput = {}) =>
     apiClient.post<TreatmentSessionDetail>(
       API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'complete'),
-      procedureNotes ? { procedureNotes } : {},
+      // An empty note must not travel; the other fields go as given.
+      input.procedureNotes ? input : { ...input, procedureNotes: undefined },
+    ),
+  // Records the no-show of every session of an encounter without activity.
+  encounterNoShow: (patientId: string, encounterId: string) =>
+    apiClient.post<TreatmentSessionDetail[]>(
+      API_ENDPOINTS.PATIENT_ENCOUNTER_NO_SHOW(getTenantId(), patientId, encounterId),
+      {},
     ),
   cancel: (id: string, reason: string) =>
     apiClient.post<TreatmentSessionDetail>(

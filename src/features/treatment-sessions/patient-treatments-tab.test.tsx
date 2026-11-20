@@ -21,7 +21,7 @@ const hooks = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: hooks.push }) }));
 vi.mock('@/hooks/useTreatmentSessions', () => ({
   usePatientTreatmentSessions: () => hooks.sessions,
-  useCreateTreatmentSession: () => ({ mutateAsync: hooks.create, isPending: false }),
+  useCreateTreatmentSessions: () => ({ mutateAsync: hooks.create, isPending: false }),
 }));
 vi.mock('@/hooks/useTreatments', () => ({
   useTreatments: () => ({ data: hooks.treatments }),
@@ -54,7 +54,7 @@ beforeEach(() => {
     { id: 'tr-2', name: 'Peeling químico', isActive: true },
   ];
   hooks.appointments = [];
-  hooks.create.mockResolvedValue({ id: 'session-9' });
+  hooks.create.mockResolvedValue([{ id: 'session-9' }]);
   useAuthStore.setState({ user: { id: 'me', tenantId: 'tenant-1' } as never });
 });
 
@@ -82,7 +82,7 @@ describe('PatientTreatmentsTab', () => {
     fireEvent.change(within(dialog).getByLabelText(/Tratamiento/), { target: { value: 'tr-2' } });
     await act(async () => fireEvent.click(start));
 
-    expect(hooks.create).toHaveBeenCalledWith({ treatmentId: 'tr-2' });
+    expect(hooks.create).toHaveBeenCalledWith({ treatmentIds: ['tr-2'] });
     expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/session-9');
   });
 
@@ -105,7 +105,7 @@ describe('PatientTreatmentsTab', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Iniciar atención' })),
     );
 
-    expect(hooks.create).toHaveBeenCalledWith({ treatmentId: 'tr-1', appointmentId: 'a-1' });
+    expect(hooks.create).toHaveBeenCalledWith({ treatmentIds: ['tr-1'], appointmentId: 'a-1' });
   });
 
   it('shows why the session could not be opened and stays', async () => {

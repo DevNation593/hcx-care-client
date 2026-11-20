@@ -229,7 +229,7 @@ describe('ProcedureStep close', () => {
     await click('Cerrar atención');
     await confirm('Confirmar cierre');
 
-    expect(hooks.complete).toHaveBeenCalledWith('Se aplicaron 20 unidades en la frente.');
+    expect(hooks.complete).toHaveBeenCalledWith({ procedureNotes: 'Se aplicaron 20 unidades en la frente.' });
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
@@ -239,7 +239,7 @@ describe('ProcedureStep close', () => {
     await click('Cerrar atención');
     await confirm('Confirmar cierre');
 
-    expect(hooks.complete).toHaveBeenCalledWith(undefined);
+    expect(hooks.complete).toHaveBeenCalledWith({});
   });
 
   it('keeps the typed notes and the page where it is when the API blocks the close', async () => {
