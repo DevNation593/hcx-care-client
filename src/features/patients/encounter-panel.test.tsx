@@ -11,6 +11,21 @@ const hooks = vi.hoisted(() => ({
   remove: vi.fn(),
   branches: [] as unknown[],
   appointments: [] as unknown[],
+  create: vi.fn(),
+  push: vi.fn(),
+  sessionsOn: true,
+  treatments: [] as unknown[],
+}));
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: hooks.push }) }));
+vi.mock('@/hooks/useSections', () => ({
+  useSections: () => ({
+    isEnabled: (key: string) => key !== 'core.treatments.sessions' || hooks.sessionsOn,
+  }),
+}));
+vi.mock('@/hooks/useTreatments', () => ({ useTreatments: () => ({ data: hooks.treatments }) }));
+vi.mock('@/hooks/useTreatmentSessions', () => ({
+  useCreateTreatmentSessions: () => ({ mutateAsync: hooks.create, isPending: false }),
 }));
 
 vi.mock('@/hooks/useEncounters', () => ({
@@ -58,6 +73,9 @@ beforeEach(() => {
   hooks.start.mockResolvedValue(undefined);
   hooks.close.mockResolvedValue(undefined);
   hooks.remove.mockResolvedValue(undefined);
+  hooks.sessionsOn = true;
+  hooks.treatments = [];
+  hooks.create.mockResolvedValue([{ id: 's1' }]);
   useAuthStore.setState({ user: { id: 'me', tenantId: 'tenant-1' } as never });
 });
 
@@ -153,6 +171,101 @@ describe('EncounterPanel', () => {
       encounterType: 'FIRST_VISIT',
       reason: 'Control',
       appointmentId: 'appointment-1',
+    });
+  });
+
+  describe('treatments', () => {
+    const catalog = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: `t${index + 1}`,
+        name: `Tratamiento ${index + 1}`,
+        isActive: true,
+      }));
+    const open = (mode: 'specialties' | 'treatments') => {
+      render(<EncounterPanel patientId="patient-1" encounters={[]} mode={mode} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Iniciar atención' }));
+    };
+    const check = (name: string) => fireEvent.click(screen.getByRole('checkbox', { name }));
+    const startButton = () => screen.getAllByRole('button', { name: 'Iniciar atención' }).at(-1)!;
+
+    it('starts a plain encounter when no treatment is checked', async () => {
+      hooks.treatments = catalog(3);
+      open('specialties');
+
+      expect(screen.getByRole('group', { name: 'Tratamientos (opcional)' })).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText(/Motivo de consulta/), { target: { value: 'Control' } });
+      await act(async () => fireEvent.click(startButton()));
+
+      expect(hooks.start).toHaveBeenCalledWith({ encounterType: 'FIRST_VISIT', reason: 'Control' });
+      expect(hooks.create).not.toHaveBeenCalled();
+    });
+
+    it('creates the sessions in catalog order and stays when several are checked', async () => {
+      hooks.treatments = catalog(3);
+      hooks.create.mockResolvedValueOnce([{ id: 's1' }, { id: 's2' }]);
+      open('specialties');
+
+      check('Tratamiento 3');
+      check('Tratamiento 1');
+      fireEvent.change(screen.getByLabelText(/Motivo de consulta/), { target: { value: 'Control' } });
+      await act(async () => fireEvent.click(startButton()));
+
+      expect(hooks.create).toHaveBeenCalledWith({
+        treatmentIds: ['t1', 't3'],
+        encounterType: 'FIRST_VISIT',
+        reason: 'Control',
+      });
+      expect(hooks.start).not.toHaveBeenCalled();
+      expect(hooks.push).not.toHaveBeenCalled();
+      expect(screen.queryByLabelText('Tipo de atención')).not.toBeInTheDocument();
+    });
+
+    it('opens the session when exactly one treatment is checked', async () => {
+      hooks.treatments = catalog(3);
+      open('specialties');
+
+      check('Tratamiento 2');
+      fireEvent.change(screen.getByLabelText(/Motivo de consulta/), { target: { value: 'Control' } });
+      await act(async () => fireEvent.click(startButton()));
+
+      expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/s1');
+    });
+
+    it('offers no treatments when the sessions section is off', () => {
+      hooks.sessionsOn = false;
+      hooks.treatments = catalog(3);
+      open('specialties');
+
+      expect(screen.queryByRole('group', { name: 'Tratamientos (opcional)' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+
+    it('asks only for treatments in treatments mode', async () => {
+      hooks.treatments = catalog(2);
+      open('treatments');
+
+      expect(screen.queryByLabelText('Tipo de atención')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Motivo de consulta/)).not.toBeInTheDocument();
+      expect(startButton()).toBeDisabled();
+
+      check('Tratamiento 2');
+      expect(startButton()).toBeEnabled();
+      await act(async () => fireEvent.click(startButton()));
+
+      expect(hooks.create).toHaveBeenCalledWith({ treatmentIds: ['t2'] });
+      expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/s1');
+    });
+
+    it('prevents the eleventh treatment and says why', () => {
+      hooks.treatments = catalog(11);
+      open('specialties');
+
+      expect(screen.queryByText('Máximo 10 tratamientos por atención')).not.toBeInTheDocument();
+      for (let index = 1; index <= 10; index += 1) check(`Tratamiento ${index}`);
+
+      expect(screen.getByRole('checkbox', { name: 'Tratamiento 11' })).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: 'Tratamiento 1' })).toBeEnabled();
+      expect(screen.getByText('Máximo 10 tratamientos por atención')).toBeInTheDocument();
     });
   });
 

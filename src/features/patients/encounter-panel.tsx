@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { CheckCircle2, Play, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAppointments } from '@/hooks/useAppointments';
 import { useBranches } from '@/hooks/useBranches';
 import { useCloseEncounter, useRemoveEncounter, useStartEncounter } from '@/hooks/useEncounters';
+import { useSections } from '@/hooks/useSections';
+import { useCreateTreatmentSessions } from '@/hooks/useTreatmentSessions';
+import { useTreatments } from '@/hooks/useTreatments';
 import { formatDate } from '@/lib/utils';
 import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { useAuthStore } from '@/store/authStore';
@@ -32,6 +36,10 @@ import {
 const SELECT_CLASS = 'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm';
 const ATTENDABLE = [AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS];
 const DAY_MS = 24 * 60 * 60 * 1000;
+const TREATMENT_SESSIONS_SECTION = 'core.treatments.sessions';
+const MAX_TREATMENTS_PER_ENCOUNTER = 10;
+
+export type EncounterPanelMode = 'specialties' | 'treatments';
 
 export function describeEncounter(encounter: Pick<Encounter, 'encounterType' | 'startedAt'>): string {
   const type = ENCOUNTER_TYPE_LABELS[encounter.encounterType as EncounterType] ?? encounter.encounterType;
@@ -45,6 +53,8 @@ export interface EncounterPanelProps {
   openEncounter?: Encounter;
   /** Arriving from the agenda: the start form opens with this appointment chosen. */
   initialAppointmentId?: string;
+  /** 'treatments' starts from treatments alone; 'specialties' (default) asks type and reason. */
+  mode?: EncounterPanelMode;
 }
 
 /** Starts, shows and closes the attention in course, and lists the previous ones. */
@@ -53,6 +63,7 @@ export function EncounterPanel({
   encounters,
   openEncounter,
   initialAppointmentId,
+  mode = 'specialties',
 }: EncounterPanelProps) {
   const [starting, setStarting] = useState(Boolean(initialAppointmentId));
   const [closing, setClosing] = useState(false);
@@ -114,6 +125,7 @@ export function EncounterPanel({
           <StartEncounterForm
             patientId={patientId}
             initialAppointmentId={initialAppointmentId}
+            mode={mode}
             onDone={() => setStarting(false)}
           />
         )}
@@ -184,20 +196,36 @@ export function EncounterPanel({
 function StartEncounterForm({
   patientId,
   initialAppointmentId = '',
+  mode,
   onDone,
 }: {
   patientId: string;
   initialAppointmentId?: string;
+  mode: EncounterPanelMode;
   onDone: () => void;
 }) {
+  const router = useRouter();
+  const { isEnabled } = useSections();
   const userId = useAuthStore((state) => state.user?.id);
   const start = useStartEncounter(patientId);
+  const create = useCreateTreatmentSessions(patientId);
   const { data: branches = [] } = useBranches();
   const { data: appointments = [] } = useAppointments({ patientId });
   const [encounterType, setEncounterType] = useState<EncounterType>('FIRST_VISIT');
   const [reason, setReason] = useState('');
   const [appointmentId, setAppointmentId] = useState(initialAppointmentId);
   const [branchId, setBranchId] = useState('');
+  const [treatmentIds, setTreatmentIds] = useState<string[]>([]);
+
+  const treatmentsMode = mode === 'treatments';
+  const { data: catalog = [] } = useTreatments({ active: true });
+  const showTreatments = treatmentsMode || (isEnabled(TREATMENT_SESSIONS_SECTION) && catalog.length > 0);
+  const limitReached = treatmentIds.length >= MAX_TREATMENTS_PER_ENCOUNTER;
+  const canSubmit = treatmentsMode ? treatmentIds.length > 0 : Boolean(reason.trim());
+  const pending = start.isPending || create.isPending;
+
+  const toggleTreatment = (id: string, checked: boolean) =>
+    setTreatmentIds((current) => (checked ? [...current, id] : current.filter((item) => item !== id)));
 
   const activeBranches = branches.filter((branch) => branch.isActive);
   // Own appointments of the last week that are still to be attended.
@@ -210,15 +238,26 @@ function StartEncounterForm({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!reason.trim() || start.isPending) return;
+    if (!canSubmit || pending) return;
+    const context = {
+      ...(appointmentId ? { appointmentId } : {}),
+      ...(branchId ? { branchId } : {}),
+    };
     try {
-      await start.mutateAsync({
-        encounterType,
-        reason: reason.trim(),
-        ...(appointmentId ? { appointmentId } : {}),
-        ...(branchId ? { branchId } : {}),
+      if (treatmentIds.length === 0) {
+        await start.mutateAsync({ encounterType, reason: reason.trim(), ...context });
+        onDone();
+        return;
+      }
+      // Keep the catalog order, whatever order the boxes were checked in.
+      const orderedIds = catalog.filter((item) => treatmentIds.includes(item.id)).map((item) => item.id);
+      const sessions = await create.mutateAsync({
+        treatmentIds: orderedIds,
+        ...(treatmentsMode ? {} : { encounterType, reason: reason.trim() }),
+        ...context,
       });
       onDone();
+      if (sessions.length === 1) router.push(`/treatment-sessions/${sessions[0].id}`);
     } catch {
       // The hook already reported the error; the form stays to retry.
     }
@@ -227,21 +266,23 @@ function StartEncounterForm({
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4 rounded-md border border-input p-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div>
-          <Label htmlFor="encounter-type">Tipo de atención</Label>
-          <select
-            id="encounter-type"
-            value={encounterType}
-            onChange={(event) => setEncounterType(event.target.value as EncounterType)}
-            className={SELECT_CLASS}
-          >
-            {ENCOUNTER_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {ENCOUNTER_TYPE_LABELS[type]}
-              </option>
-            ))}
-          </select>
-        </div>
+        {!treatmentsMode && (
+          <div>
+            <Label htmlFor="encounter-type">Tipo de atención</Label>
+            <select
+              id="encounter-type"
+              value={encounterType}
+              onChange={(event) => setEncounterType(event.target.value as EncounterType)}
+              className={SELECT_CLASS}
+            >
+              {ENCOUNTER_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {ENCOUNTER_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {attendable.length > 0 && (
           <div>
             <Label htmlFor="encounter-appointment">Cita que se atiende</Label>
@@ -279,23 +320,70 @@ function StartEncounterForm({
           </div>
         )}
       </div>
-      <div>
-        <Label htmlFor="encounter-reason">
-          Motivo de consulta<span className="text-destructive"> *</span>
-        </Label>
-        <Textarea
-          id="encounter-reason"
-          rows={3}
-          maxLength={2000}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-        />
-      </div>
+      {showTreatments && (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">
+            {treatmentsMode ? (
+              <>
+                Tratamientos<span className="text-destructive"> *</span>
+              </>
+            ) : (
+              'Tratamientos (opcional)'
+            )}
+          </legend>
+          {catalog.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No hay tratamientos activos en el catálogo.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {catalog.map((item) => {
+                const checked = treatmentIds.includes(item.id);
+                const disabled = !checked && limitReached;
+                return (
+                  <label
+                    key={item.id}
+                    className={`flex min-h-[44px] items-center gap-2 rounded-md border border-input px-3 py-2 text-sm ${
+                      disabled ? 'opacity-50' : 'cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={(event) => toggleTreatment(item.id, event.target.checked)}
+                    />
+                    {item.name}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          {limitReached && (
+            <p className="text-sm text-muted-foreground">
+              Máximo {MAX_TREATMENTS_PER_ENCOUNTER} tratamientos por atención
+            </p>
+          )}
+        </fieldset>
+      )}
+      {!treatmentsMode && (
+        <div>
+          <Label htmlFor="encounter-reason">
+            Motivo de consulta<span className="text-destructive"> *</span>
+          </Label>
+          <Textarea
+            id="encounter-reason"
+            rows={3}
+            maxLength={2000}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </div>
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onDone}>
           Cancelar
         </Button>
-        <Button type="submit" disabled={!reason.trim()} loading={start.isPending}>
+        <Button type="submit" disabled={!canSubmit} loading={pending}>
           Iniciar atención
         </Button>
       </div>
