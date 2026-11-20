@@ -12,6 +12,7 @@ const hooks = vi.hoisted(() => ({
   branches: [] as unknown[],
   appointments: [] as unknown[],
   create: vi.fn(),
+  noShow: vi.fn(),
   push: vi.fn(),
   sessionsOn: true,
   treatments: [] as unknown[],
@@ -26,6 +27,7 @@ vi.mock('@/hooks/useSections', () => ({
 vi.mock('@/hooks/useTreatments', () => ({ useTreatments: () => ({ data: hooks.treatments }) }));
 vi.mock('@/hooks/useTreatmentSessions', () => ({
   useCreateTreatmentSessions: () => ({ mutateAsync: hooks.create, isPending: false }),
+  useEncounterNoShow: () => ({ mutateAsync: hooks.noShow, isPending: false }),
 }));
 
 vi.mock('@/hooks/useEncounters', () => ({
@@ -76,6 +78,7 @@ beforeEach(() => {
   hooks.sessionsOn = true;
   hooks.treatments = [];
   hooks.create.mockResolvedValue([{ id: 's1' }]);
+  hooks.noShow.mockResolvedValue([]);
   useAuthStore.setState({ user: { id: 'me', tenantId: 'tenant-1' } as never });
 });
 
@@ -279,6 +282,180 @@ describe('EncounterPanel', () => {
     expect(screen.queryByRole('button', { name: 'Iniciar atención' })).not.toBeInTheDocument();
     // An encounter that already holds records cannot be removed.
     expect(screen.queryByRole('button', { name: 'Eliminar atención' })).not.toBeInTheDocument();
+  });
+
+  describe('treatments of the encounter in course', () => {
+    const session = (id: string, name: string, status: string) => ({
+      id,
+      status,
+      treatment: { id: `t-${id}`, name },
+    });
+    const withSessions = (sessions: unknown[], overrides: Partial<Encounter> = {}) =>
+      encounter({ treatmentSessions: sessions as Encounter['treatmentSessions'], ...overrides });
+    const renderOpen = (open: Encounter, mode: 'specialties' | 'treatments' = 'specialties') =>
+      render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode={mode} />);
+
+    it('lists each treatment with its status and a link to continue it', () => {
+      renderOpen(
+        withSessions([
+          session('s1', 'Toxina', 'INTAKE_IN_PROGRESS'),
+          session('s2', 'Peeling', 'CLINICAL_COMPLETE'),
+        ]),
+      );
+
+      const list = screen.getByRole('list', { name: 'Tratamientos de la atención' });
+      const items = within(list).getAllByRole('listitem');
+      expect(items).toHaveLength(2);
+      expect(within(items[0]).getByText('Toxina')).toBeInTheDocument();
+      expect(within(items[0]).getByText('Ficha en curso')).toBeInTheDocument();
+      expect(within(items[1]).getByText('Cerrada')).toBeInTheDocument();
+      expect(within(items[0]).getByRole('link', { name: 'Continuar Toxina' })).toHaveAttribute(
+        'href',
+        '/treatment-sessions/s1',
+      );
+    });
+
+    it('blocks closing while a treatment is unfinished and names it', () => {
+      renderOpen(
+        withSessions([
+          session('s1', 'Toxina', 'IN_PROGRESS'),
+          session('s2', 'Peeling', 'CLINICAL_COMPLETE'),
+          session('s3', 'Relleno', 'CANCELLED'),
+        ]),
+      );
+
+      expect(screen.getByRole('button', { name: 'Cerrar atención' })).toBeDisabled();
+      expect(screen.getByText('Termina o cancela: Toxina')).toBeInTheDocument();
+    });
+
+    it('joins the names of several unfinished treatments', () => {
+      renderOpen(
+        withSessions([session('s1', 'Toxina', 'CONSENTED'), session('s2', 'Peeling', 'READY_FOR_CONSENT')]),
+      );
+
+      expect(screen.getByText('Termina o cancela: Toxina, Peeling')).toBeInTheDocument();
+    });
+
+    it('allows closing when every treatment is finished', () => {
+      renderOpen(withSessions([session('s1', 'Toxina', 'CLINICAL_COMPLETE')]));
+
+      expect(screen.getByRole('button', { name: 'Cerrar atención' })).toBeEnabled();
+      expect(screen.queryByText(/Termina o cancela/)).not.toBeInTheDocument();
+    });
+
+    it('adds treatments not already in the encounter and sends the encounter id', async () => {
+      hooks.treatments = [
+        { id: 't-s1', name: 'Toxina', isActive: true },
+        { id: 't2', name: 'Peeling', isActive: true },
+        { id: 't3', name: 'Relleno', isActive: true },
+      ];
+      hooks.create.mockResolvedValueOnce([{ id: 'n1' }, { id: 'n2' }]);
+      renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Añadir tratamiento' }));
+      const dialog = screen.getByRole('dialog', { name: 'Añadir tratamiento' });
+      expect(within(dialog).queryByRole('checkbox', { name: 'Toxina' })).not.toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Relleno' }));
+      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Peeling' }));
+      await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Añadir' })));
+
+      expect(hooks.create).toHaveBeenCalledWith({ treatmentIds: ['t2', 't3'], encounterId: 'encounter-1' });
+      expect(hooks.push).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog', { name: 'Añadir tratamiento' })).not.toBeInTheDocument();
+    });
+
+    it('opens the wizard when exactly one treatment is added', async () => {
+      hooks.treatments = [{ id: 't2', name: 'Peeling', isActive: true }];
+      hooks.create.mockResolvedValueOnce([{ id: 'n1' }]);
+      renderOpen(withSessions([]));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Añadir tratamiento' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Peeling' }));
+      await act(async () =>
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Añadir' })),
+      );
+
+      expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/n1');
+    });
+
+    it('counts the treatments already present against the limit of ten', () => {
+      hooks.treatments = Array.from({ length: 5 }, (_, index) => ({
+        id: `c${index + 1}`,
+        name: `Catálogo ${index + 1}`,
+        isActive: true,
+      }));
+      const present = Array.from({ length: 8 }, (_, index) =>
+        session(`s${index}`, `Presente ${index}`, 'CLINICAL_COMPLETE'),
+      );
+      renderOpen(withSessions(present));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Añadir tratamiento' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Catálogo 1' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Catálogo 2' }));
+
+      expect(screen.getByRole('checkbox', { name: 'Catálogo 3' })).toBeDisabled();
+      expect(screen.getByText('Máximo 10 tratamientos por atención')).toBeInTheDocument();
+    });
+
+    it('hides "Añadir tratamiento" when the sessions section is off', () => {
+      hooks.sessionsOn = false;
+      hooks.treatments = [{ id: 't2', name: 'Peeling', isActive: true }];
+      renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]));
+
+      expect(screen.queryByRole('button', { name: 'Añadir tratamiento' })).not.toBeInTheDocument();
+    });
+
+    it('records a no-show after confirmation', async () => {
+      renderOpen(
+        withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS'), session('s2', 'Peeling', 'CONSENTED')]),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'No asistió' }));
+      const dialog = screen.getByRole('dialog', { name: 'Registrar inasistencia' });
+      expect(dialog).toHaveTextContent(/no se puede deshacer/);
+      expect(dialog).toHaveTextContent(/cada tratamiento y la cita/);
+      expect(hooks.noShow).not.toHaveBeenCalled();
+      await act(async () =>
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Registrar inasistencia' })),
+      );
+
+      expect(hooks.noShow).toHaveBeenCalledWith('encounter-1');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('shows the API message when the no-show is refused', async () => {
+      hooks.noShow.mockRejectedValueOnce({
+        status: 409,
+        code: 'ENCOUNTER_HAS_ACTIVITY',
+        message: 'La atención ya tiene actividad clínica.',
+      });
+      renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]));
+
+      fireEvent.click(screen.getByRole('button', { name: 'No asistió' }));
+      await act(async () =>
+        fireEvent.click(
+          within(screen.getByRole('dialog')).getByRole('button', { name: 'Registrar inasistencia' }),
+        ),
+      );
+
+      expect(screen.getByRole('alert')).toHaveTextContent('La atención ya tiene actividad clínica.');
+    });
+
+    it.each([
+      ['there is a treatment already in procedure', [session('s1', 'Toxina', 'IN_PROGRESS')]],
+      ['there is a finished treatment', [session('s1', 'Toxina', 'CLINICAL_COMPLETE')]],
+      ['there are no treatments', []],
+    ])('does not offer "No asistió" when %s', (_label, sessions) => {
+      renderOpen(withSessions(sessions));
+
+      expect(screen.queryByRole('button', { name: 'No asistió' })).not.toBeInTheDocument();
+    });
+
+    it('does not offer to remove the encounter in treatments mode', () => {
+      renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]), 'treatments');
+
+      expect(screen.queryByRole('button', { name: 'Eliminar atención' })).not.toBeInTheDocument();
+    });
   });
 
   it('closes the encounter with an optional summary', async () => {

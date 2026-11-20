@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Play, Trash2 } from 'lucide-react';
+import { CheckCircle2, Play, Plus, Trash2, UserX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +23,16 @@ import { useSections } from '@/hooks/useSections';
 import { useCreateTreatmentSessions } from '@/hooks/useTreatmentSessions';
 import { useTreatments } from '@/hooks/useTreatments';
 import { formatDate } from '@/lib/utils';
+import {
+  AddTreatmentDialog,
+  canRecordNoShow,
+  EncounterTreatmentList,
+  MAX_TREATMENTS_PER_ENCOUNTER,
+  NoShowDialog,
+  TREATMENT_SESSIONS_SECTION,
+  TreatmentCheckboxes,
+  unfinishedSessions,
+} from './encounter-treatments';
 import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { useAuthStore } from '@/store/authStore';
 import { AppointmentStatus } from '@/types';
@@ -36,8 +46,6 @@ import {
 const SELECT_CLASS = 'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm';
 const ATTENDABLE = [AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS];
 const DAY_MS = 24 * 60 * 60 * 1000;
-const TREATMENT_SESSIONS_SECTION = 'core.treatments.sessions';
-const MAX_TREATMENTS_PER_ENCOUNTER = 10;
 
 export type EncounterPanelMode = 'specialties' | 'treatments';
 
@@ -68,7 +76,13 @@ export function EncounterPanel({
   const [starting, setStarting] = useState(Boolean(initialAppointmentId));
   const [closing, setClosing] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [markingNoShow, setMarkingNoShow] = useState(false);
+  const { isEnabled } = useSections();
   const previous = encounters.filter((encounter) => encounter.id !== openEncounter?.id);
+  const sessions = openEncounter?.treatmentSessions ?? [];
+  const unfinished = unfinishedSessions(sessions);
+  const closeBlocked = unfinished.length > 0;
 
   return (
     <Card className={openEncounter ? 'border-primary/50' : undefined}>
@@ -106,18 +120,40 @@ export function EncounterPanel({
               </span>
             </div>
             <p className="whitespace-pre-wrap text-sm">{openEncounter.reason}</p>
+            <EncounterTreatmentList sessions={sessions} />
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => setClosing(true)}>
+              <Button
+                onClick={() => setClosing(true)}
+                disabled={closeBlocked}
+                aria-describedby={closeBlocked ? 'close-blocked-hint' : undefined}
+              >
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Cerrar atención
               </Button>
-              {openEncounter.recordCount === 0 && (
+              {isEnabled(TREATMENT_SESSIONS_SECTION) && (
+                <Button variant="outline" onClick={() => setAdding(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Añadir tratamiento
+                </Button>
+              )}
+              {canRecordNoShow(sessions) && (
+                <Button variant="outline" onClick={() => setMarkingNoShow(true)}>
+                  <UserX className="mr-2 h-4 w-4" />
+                  No asistió
+                </Button>
+              )}
+              {mode !== 'treatments' && openEncounter.recordCount === 0 && (
                 <Button variant="outline" onClick={() => setRemoving(true)}>
                   <Trash2 className="mr-2 h-4 w-4" />
                   Eliminar atención
                 </Button>
               )}
             </div>
+            {closeBlocked && (
+              <p id="close-blocked-hint" className="text-sm text-muted-foreground">
+                Termina o cancela: {unfinished.map((session) => session.treatment.name).join(', ')}
+              </p>
+            )}
           </div>
         )}
 
@@ -156,6 +192,11 @@ export function EncounterPanel({
                     </span>
                   </div>
                   <p className="whitespace-pre-wrap">{encounter.reason}</p>
+                  {(encounter.treatmentSessions?.length ?? 0) > 0 && (
+                    <p className="text-muted-foreground">
+                      Tratamientos: {encounter.treatmentSessions?.map((item) => item.treatment.name).join(', ')}
+                    </p>
+                  )}
                   {encounter.status === 'CLOSED' && (
                     <p className="text-xs text-muted-foreground">
                       {encounter.signedAt
@@ -180,6 +221,20 @@ export function EncounterPanel({
           patientId={patientId}
           encounter={openEncounter}
           onClose={() => setClosing(false)}
+        />
+      )}
+      {adding && openEncounter && (
+        <AddTreatmentDialog
+          patientId={patientId}
+          encounter={openEncounter}
+          onClose={() => setAdding(false)}
+        />
+      )}
+      {markingNoShow && openEncounter && (
+        <NoShowDialog
+          patientId={patientId}
+          encounter={openEncounter}
+          onClose={() => setMarkingNoShow(false)}
         />
       )}
       {removing && openEncounter && (
@@ -334,34 +389,12 @@ function StartEncounterForm({
           {catalog.length === 0 ? (
             <p className="text-sm text-muted-foreground">No hay tratamientos activos en el catálogo.</p>
           ) : (
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-              {catalog.map((item) => {
-                const checked = treatmentIds.includes(item.id);
-                const disabled = !checked && limitReached;
-                return (
-                  <label
-                    key={item.id}
-                    className={`flex min-h-[44px] items-center gap-2 rounded-md border border-input px-3 py-2 text-sm ${
-                      disabled ? 'opacity-50' : 'cursor-pointer'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={checked}
-                      disabled={disabled}
-                      onChange={(event) => toggleTreatment(item.id, event.target.checked)}
-                    />
-                    {item.name}
-                  </label>
-                );
-              })}
-            </div>
-          )}
-          {limitReached && (
-            <p className="text-sm text-muted-foreground">
-              Máximo {MAX_TREATMENTS_PER_ENCOUNTER} tratamientos por atención
-            </p>
+            <TreatmentCheckboxes
+              options={catalog}
+              selected={treatmentIds}
+              limitReached={limitReached}
+              onToggle={toggleTreatment}
+            />
           )}
         </fieldset>
       )}
