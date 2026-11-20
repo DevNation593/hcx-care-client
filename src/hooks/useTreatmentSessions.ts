@@ -102,9 +102,13 @@ export function useEncounterNoShow(patientId: string) {
   const queryClient = useQueryClient();
   return useMutation<TreatmentSessionDetail[], ApiError, string>({
     mutationFn: (encounterId) => treatmentSessionsApi.encounterNoShow(patientId, encounterId),
-    onSuccess: () => {
+    onSuccess: (missed) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId) });
+      // The sessions already visited would keep offering the commands of their old status.
+      for (const session of missed) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TREATMENT_SESSION(session.id) });
+      }
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
       toast.success('Inasistencia registrada');
     },

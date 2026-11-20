@@ -358,6 +358,19 @@ describe('encounter commands', () => {
     expect(toast.success).toHaveBeenCalledWith('Inasistencia registrada');
   });
 
+  it('refreshes the details of the sessions the no-show ended, and no others', async () => {
+    http.post.mockResolvedValue([{ id: 'session-1' }, { id: 'session-2' }]);
+    const { client, wrapper } = setup();
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-1'), { id: 'session-1' });
+    client.setQueryData(QUERY_KEYS.TREATMENT_SESSION('session-9'), { id: 'session-9' });
+    const { result } = renderHook(() => useEncounterNoShow('patient-1'), { wrapper });
+
+    await act(async () => { await result.current.mutateAsync('enc-1'); });
+
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-1'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(QUERY_KEYS.TREATMENT_SESSION('session-9'))?.isInvalidated).toBe(false);
+  });
+
   it('reads the encounters again when the no-show is refused with a 409', async () => {
     http.post.mockRejectedValue({ message: 'Hay actividad', status: 409, code: 'ENCOUNTER_HAS_ACTIVITY' });
     const { client, wrapper } = setup();

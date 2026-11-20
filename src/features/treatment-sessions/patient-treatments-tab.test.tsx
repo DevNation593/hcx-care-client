@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/store/authStore';
 import { PatientTreatmentsTab } from './patient-treatments-tab';
@@ -12,6 +12,7 @@ vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
 const hooks = vi.hoisted(() => ({
   sessions: { data: [] as unknown[], isPending: false, isError: false, refetch: vi.fn() },
   encounters: [] as unknown[],
+  encountersState: { isPending: false, isError: false, refetch: vi.fn() },
   enabled: new Set<string>(),
 }));
 
@@ -19,7 +20,10 @@ vi.mock('@/hooks/useTreatmentSessions', () => ({
   usePatientTreatmentSessions: () => hooks.sessions,
 }));
 vi.mock('@/hooks/useEncounters', () => ({
-  usePatientEncounters: () => ({ data: hooks.encounters }),
+  usePatientEncounters: () => ({
+    data: hooks.encountersState.isError || hooks.encountersState.isPending ? undefined : hooks.encounters,
+    ...hooks.encountersState,
+  }),
 }));
 vi.mock('@/hooks/useSections', () => ({
   useSections: () => ({ isEnabled: (key: string) => hooks.enabled.has(key) }),
@@ -60,6 +64,7 @@ beforeEach(() => {
     refetch: vi.fn(),
   };
   hooks.encounters = [];
+  hooks.encountersState = { isPending: false, isError: false, refetch: vi.fn() };
   hooks.enabled = new Set(['core.treatments.sessions']);
   useAuthStore.setState({ user: { id: 'me', tenantId: 'tenant-1' } as never });
 });
@@ -107,6 +112,24 @@ describe('PatientTreatmentsTab', () => {
     const panel = screen.getByTestId('encounter-panel');
     expect(panel).toHaveAttribute('data-appointment', 'appointment-1');
     expect(panel).toHaveAttribute('data-open', 'e-mine');
+  });
+
+  it('shows an error with retry, and no panel, when the encounters cannot be read', () => {
+    hooks.encountersState = { isPending: false, isError: true, refetch: vi.fn() };
+    render(<PatientTreatmentsTab patientId="patient-1" />);
+
+    expect(screen.getByText('No se pudo cargar la atención')).toBeInTheDocument();
+    expect(screen.queryByTestId('encounter-panel')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(hooks.encountersState.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no panel while the encounters load', () => {
+    hooks.encountersState = { isPending: true, isError: false, refetch: vi.fn() };
+    render(<PatientTreatmentsTab patientId="patient-1" />);
+
+    expect(screen.getByText('Cargando la atención…')).toBeInTheDocument();
+    expect(screen.queryByTestId('encounter-panel')).not.toBeInTheDocument();
   });
 
   it('renders no panel when the treatment sessions section is off', () => {
