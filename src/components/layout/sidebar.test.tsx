@@ -94,12 +94,13 @@ describe('Sidebar modules and submodules', () => {
     await screen.findByRole('link', { name: 'Equipo' });
 
     expect(linksIn('Agenda')).toEqual(['Calendario', 'Actividades']);
-    expect(linksIn('Clínica')).toEqual(['Módulos clínicos', 'Formularios', 'Tratamientos', 'Consentimientos']);
+    expect(linksIn('Clínica')).toEqual(['Formularios', 'Tratamientos', 'Consentimientos']);
     expect(linksIn('Administración')).toEqual([
       'Equipo',
       'Reportes',
       'Suscripción',
       'Almacenamiento',
+      'Módulos clínicos',
       'Configuración',
     ]);
     expect(linksIn('Facturación')).toEqual(['Facturas emitidas', 'Configuración']);
@@ -189,7 +190,9 @@ describe('Sidebar clinical modules entry', () => {
   it.each([UserRole.MASTER])('is shown to %s', async (role) => {
     useAuthStore.setState({ user: { ...admin, role } });
     renderSidebar();
-    expect(await screen.findByRole('link', { name: 'Módulos clínicos' })).toHaveAttribute('href', '/admin/specialties');
+    const link = await screen.findByRole('link', { name: 'Módulos clínicos' });
+    expect(link).toHaveAttribute('href', '/admin/specialties');
+    expect(link.closest('[role="group"]')).toHaveAttribute('aria-label', 'Administración');
   });
 
   it.each([UserRole.ASISTENTE, UserRole.PROFESIONAL, UserRole.ADMIN, UserRole.SOPORTE])('is hidden from %s', async (role) => {
