@@ -192,7 +192,7 @@ describe('AppointmentDetailsDialog', () => {
 
   it('closes only after cancellation succeeds', () => {
     mocks.cancel.mockImplementationOnce((_variables, options) => options.onError({
-      code: 'PROFESSIONAL_NOT_AUTHORIZED', message: 'raw server text',
+      code: 'PROFESSIONAL_NOT_AUTHORIZED', status: 403, message: 'La cuenta no tiene capacidad clínica activa.',
     }));
     const failed = renderDetails();
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar cita' }));
@@ -200,7 +200,7 @@ describe('AppointmentDetailsDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar cancelación' }));
     expect(failed.onOpenChange).not.toHaveBeenCalledWith(false);
     expect(screen.getByLabelText('Motivo de cancelación')).toHaveValue('Cambio de agenda');
-    expect(screen.getByRole('alert')).toHaveTextContent('El profesional ya no está disponible para atención.');
+    expect(screen.getByRole('alert')).toHaveTextContent('La cuenta no tiene capacidad clínica activa.');
     failed.unmount();
 
     mocks.cancel.mockImplementationOnce((_variables, options) => options.onSuccess());
@@ -213,47 +213,15 @@ describe('AppointmentDetailsDialog', () => {
 });
 
 describe('getAppointmentErrorMessage', () => {
-  it.each([
-    ['APPOINTMENT_CONFLICT', 'El profesional ya tiene una cita en ese horario.'],
-    ['PROFESSIONAL_SPECIALTY_MISMATCH', 'El profesional no pertenece a la especialidad seleccionada.'],
-    ['SPECIALTY_NOT_ENABLED', 'La especialidad ya no está habilitada en el consultorio.'],
-    ['PROFESSIONAL_NOT_AUTHORIZED', 'El profesional ya no está disponible para atención.'],
-  ])('maps %s to stable safe copy', (code, message) => {
-    expect(getAppointmentErrorMessage({ code, message: 'unsafe backend text' })).toBe(message);
+  it('shows the message the API sends for a business-rule rejection', () => {
+    const message = 'No se pueden programar citas el día Sábado. Días laborales: Lunes, Martes, Miércoles, Jueves, Viernes';
+    expect(getAppointmentErrorMessage({ code: 'NON_WORKING_DAY', status: 400, message })).toBe(message);
   });
 
-  it('explains a non-working day using the configured working days', () => {
-    expect(
-      getAppointmentErrorMessage({
-        code: 'NON_WORKING_DAY',
-        message: 'unsafe backend text',
-        details: { dayOfWeek: 'SATURDAY', workingDays: ['MONDAY', 'TUESDAY', 'FRIDAY'] },
-      }),
-    ).toBe('No se pueden programar citas el día Sábado. Días laborales: Lunes, Martes, Viernes.');
-  });
-
-  it('explains a time outside working hours using the configured hours', () => {
-    expect(
-      getAppointmentErrorMessage({
-        code: 'OUTSIDE_WORKING_HOURS',
-        details: { workingHoursStart: '08:00', workingHoursEnd: '18:00' },
-      }),
-    ).toBe('La cita debe estar dentro del horario laboral: 08:00 - 18:00.');
-  });
-
-  it('falls back to safe working-time copy when details are missing or unexpected', () => {
-    expect(getAppointmentErrorMessage({ code: 'NON_WORKING_DAY', details: { dayOfWeek: '<b>' } }))
-      .toBe('No se pueden programar citas en un día no laboral.');
-    expect(
-      getAppointmentErrorMessage({
-        code: 'OUTSIDE_WORKING_HOURS',
-        details: { workingHoursStart: 'DROP', workingHoursEnd: '18:00' },
-      }),
-    ).toBe('La cita debe estar dentro del horario laboral.');
-  });
-
-  it('does not expose unknown raw server messages', () => {
-    expect(getAppointmentErrorMessage({ code: 'UNKNOWN', message: 'SQL table appointments' }))
-      .toBe('No se pudo completar la operación. Inténtalo nuevamente.');
+  it('uses generic copy for server failures and errors without a message', () => {
+    const generic = 'No se pudo completar la operación. Inténtalo nuevamente.';
+    expect(getAppointmentErrorMessage({ status: 500, message: 'Internal server error' })).toBe(generic);
+    expect(getAppointmentErrorMessage({ status: 400, message: '  ' })).toBe(generic);
+    expect(getAppointmentErrorMessage(null)).toBe(generic);
   });
 });

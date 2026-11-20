@@ -101,10 +101,11 @@ describe('tenant-scoped existing hooks', () => {
     for (const index of [2, 3, 4, 6, 7]) expect(client.getQueryState(keys[index])?.isInvalidated).toBe(false);
   });
 
-  it('maps appointment API codes to stable safe mutation feedback', async () => {
+  it('shows the API rejection message as mutation feedback', async () => {
     http.post.mockRejectedValue({
       code: 'APPOINTMENT_CONFLICT',
-      message: 'raw database conflict text',
+      status: 409,
+      message: 'Este horario tiene conflicto con cita(s) existente(s)',
     });
     const { wrapper } = setup();
     const { result } = renderHook(() => useCreateAppointment(), { wrapper });
@@ -121,7 +122,7 @@ describe('tenant-scoped existing hooks', () => {
       })).rejects.toMatchObject({ code: 'APPOINTMENT_CONFLICT' });
     });
 
-    expect(toast.error).toHaveBeenCalledWith('El profesional ya tiene una cita en ese horario.');
+    expect(toast.error).toHaveBeenCalledWith('Este horario tiene conflicto con cita(s) existente(s)');
   });
 
   it('finishes an in-flight create in the tenant where it started after a tenant switch', async () => {
