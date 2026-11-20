@@ -50,7 +50,8 @@ export function PatientTreatmentsTab({
   const sessions = usePatientTreatmentSessions(patientId);
   const { isEnabled } = useSections();
   const userId = useAuthStore((state) => state.user?.id);
-  const { data: encounters = [] } = usePatientEncounters(patientId);
+  const encountersQuery = usePatientEncounters(patientId);
+  const encounters = encountersQuery.data ?? [];
   // One open encounter per professional and patient.
   const openEncounter = encounters.find(
     (encounter) => encounter.status === 'OPEN' && encounter.professionalId === userId,
@@ -61,15 +62,32 @@ export function PatientTreatmentsTab({
   return (
     <div className="space-y-6">
       {/* The treatments mode only makes sense with the sessions section on. */}
-      {isEnabled('core.treatments.sessions') && (
-        <EncounterPanel
-          patientId={patientId}
-          encounters={encounters}
-          openEncounter={openEncounter}
-          initialAppointmentId={initialAppointmentId}
-          mode={mode}
-        />
-      )}
+      {isEnabled('core.treatments.sessions') &&
+        (encountersQuery.isPending ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            Cargando la atención…
+          </p>
+        ) : encountersQuery.isError ? (
+          // A failed read is not an empty list: starting an encounter could clash with an open one.
+          <Alert variant="destructive" title="No se pudo cargar la atención">
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => encountersQuery.refetch()}
+            >
+              Reintentar
+            </Button>
+          </Alert>
+        ) : (
+          <EncounterPanel
+            patientId={patientId}
+            encounters={encounters}
+            openEncounter={openEncounter}
+            initialAppointmentId={initialAppointmentId}
+            mode={mode}
+          />
+        ))}
       <Card>
         <CardHeader>
           <CardTitle>Tratamientos</CardTitle>
