@@ -3,6 +3,8 @@ export type InvoicingEnvironment = '1' | '2';
 export type RimpeRegime = 'NONE' | 'EMPRENDEDOR' | 'NEGOCIO_POPULAR';
 export interface IssuerCertificate {
   subject: string;
+  /** The holder's name without identifiers (cédula/RUC); null when the subject names nobody. */
+  holderName: string | null;
   serial: string;
   validTo: string;
   sha256: string;

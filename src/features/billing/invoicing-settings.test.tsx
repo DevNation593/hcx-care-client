@@ -42,7 +42,8 @@ function issuer(overrides: Partial<InvoicingIssuer> = {}): InvoicingIssuer {
   };
 }
 const certificate = (overrides = {}) => ({
-  subject: 'CN=CLINICA DEMO',
+  subject: 'CN=1712345678 MARÍA JOSÉ PÉREZ,2.5.4.5=#130a31373132333435363738,C=EC',
+  holderName: 'MARÍA JOSÉ PÉREZ',
   serial: 'ABC123',
   validTo: inDays(200),
   sha256: 'f'.repeat(64),
@@ -285,7 +286,7 @@ describe('InvoicingSettings', () => {
     expect(body.get('file')).toBe(file);
     expect(body.get('password')).toBe(SECRET);
     expect(config.headers['Content-Type']).toBe('multipart/form-data');
-    expect(await screen.findByText('CN=CLINICA DEMO')).toBeInTheDocument();
+    expect(await screen.findByText('MARÍA JOSÉ PÉREZ')).toBeInTheDocument();
     expect(screen.getByText('ABC123')).toBeInTheDocument();
     expect(screen.getByText(new Date(validTo).toLocaleDateString('es-EC'))).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText('Contraseña de la firma')).toHaveValue(''));
@@ -353,7 +354,7 @@ describe('InvoicingSettings', () => {
   it('shows no expiry warning for a certificate with time left', async () => {
     serve(issuer({ certificate: certificate() }));
     mount();
-    await screen.findByText('CN=CLINICA DEMO');
+    await screen.findByText('MARÍA JOSÉ PÉREZ');
     expect(screen.queryByText(/vence en/)).not.toBeInTheDocument();
     expect(screen.queryByText(/ya venció/)).not.toBeInTheDocument();
   });
@@ -364,10 +365,26 @@ describe('InvoicingSettings', () => {
     expect(await screen.findByText(/No se pudo verificar que la firma pertenezca/)).toBeInTheDocument();
   });
 
+  it('shows only the holder name, never the raw subject with the cédula', async () => {
+    serve(issuer({ certificate: certificate() }));
+    mount();
+    await screen.findByText('MARÍA JOSÉ PÉREZ');
+    expect(document.body.textContent).not.toContain('1712345678');
+    expect(document.body.textContent).not.toContain('2.5.4.5');
+  });
+
+  it('omits the holder row when the API gives no holder name', async () => {
+    serve(issuer({ certificate: certificate({ holderName: null }) }));
+    mount();
+    await screen.findByText('ABC123');
+    expect(screen.queryByText('Titular')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('1712345678');
+  });
+
   it('does not warn about the RUC when it was verified', async () => {
     serve(issuer({ certificate: certificate() }));
     mount();
-    await screen.findByText('CN=CLINICA DEMO');
+    await screen.findByText('MARÍA JOSÉ PÉREZ');
     expect(screen.queryByText(/No se pudo verificar/)).not.toBeInTheDocument();
   });
 
