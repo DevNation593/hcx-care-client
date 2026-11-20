@@ -112,6 +112,11 @@ vi.mock('@/features/patients/clinical-records-tab', async (importOriginal) => ({
     <div data-testid="records-tab">{startAppointmentId ?? 'no appointment'}</div>
   ),
 }));
+vi.mock('@/features/treatment-sessions/patient-treatments-tab', () => ({
+  PatientTreatmentsTab: ({ initialAppointmentId }: { initialAppointmentId?: string }) => (
+    <div data-testid="treatments-tab">{initialAppointmentId ?? 'no appointment'}</div>
+  ),
+}));
 vi.mock('@/features/clinical-orders/clinical-orders-tab', () => ({
   ClinicalOrdersTab: ({ patientId }: { patientId: string }) => <div data-testid="orders-tab">{patientId}</div>,
 }));
@@ -244,6 +249,13 @@ describe('patient detail opened from the agenda', () => {
     renderPage();
 
     expect(screen.getByTestId('records-tab')).toHaveTextContent('appointment-1');
+  });
+
+  it('opens the treatments tab with the appointment to attend', () => {
+    mocks.search = 'tab=treatments&appointmentId=appointment-2';
+    renderPage();
+
+    expect(screen.getByTestId('treatments-tab')).toHaveTextContent('appointment-2');
   });
 
   it('opens the files tab from the storage page', () => {

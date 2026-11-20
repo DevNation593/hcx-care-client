@@ -86,7 +86,7 @@ const submit = (name: string) => act(async () => fireEvent.click(screen.getByRol
 
 describe('EncounterPanel', () => {
   it('starts an encounter with its type and reason', async () => {
-    render(<EncounterPanel patientId="patient-1" encounters={[]} />);
+    render(<EncounterPanel patientId="patient-1" encounters={[]} mode="specialties" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Iniciar atención' }));
     const start = screen.getAllByRole('button', { name: 'Iniciar atención' }).at(-1)!;
@@ -106,7 +106,7 @@ describe('EncounterPanel', () => {
       { id: 'main', name: 'Sede principal', isMain: true, isActive: true },
       { id: 'closed', name: 'Sede cerrada', isMain: false, isActive: false },
     ];
-    render(<EncounterPanel patientId="patient-1" encounters={[]} />);
+    render(<EncounterPanel patientId="patient-1" encounters={[]} mode="specialties" />);
     fireEvent.click(screen.getByRole('button', { name: 'Iniciar atención' }));
 
     const branch = screen.getByLabelText('Sede');
@@ -139,7 +139,7 @@ describe('EncounterPanel', () => {
       { id: 'north', name: 'Sede Norte', isMain: false, isActive: true },
       { id: 'closed', name: 'Sede cerrada', isMain: false, isActive: false },
     ];
-    render(<EncounterPanel patientId="patient-1" encounters={[]} />);
+    render(<EncounterPanel patientId="patient-1" encounters={[]} mode="specialties" />);
     fireEvent.click(screen.getByRole('button', { name: 'Iniciar atención' }));
 
     const appointments = within(screen.getByLabelText('Cita que se atiende')).getAllByRole('option');
@@ -164,7 +164,7 @@ describe('EncounterPanel', () => {
 
   it('opens ready to attend the appointment chosen in the agenda', async () => {
     hooks.appointments = [appointment()];
-    render(<EncounterPanel patientId="patient-1" encounters={[]} initialAppointmentId="appointment-1" />);
+    render(<EncounterPanel patientId="patient-1" encounters={[]} initialAppointmentId="appointment-1" mode="specialties" />);
 
     expect(screen.getByLabelText('Cita que se atiende')).toHaveValue('appointment-1');
     fireEvent.change(screen.getByLabelText(/Motivo de consulta/), { target: { value: 'Control' } });
@@ -274,7 +274,7 @@ describe('EncounterPanel', () => {
 
   it('shows the encounter in course instead of the start button', () => {
     const open = encounter({ recordCount: 2, branch: { id: 'north', name: 'Sede Norte' } });
-    render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} />);
+    render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="specialties" />);
 
     expect(screen.getByText('Atención en curso')).toBeInTheDocument();
     expect(screen.getByText('Dolor lumbar de dos semanas')).toBeInTheDocument();
@@ -510,7 +510,7 @@ describe('EncounterPanel', () => {
 
   it('closes the encounter with an optional summary', async () => {
     const open = encounter();
-    render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} />);
+    render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="specialties" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar atención' }));
     fireEvent.change(screen.getByLabelText('Resumen o indicaciones de cierre'), {
@@ -535,7 +535,7 @@ describe('EncounterPanel', () => {
       message: 'La contraseña no es correcta. Escríbela de nuevo para firmar.',
     });
     const open = encounter();
-    render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} />);
+    render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="specialties" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar atención' }));
     const field = screen.getByLabelText(/Tu contraseña para firmar/);
@@ -549,7 +549,7 @@ describe('EncounterPanel', () => {
 
   it('removes an empty encounter only with a reason', async () => {
     const open = encounter();
-    render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} />);
+    render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="specialties" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Eliminar atención' }));
     const confirm = screen.getAllByRole('button', { name: 'Eliminar atención' }).at(-1)!;
@@ -569,7 +569,7 @@ describe('EncounterPanel', () => {
       recordCount: 1,
       summary: 'Alta de fisioterapia',
     });
-    render(<EncounterPanel patientId="patient-1" encounters={[closed]} />);
+    render(<EncounterPanel patientId="patient-1" encounters={[closed]} mode="specialties" />);
 
     expect(screen.getByText('Atenciones anteriores (1)')).toBeInTheDocument();
     expect(screen.getByText('Control · 03/10/2026')).toBeInTheDocument();
@@ -587,7 +587,7 @@ describe('EncounterPanel', () => {
       signedAt: '2026-10-03T16:45:00.000Z',
       contentHash: 'v1:0123456789abcdef0123',
     });
-    render(<EncounterPanel patientId="patient-1" encounters={[signed]} />);
+    render(<EncounterPanel patientId="patient-1" encounters={[signed]} mode="specialties" />);
 
     expect(screen.getByText('Firmada')).toBeInTheDocument();
     expect(screen.getByText(/^Firmada el \d{2}\/10\/2026 \d{2}:\d{2} · huella 0123456789ab$/)).toBeInTheDocument();

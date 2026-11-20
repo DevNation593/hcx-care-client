@@ -21,6 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
+import { useSections } from '@/hooks/useSections';
 
 const ATTENDABLE: AppointmentStatus[] = [
   AppointmentStatus.SCHEDULED,
@@ -44,6 +45,7 @@ export function AppointmentDetailsDialog({
   const user = useAuthStore((state) => state.user);
   const cancelAppointment = useCancelAppointment();
   const terms = usePatientTerms();
+  const { isEnabled } = useSections();
   const [showCancellation, setShowCancellation] = useState(false);
   const [reason, setReason] = useState('');
   const [cancelError, setCancelError] = useState<string | null>(null);
@@ -57,6 +59,12 @@ export function AppointmentDetailsDialog({
     user.id === appointment.professionalId &&
     canAccessClinicalNotes(user) &&
     ATTENDABLE.includes(appointment.status);
+  // The encounter panel lives in the specialties tab, or in the treatments tab without specialties.
+  const attendTab = isEnabled('core.clinical.specialties')
+    ? 'specialties'
+    : isEnabled('core.treatments.sessions')
+      ? 'treatments'
+      : null;
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       setShowCancellation(false);
@@ -176,9 +184,9 @@ export function AppointmentDetailsDialog({
           </div>
         )}
 
-        {canAttend && !showCancellation && (
+        {canAttend && attendTab && !showCancellation && (
           <Link
-            href={`/patients/${appointment.patientId}?tab=specialties&appointmentId=${appointment.id}`}
+            href={`/patients/${appointment.patientId}?tab=${attendTab}&appointmentId=${appointment.id}`}
             className={buttonVariants({ variant: 'default' })}
           >
             {appointment.status === AppointmentStatus.IN_PROGRESS

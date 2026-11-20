@@ -1,7 +1,6 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/store/authStore';
-import { AppointmentStatus } from '@/types';
 import { PatientTreatmentsTab } from './patient-treatments-tab';
 
 // Rendered without a QueryClient: name people as in a clinical practice.
@@ -12,22 +11,33 @@ vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
 
 const hooks = vi.hoisted(() => ({
   sessions: { data: [] as unknown[], isPending: false, isError: false, refetch: vi.fn() },
-  treatments: [] as unknown[],
-  appointments: [] as unknown[],
-  create: vi.fn(),
-  push: vi.fn(),
+  encounters: [] as unknown[],
+  enabled: new Set<string>(),
 }));
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: hooks.push }) }));
 vi.mock('@/hooks/useTreatmentSessions', () => ({
   usePatientTreatmentSessions: () => hooks.sessions,
-  useCreateTreatmentSessions: () => ({ mutateAsync: hooks.create, isPending: false }),
 }));
-vi.mock('@/hooks/useTreatments', () => ({
-  useTreatments: () => ({ data: hooks.treatments }),
+vi.mock('@/hooks/useEncounters', () => ({
+  usePatientEncounters: () => ({ data: hooks.encounters }),
 }));
-vi.mock('@/hooks/useAppointments', () => ({
-  useAppointments: () => ({ data: hooks.appointments }),
+vi.mock('@/hooks/useSections', () => ({
+  useSections: () => ({ isEnabled: (key: string) => hooks.enabled.has(key) }),
+}));
+// The panel has its own tests; here only which mode it gets, and with what, matters.
+vi.mock('@/features/patients/encounter-panel', () => ({
+  EncounterPanel: (props: {
+    mode: string;
+    initialAppointmentId?: string;
+    openEncounter?: { id: string };
+  }) => (
+    <div
+      data-testid="encounter-panel"
+      data-mode={props.mode}
+      data-appointment={props.initialAppointmentId ?? ''}
+      data-open={props.openEncounter?.id ?? ''}
+    />
+  ),
 }));
 
 const summary = (id: string, name: string, status: string, createdAt: string) => ({
@@ -49,12 +59,8 @@ beforeEach(() => {
     isError: false,
     refetch: vi.fn(),
   };
-  hooks.treatments = [
-    { id: 'tr-1', name: 'Toxina botulínica', isActive: true },
-    { id: 'tr-2', name: 'Peeling químico', isActive: true },
-  ];
-  hooks.appointments = [];
-  hooks.create.mockResolvedValue([{ id: 'session-9' }]);
+  hooks.encounters = [];
+  hooks.enabled = new Set(['core.treatments.sessions']);
   useAuthStore.setState({ user: { id: 'me', tenantId: 'tenant-1' } as never });
 });
 
@@ -71,60 +77,43 @@ describe('PatientTreatmentsTab', () => {
     expect(within(rows[0]).getByRole('link')).toHaveAttribute('href', '/treatment-sessions/s-2');
   });
 
-  it('opens a new session of the chosen treatment and goes to it', async () => {
+  it('no longer has its own "Nueva atención" button', () => {
     render(<PatientTreatmentsTab patientId="patient-1" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nueva atención' }));
-    const dialog = screen.getByRole('dialog');
-    const start = within(dialog).getByRole('button', { name: 'Iniciar atención' });
-    expect(start).toBeDisabled();
-
-    fireEvent.change(within(dialog).getByLabelText(/Tratamiento/), { target: { value: 'tr-2' } });
-    await act(async () => fireEvent.click(start));
-
-    expect(hooks.create).toHaveBeenCalledWith({ treatmentIds: ['tr-2'] });
-    expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/session-9');
+    expect(screen.queryByRole('button', { name: 'Nueva atención' })).not.toBeInTheDocument();
   });
 
-  it('offers the own pending appointments of the patient', async () => {
-    hooks.appointments = [
-      { id: 'a-1', professionalId: 'me', status: AppointmentStatus.CONFIRMED, startTime: '2026-10-15T15:00:00.000Z', title: 'Toxina' },
-      { id: 'a-2', professionalId: 'me', status: AppointmentStatus.COMPLETED, startTime: '2026-10-01T15:00:00.000Z', title: 'Pasada' },
-      { id: 'a-3', professionalId: 'other', status: AppointmentStatus.SCHEDULED, startTime: '2026-10-16T15:00:00.000Z', title: 'Ajena' },
+  it('shows the encounter panel in treatments mode when specialties are off', () => {
+    render(<PatientTreatmentsTab patientId="patient-1" />);
+
+    expect(screen.getByTestId('encounter-panel')).toHaveAttribute('data-mode', 'treatments');
+  });
+
+  it('shows the encounter panel in specialties mode when specialties are on', () => {
+    hooks.enabled.add('core.clinical.specialties');
+    render(<PatientTreatmentsTab patientId="patient-1" />);
+
+    expect(screen.getByTestId('encounter-panel')).toHaveAttribute('data-mode', 'specialties');
+  });
+
+  it('passes the appointment to attend and the own open encounter to the panel', () => {
+    hooks.encounters = [
+      { id: 'e-other', status: 'OPEN', professionalId: 'other' },
+      { id: 'e-closed', status: 'CLOSED', professionalId: 'me' },
+      { id: 'e-mine', status: 'OPEN', professionalId: 'me' },
     ];
-    render(<PatientTreatmentsTab patientId="patient-1" />);
+    render(<PatientTreatmentsTab patientId="patient-1" initialAppointmentId="appointment-1" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nueva atención' }));
-    const dialog = screen.getByRole('dialog');
-    const appointment = within(dialog).getByLabelText('Cita (opcional)');
-    expect(within(appointment).getAllByRole('option')).toHaveLength(2);
-
-    fireEvent.change(within(dialog).getByLabelText(/Tratamiento/), { target: { value: 'tr-1' } });
-    fireEvent.change(appointment, { target: { value: 'a-1' } });
-    await act(async () =>
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Iniciar atención' })),
-    );
-
-    expect(hooks.create).toHaveBeenCalledWith({ treatmentIds: ['tr-1'], appointmentId: 'a-1' });
+    const panel = screen.getByTestId('encounter-panel');
+    expect(panel).toHaveAttribute('data-appointment', 'appointment-1');
+    expect(panel).toHaveAttribute('data-open', 'e-mine');
   });
 
-  it('shows why the session could not be opened and stays', async () => {
-    hooks.create.mockRejectedValue({
-      status: 409,
-      code: 'ENCOUNTER_ALREADY_OPEN',
-      message: 'Ya tienes una atención abierta con este paciente. Ciérrala antes de iniciar otra.',
-    });
+  it('renders no panel when the treatment sessions section is off', () => {
+    hooks.enabled = new Set(['core.clinical.specialties']);
     render(<PatientTreatmentsTab patientId="patient-1" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nueva atención' }));
-    const dialog = screen.getByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText(/Tratamiento/), { target: { value: 'tr-1' } });
-    await act(async () =>
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Iniciar atención' })),
-    );
-
-    expect(within(dialog).getByText(/Ya tienes una atención abierta con este paciente/)).toBeInTheDocument();
-    expect(hooks.push).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('encounter-panel')).not.toBeInTheDocument();
   });
 
   it('says so when the patient has no sessions', () => {

@@ -62,8 +62,8 @@ export interface EncounterPanelProps {
   openEncounter?: Encounter;
   /** Arriving from the agenda: the start form opens with this appointment chosen. */
   initialAppointmentId?: string;
-  /** 'treatments' starts from treatments alone; 'specialties' (default) asks type and reason. */
-  mode?: EncounterPanelMode;
+  /** 'treatments' starts from treatments alone; 'specialties' asks type and reason. */
+  mode: EncounterPanelMode;
 }
 
 /** Starts, shows and closes the attention in course, and lists the previous ones. */
@@ -72,7 +72,7 @@ export function EncounterPanel({
   encounters,
   openEncounter,
   initialAppointmentId,
-  mode = 'specialties',
+  mode,
 }: EncounterPanelProps) {
   const [starting, setStarting] = useState(Boolean(initialAppointmentId));
   const [closing, setClosing] = useState(false);

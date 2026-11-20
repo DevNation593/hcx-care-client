@@ -12,9 +12,12 @@ vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
   return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
 });
 
-const mocks = vi.hoisted(() => ({ cancel: vi.fn() }));
+const mocks = vi.hoisted(() => ({ cancel: vi.fn(), enabled: new Set<string>() }));
 vi.mock('@/hooks/useAppointments', () => ({
   useCancelAppointment: () => ({ mutate: mocks.cancel, isPending: false }),
+}));
+vi.mock('@/hooks/useSections', () => ({
+  useSections: () => ({ isEnabled: (key: string) => mocks.enabled.has(key) }),
 }));
 
 function appointment(overrides: Partial<Appointment> = {}): Appointment {
@@ -81,7 +84,10 @@ function renderDetails({
   };
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.enabled = new Set(['core.clinical.specialties', 'core.treatments.sessions']);
+});
 
 describe('appointment permissions', () => {
   it.each([
@@ -144,6 +150,29 @@ describe('AppointmentDetailsDialog', () => {
         'href',
         '/patients/patient-1?tab=specialties&appointmentId=appointment-1',
       );
+    });
+
+    it('opens the treatments tab when specialties are off but treatment sessions are on', () => {
+      mocks.enabled = new Set(['core.treatments.sessions']);
+      renderDetails({ user: professional() });
+
+      expect(screen.getByRole('link', { name: 'Iniciar atención' })).toHaveAttribute(
+        'href',
+        '/patients/patient-1?tab=treatments&appointmentId=appointment-1',
+      );
+    });
+
+    it('offers no link when neither specialties nor treatment sessions are on', () => {
+      mocks.enabled = new Set();
+      renderDetails({ user: professional() });
+
+      expect(attentionLink()).not.toBeInTheDocument();
+    });
+
+    it('is not offered to a cashier, whatever the sections', () => {
+      renderDetails({ user: actor(UserRole.CAJERO, 'professional-1') });
+
+      expect(attentionLink()).not.toBeInTheDocument();
     });
 
     it('offers to continue an appointment that is already being attended', () => {
