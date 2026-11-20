@@ -143,13 +143,13 @@ export function EncounterPanel({
                   Máximo {MAX_TREATMENTS_PER_ENCOUNTER} tratamientos por atención
                 </span>
               )}
-              {canRecordNoShow(sessions) && (
+              {isEnabled(TREATMENT_SESSIONS_SECTION) && canRecordNoShow(sessions) && (
                 <Button variant="outline" onClick={() => setMarkingNoShow(true)}>
                   <UserX className="mr-2 h-4 w-4" />
                   No asistió
                 </Button>
               )}
-              {mode !== 'treatments' && openEncounter.recordCount === 0 && (
+              {mode !== 'treatments' && openEncounter.recordCount === 0 && sessions.length === 0 && (
                 <Button variant="outline" onClick={() => setRemoving(true)}>
                   <Trash2 className="mr-2 h-4 w-4" />
                   Eliminar atención
@@ -280,8 +280,10 @@ function StartEncounterForm({
   const [treatmentIds, setTreatmentIds] = useState<string[]>([]);
 
   const treatmentsMode = mode === 'treatments';
-  const { data: catalog = [] } = useTreatments({ active: true });
-  const showTreatments = treatmentsMode || (isEnabled(TREATMENT_SESSIONS_SECTION) && catalog.length > 0);
+  const catalogVisible = treatmentsMode || isEnabled(TREATMENT_SESSIONS_SECTION);
+  // The catalog is read only when it will be shown.
+  const { data: catalog = [] } = useTreatments({ active: true }, { enabled: catalogVisible });
+  const showTreatments = treatmentsMode || (catalogVisible && catalog.length > 0);
   const limitReached = treatmentIds.length >= MAX_TREATMENTS_PER_ENCOUNTER;
   const canSubmit = treatmentsMode ? treatmentIds.length > 0 : Boolean(reason.trim());
   const pending = start.isPending || create.isPending;

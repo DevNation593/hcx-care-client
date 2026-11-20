@@ -45,9 +45,16 @@ export function unfinishedSessions(sessions: EncounterSessions = []): EncounterS
   return sessions.filter((session) => UNFINISHED.includes(session.status));
 }
 
-/** The API decides; this only hides the button when it evidently does not apply. */
+/**
+ * The API decides; this only hides the button when it evidently does not apply: at least one
+ * session still waits, and every other one was cancelled or did not attend.
+ */
 export function canRecordNoShow(sessions: EncounterSessions = []): boolean {
-  return sessions.length > 0 && sessions.every((session) => BEFORE_PROCEDURE.includes(session.status));
+  const waiting = (session: EncounterSessions[number]) => BEFORE_PROCEDURE.includes(session.status);
+  return (
+    sessions.some(waiting) &&
+    sessions.every((session) => waiting(session) || session.status === 'CANCELLED' || session.status === 'NO_SHOW')
+  );
 }
 
 export function TreatmentCheckboxes({

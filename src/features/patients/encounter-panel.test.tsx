@@ -16,6 +16,7 @@ const hooks = vi.hoisted(() => ({
   push: vi.fn(),
   sessionsOn: true,
   treatments: [] as unknown[],
+  catalogCalls: [] as (boolean | undefined)[],
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: hooks.push }) }));
@@ -24,7 +25,12 @@ vi.mock('@/hooks/useSections', () => ({
     isEnabled: (key: string) => key !== 'core.treatments.sessions' || hooks.sessionsOn,
   }),
 }));
-vi.mock('@/hooks/useTreatments', () => ({ useTreatments: () => ({ data: hooks.treatments }) }));
+vi.mock('@/hooks/useTreatments', () => ({
+  useTreatments: (_filters: unknown, options?: { enabled?: boolean }) => {
+    hooks.catalogCalls.push(options?.enabled);
+    return { data: hooks.treatments };
+  },
+}));
 vi.mock('@/hooks/useTreatmentSessions', () => ({
   useCreateTreatmentSessions: () => ({ mutateAsync: hooks.create, isPending: false }),
   useEncounterNoShow: () => ({ mutateAsync: hooks.noShow, isPending: false }),
@@ -77,6 +83,7 @@ beforeEach(() => {
   hooks.remove.mockResolvedValue(undefined);
   hooks.sessionsOn = true;
   hooks.treatments = [];
+  hooks.catalogCalls = [];
   hooks.create.mockResolvedValue([{ id: 's1' }]);
   hooks.noShow.mockResolvedValue([]);
   useAuthStore.setState({ user: { id: 'me', tenantId: 'tenant-1' } as never });
@@ -241,6 +248,16 @@ describe('EncounterPanel', () => {
 
       expect(screen.queryByRole('group', { name: 'Tratamientos (opcional)' })).not.toBeInTheDocument();
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+      // The catalog is not even requested while its section is off.
+      expect(hooks.catalogCalls.length).toBeGreaterThan(0);
+      expect(hooks.catalogCalls.every((enabled) => enabled === false)).toBe(true);
+    });
+
+    it('requests the catalog when the sessions section is on', () => {
+      hooks.treatments = catalog(1);
+      open('specialties');
+
+      expect(hooks.catalogCalls.every((enabled) => enabled === true)).toBe(true);
     });
 
     it('asks only for treatments in treatments mode', async () => {
@@ -499,6 +516,37 @@ describe('EncounterPanel', () => {
       renderOpen(withSessions(sessions));
 
       expect(screen.queryByRole('button', { name: 'No asistió' })).not.toBeInTheDocument();
+    });
+
+    it('does not offer "No asistió" when the sessions section is off', () => {
+      hooks.sessionsOn = false;
+      renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]));
+
+      expect(screen.queryByRole('button', { name: 'No asistió' })).not.toBeInTheDocument();
+    });
+
+    it('offers "No asistió" when the rest of the treatments were cancelled or did not attend', () => {
+      renderOpen(
+        withSessions([
+          session('s1', 'Toxina', 'CONSENTED'),
+          session('s2', 'Peeling', 'CANCELLED'),
+          session('s3', 'Relleno', 'NO_SHOW'),
+        ]),
+      );
+
+      expect(screen.getByRole('button', { name: 'No asistió' })).toBeInTheDocument();
+    });
+
+    it('does not offer "No asistió" when only cancelled treatments are left', () => {
+      renderOpen(withSessions([session('s1', 'Toxina', 'CANCELLED')]));
+
+      expect(screen.queryByRole('button', { name: 'No asistió' })).not.toBeInTheDocument();
+    });
+
+    it('does not offer to remove an encounter that has treatments, even with no records', () => {
+      renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]), 'specialties');
+
+      expect(screen.queryByRole('button', { name: 'Eliminar atención' })).not.toBeInTheDocument();
     });
 
     it('does not offer to remove the encounter in treatments mode', () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Play } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -317,7 +317,14 @@ function LastPendingDialog({
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | undefined>();
 
-  const closeEncounter = async () => {
+  // A refused password sends the user back to retype it.
+  useEffect(() => {
+    if (passwordError && !busy) document.getElementById(passwordId)?.focus();
+  }, [passwordError, busy, passwordId]);
+
+  const closeEncounter = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busy || !password) return;
     setPasswordError(undefined);
     const error = await onCompleteAndClose(password, summary.trim());
     // Typed again for every attempt: the password is never kept.
@@ -328,50 +335,46 @@ function LastPendingDialog({
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <DialogHeader>
-          <DialogTitle id={titleId}>Completar tratamiento</DialogTitle>
-          <DialogDescription>
-            Es el último tratamiento pendiente de la atención. Puedes cerrar la atención ahora o
-            completar solo el tratamiento y seguir en ella. No se puede deshacer.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor={summaryId}>Resumen de la atención</Label>
-            <Textarea
-              id={summaryId}
-              rows={3}
-              maxLength={ENCOUNTER_SUMMARY_MAX}
-              value={summary}
+        <form onSubmit={(event) => void closeEncounter(event)} noValidate className="space-y-4">
+          <DialogHeader>
+            <DialogTitle id={titleId}>Completar tratamiento</DialogTitle>
+            <DialogDescription>
+              Es el último tratamiento pendiente de la atención. Puedes cerrar la atención ahora o
+              completar solo el tratamiento y seguir en ella. No se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor={summaryId}>Resumen de la atención</Label>
+              <Textarea
+                id={summaryId}
+                rows={3}
+                maxLength={ENCOUNTER_SUMMARY_MAX}
+                value={summary}
+                disabled={busy}
+                onChange={(event) => setSummary(event.target.value)}
+              />
+            </div>
+            <SignaturePasswordField
+              id={passwordId}
+              value={password}
+              onChange={setPassword}
+              error={passwordError}
               disabled={busy}
-              onChange={(event) => setSummary(event.target.value)}
             />
           </div>
-          <SignaturePasswordField
-            id={passwordId}
-            value={password}
-            onChange={setPassword}
-            error={passwordError}
-            disabled={busy}
-          />
-        </div>
-        <DialogFooter className="gap-2">
-          <Button type="button" size="lg" variant="outline" onClick={onClose}>
-            Volver
-          </Button>
-          <Button type="button" size="lg" variant="outline" disabled={busy} onClick={onCompleteAndStay}>
-            Completar y seguir en la atención
-          </Button>
-          <Button
-            type="button"
-            size="lg"
-            disabled={busy || !password}
-            loading={busy}
-            onClick={() => void closeEncounter()}
-          >
-            Completar y cerrar atención
-          </Button>
-        </DialogFooter>
+          <DialogFooter className="gap-2">
+            <Button type="button" size="lg" variant="outline" onClick={onClose}>
+              Volver
+            </Button>
+            <Button type="button" size="lg" variant="outline" disabled={busy} onClick={onCompleteAndStay}>
+              Completar y seguir en la atención
+            </Button>
+            <Button type="submit" size="lg" disabled={busy || !password} loading={busy}>
+              Completar y cerrar atención
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

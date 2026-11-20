@@ -12,10 +12,11 @@ import type {
   TreatmentVersionInput,
 } from '@/types/treatments';
 
-export function useTreatments(filters?: TreatmentFilters) {
+export function useTreatments(filters?: TreatmentFilters, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: [...QUERY_KEYS.TREATMENTS, 'list', filters ?? null],
     queryFn: () => treatmentsApi.list(filters),
+    enabled: options.enabled ?? true,
   });
 }
 

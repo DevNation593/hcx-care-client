@@ -1018,11 +1018,6 @@ export const treatmentSessionsApi = {
       API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'cancel'),
       { reason },
     ),
-  noShow: (id: string) =>
-    apiClient.post<TreatmentSessionDetail>(
-      API_ENDPOINTS.TREATMENT_SESSION_COMMAND(getTenantId(), id, 'no-show'),
-      {},
-    ),
 };
 
 export const branchesApi = {

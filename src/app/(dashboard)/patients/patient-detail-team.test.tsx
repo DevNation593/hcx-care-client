@@ -258,6 +258,14 @@ describe('patient detail opened from the agenda', () => {
     expect(screen.getByTestId('treatments-tab')).toHaveTextContent('appointment-2');
   });
 
+  it('does not mount the treatments tab named in the URL while its section is off', () => {
+    mocks.search = 'tab=treatments';
+    mocks.disabledSections = ['core.treatments.sessions'];
+    renderPage();
+
+    expect(screen.queryByTestId('treatments-tab')).not.toBeInTheDocument();
+  });
+
   it('opens the files tab from the storage page', () => {
     mocks.search = 'tab=files';
     renderPage();

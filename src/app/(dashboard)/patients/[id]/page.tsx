@@ -295,7 +295,7 @@ function PatientDetailPageContent() {
         {activeTab === 'orders' && visibleTabs.some((tab) => tab.id === 'orders') && (
           <ClinicalOrdersTab patientId={patientId} />
         )}
-        {activeTab === 'treatments' && canSeeClinical && (
+        {activeTab === 'treatments' && canSeeClinical && visibleTabs.some((tab) => tab.id === 'treatments') && (
           <PatientTreatmentsTab patientId={patientId} initialAppointmentId={startAppointmentId} />
         )}
         {activeTab === 'files' && canSeeClinical && <PatientFilesTab patientId={patientId} />}

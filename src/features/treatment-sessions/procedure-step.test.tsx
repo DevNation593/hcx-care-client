@@ -14,7 +14,6 @@ const hooks = vi.hoisted(() => ({
   start: vi.fn(),
   complete: vi.fn(),
   cancel: vi.fn(),
-  noShow: vi.fn(),
   reset: vi.fn(),
 }));
 
@@ -41,7 +40,6 @@ vi.mock('@/hooks/useTreatmentSessions', async () => {
       start: useMutation((input) => hooks.start(input)),
       complete: useMutation((input) => hooks.complete(input)),
       cancel: useMutation((input) => hooks.cancel(input)),
-      noShow: useMutation((input) => hooks.noShow(input)),
     }),
   };
 });
@@ -104,7 +102,6 @@ beforeEach(() => {
   hooks.start.mockResolvedValue({});
   hooks.complete.mockResolvedValue({});
   hooks.cancel.mockResolvedValue({});
-  hooks.noShow.mockResolvedValue({});
 });
 
 describe('ProcedureStep start', () => {
@@ -386,6 +383,33 @@ describe('ProcedureStep complete as the last pending treatment', () => {
 
     expect(hooks.complete).toHaveBeenCalledWith({});
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits "Completar y cerrar atención" with Enter in the password field, only once it is typed', async () => {
+    render(<Step session={lastPending()} />);
+    const dialog = await open();
+
+    fireEvent.submit(dialog.querySelector('form')!);
+    expect(hooks.complete).not.toHaveBeenCalled();
+
+    typePassword(dialog, 'secreto');
+    await act(async () => fireEvent.submit(dialog.querySelector('form')!));
+
+    expect(hooks.complete).toHaveBeenCalledWith({ closeEncounter: true, password: 'secreto' });
+  });
+
+  it('moves the focus back to the password field after a wrong password', async () => {
+    hooks.complete.mockRejectedValue({ status: 403, code: 'SIGNATURE_PASSWORD_INVALID', message: 'No es correcta.' });
+    render(<Step session={lastPending()} />);
+    const dialog = await open();
+
+    typePassword(dialog, 'mala');
+    within(dialog).getByRole('button', { name: 'Completar y cerrar atención' }).focus();
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+    );
+
+    expect(within(screen.getByRole('dialog')).getByLabelText(/Tu contraseña para firmar/)).toHaveFocus();
   });
 
   it('shows the password error, clears the field and keeps the dialog open', async () => {

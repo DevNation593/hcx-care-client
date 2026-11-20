@@ -26,7 +26,6 @@ const hooks = vi.hoisted(() => ({
   revokeConsent: vi.fn(),
   complete: vi.fn(),
   cancel: vi.fn(),
-  noShow: vi.fn(),
   saveNotes: vi.fn(),
 }));
 
@@ -46,9 +45,8 @@ vi.mock('@/hooks/useTreatmentSessions', () => ({
     revokeConsent: mutation(hooks.revokeConsent),
     uploadMedia: mutation(vi.fn()),
     start: mutation(vi.fn()),
-    complete: mutation(hooks.complete),
+    complete: { ...mutation(hooks.complete), reset: vi.fn() },
     cancel: mutation(hooks.cancel),
-    noShow: mutation(hooks.noShow),
   }),
   useSaveProcedureNotes: () => mutation(hooks.saveNotes),
 }));
