@@ -14,7 +14,7 @@ const hooks = vi.hoisted(() => ({
   start: vi.fn(),
   complete: vi.fn(),
   cancel: vi.fn(),
-  noShow: vi.fn(),
+  reset: vi.fn(),
 }));
 
 // A mutation that reports isPending while its promise is unsettled, like the real one.
@@ -24,6 +24,7 @@ vi.mock('@/hooks/useTreatmentSessions', async () => {
     const [isPending, setPending] = useLocalState(false);
     return {
       isPending,
+      reset: () => hooks.reset(),
       mutateAsync: async (input?: unknown) => {
         setPending(true);
         try {
@@ -39,7 +40,6 @@ vi.mock('@/hooks/useTreatmentSessions', async () => {
       start: useMutation((input) => hooks.start(input)),
       complete: useMutation((input) => hooks.complete(input)),
       cancel: useMutation((input) => hooks.cancel(input)),
-      noShow: useMutation((input) => hooks.noShow(input)),
     }),
   };
 });
@@ -80,7 +80,10 @@ const session = (overrides: Partial<TreatmentSessionDetail> = {}): TreatmentSess
       clinicalNotes: { requiredForCompletion: true },
     },
     requirements: { start: [], complete: [] },
-    allowedCommands: ['START', 'CANCEL', 'NO_SHOW'],
+    allowedCommands: ['START', 'CANCEL'],
+    encounterStatus: 'OPEN',
+    // By default another treatment of the encounter is still pending.
+    encounterSessions: [{ id: 'session-2', status: 'CONSENTED', treatmentName: 'Relleno' }],
     ...overrides,
   }) as TreatmentSessionDetail;
 
@@ -99,7 +102,6 @@ beforeEach(() => {
   hooks.start.mockResolvedValue({});
   hooks.complete.mockResolvedValue({});
   hooks.cancel.mockResolvedValue({});
-  hooks.noShow.mockResolvedValue({});
 });
 
 describe('ProcedureStep start', () => {
@@ -140,7 +142,7 @@ describe('ProcedureStep start', () => {
     expect(button).toBeDisabled();
     fireEvent.click(button);
     expect(hooks.start).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'No asistió' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancelar tratamiento' })).toBeDisabled();
 
     await act(async () => pending.resolve({}));
     expect(screen.getByRole('button', { name: 'Iniciar procedimiento' })).toBeEnabled();
@@ -194,24 +196,26 @@ describe('ProcedureStep start', () => {
   });
 });
 
-describe('ProcedureStep close', () => {
-  it('shows the notes and the close button only while in progress', () => {
+describe('ProcedureStep complete', () => {
+  it('shows the notes and the complete button only while in progress', () => {
     const { rerender } = render(<Step session={session()} />);
     expect(screen.queryByLabelText(/Notas del procedimiento/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Completar tratamiento' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cerrar atención' })).not.toBeInTheDocument();
 
     rerender(<Step session={inProgress()} />);
 
     expect(screen.getByLabelText(/Notas del procedimiento/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cerrar atención' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Completar tratamiento' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Cerrar atención' })).not.toBeInTheDocument();
   });
 
-  it('asks for confirmation before closing and does not call the API when the user goes back', async () => {
+  it('asks for confirmation before completing and does not call the API when the user goes back', async () => {
     render(<Step session={inProgress()} />);
 
-    await click('Cerrar atención');
+    await click('Completar tratamiento');
 
-    const dialog = screen.getByRole('dialog', { name: 'Cerrar atención' });
+    const dialog = screen.getByRole('dialog', { name: 'Completar tratamiento' });
     expect(hooks.complete).not.toHaveBeenCalled();
     await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Volver' })));
 
@@ -226,23 +230,23 @@ describe('ProcedureStep close', () => {
     fireEvent.change(screen.getByLabelText(/Notas del procedimiento/), {
       target: { value: '  Se aplicaron 20 unidades en la frente.  ' },
     });
-    await click('Cerrar atención');
-    await confirm('Confirmar cierre');
+    await click('Completar tratamiento');
+    await confirm('Completar');
 
-    expect(hooks.complete).toHaveBeenCalledWith('Se aplicaron 20 unidades en la frente.');
+    expect(hooks.complete).toHaveBeenCalledWith({ procedureNotes: 'Se aplicaron 20 unidades en la frente.' });
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   it('sends no notes when none were typed and leaves the decision to the API', async () => {
     render(<Step session={inProgress()} />);
 
-    await click('Cerrar atención');
-    await confirm('Confirmar cierre');
+    await click('Completar tratamiento');
+    await confirm('Completar');
 
-    expect(hooks.complete).toHaveBeenCalledWith(undefined);
+    expect(hooks.complete).toHaveBeenCalledWith({});
   });
 
-  it('keeps the typed notes and the page where it is when the API blocks the close', async () => {
+  it('keeps the typed notes and the page where it is when the API blocks the completion', async () => {
     const onDone = vi.fn();
     hooks.complete.mockRejectedValue({
       status: 422,
@@ -252,8 +256,8 @@ describe('ProcedureStep close', () => {
     render(<Step session={inProgress()} onDone={onDone} />);
     fireEvent.change(screen.getByLabelText(/Notas del procedimiento/), { target: { value: 'ok' } });
 
-    await click('Cerrar atención');
-    await confirm('Confirmar cierre');
+    await click('Completar tratamiento');
+    await confirm('Completar');
 
     const alert = screen.getByRole('alert');
     expect(within(alert).getByText('Faltan las notas del procedimiento')).toBeInTheDocument();
@@ -262,28 +266,236 @@ describe('ProcedureStep close', () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
-  it('disables the close and the cancel buttons while the close is pending and sends it once', async () => {
+  it('disables the complete and the cancel buttons while pending and sends it once', async () => {
     const pending = deferred();
     hooks.complete.mockReturnValue(pending.promise);
     render(<Step session={inProgress()} />);
-    await click('Cerrar atención');
-    await confirm('Confirmar cierre');
+    await click('Completar tratamiento');
+    await confirm('Completar');
 
-    const close = screen.getByRole('button', { name: 'Cerrar atención' });
-    expect(close).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Cancelar atención' })).toBeDisabled();
-    fireEvent.submit(close.closest('form')!);
+    const complete = screen.getByRole('button', { name: 'Completar tratamiento' });
+    expect(complete).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancelar tratamiento' })).toBeDisabled();
+    fireEvent.submit(complete.closest('form')!);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(hooks.complete).toHaveBeenCalledTimes(1);
 
     await act(async () => pending.resolve({}));
-    expect(screen.getByRole('button', { name: 'Cerrar atención' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Completar tratamiento' })).toBeEnabled();
   });
 
-  it('disables the close button when COMPLETE is not allowed', () => {
+  it('disables the complete button when COMPLETE is not allowed', () => {
     render(<Step session={inProgress(['CANCEL'])} />);
 
-    expect(screen.getByRole('button', { name: 'Cerrar atención' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Completar tratamiento' })).toBeDisabled();
+  });
+
+  it('offers no complete button to a read-only viewer', () => {
+    render(<ProcedureStep session={inProgress()} readOnly notes="" onNotesChange={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'Completar tratamiento' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ProcedureStep complete as the last pending treatment', () => {
+  const lastPending = (siblings: TreatmentSessionDetail['encounterSessions'] = []) =>
+    session({
+      status: 'IN_PROGRESS',
+      startedAt: '2026-10-15T15:00:00.000Z',
+      allowedCommands: ['UPLOAD_AFTER', 'COMPLETE', 'CANCEL'],
+      encounterSessions: siblings,
+    });
+  const open = async () => {
+    await click('Completar tratamiento');
+    return screen.getByRole('dialog');
+  };
+  const typePassword = (dialog: HTMLElement, value: string) =>
+    fireEvent.change(within(dialog).getByLabelText(/Tu contraseña para firmar/), { target: { value } });
+
+  it('offers to complete and close the encounter or to complete and stay in it', async () => {
+    render(<Step session={lastPending()} />);
+
+    const dialog = await open();
+
+    expect(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Completar y seguir en la atención' })).toBeInTheDocument();
+  });
+
+  it('also counts finished or cancelled siblings as nothing pending', async () => {
+    render(
+      <Step
+        session={lastPending([
+          { id: 's2', status: 'CLINICAL_COMPLETE', treatmentName: 'Relleno' },
+          { id: 's3', status: 'CANCELLED', treatmentName: 'Peeling' },
+        ])}
+      />,
+    );
+
+    const dialog = await open();
+
+    expect(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })).toBeInTheDocument();
+  });
+
+  it('keeps complete and close disabled until the password is typed, then sends it with the summary', async () => {
+    const onDone = vi.fn();
+    render(<Step session={lastPending()} onDone={onDone} />);
+    fireEvent.change(screen.getByLabelText(/Notas del procedimiento/), { target: { value: ' Notas ' } });
+    const dialog = await open();
+
+    const closeButton = within(dialog).getByRole('button', { name: 'Completar y cerrar atención' });
+    expect(closeButton).toBeDisabled();
+    const summary = within(dialog).getByLabelText('Resumen de la atención');
+    expect(summary).toHaveAttribute('maxlength', '5000');
+    fireEvent.change(summary, { target: { value: '  Todo bien  ' } });
+    typePassword(dialog, 'secreto');
+    expect(closeButton).toBeEnabled();
+    await act(async () => fireEvent.click(closeButton));
+
+    expect(hooks.complete).toHaveBeenCalledWith({
+      procedureNotes: 'Notas',
+      closeEncounter: true,
+      password: 'secreto',
+      encounterSummary: 'Todo bien',
+    });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the summary when it was left empty', async () => {
+    render(<Step session={lastPending()} />);
+    const dialog = await open();
+
+    typePassword(dialog, 'secreto');
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+    );
+
+    expect(hooks.complete).toHaveBeenCalledWith({ closeEncounter: true, password: 'secreto' });
+  });
+
+  it('completes without closing the encounter and sends no password', async () => {
+    const onDone = vi.fn();
+    render(<Step session={lastPending()} onDone={onDone} />);
+    const dialog = await open();
+
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y seguir en la atención' })),
+    );
+
+    expect(hooks.complete).toHaveBeenCalledWith({});
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits "Completar y cerrar atención" with Enter in the password field, only once it is typed', async () => {
+    render(<Step session={lastPending()} />);
+    const dialog = await open();
+
+    fireEvent.submit(dialog.querySelector('form')!);
+    expect(hooks.complete).not.toHaveBeenCalled();
+
+    typePassword(dialog, 'secreto');
+    await act(async () => fireEvent.submit(dialog.querySelector('form')!));
+
+    expect(hooks.complete).toHaveBeenCalledWith({ closeEncounter: true, password: 'secreto' });
+  });
+
+  it('moves the focus back to the password field after a wrong password', async () => {
+    hooks.complete.mockRejectedValue({ status: 403, code: 'SIGNATURE_PASSWORD_INVALID', message: 'No es correcta.' });
+    render(<Step session={lastPending()} />);
+    const dialog = await open();
+
+    typePassword(dialog, 'mala');
+    within(dialog).getByRole('button', { name: 'Completar y cerrar atención' }).focus();
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+    );
+
+    expect(within(screen.getByRole('dialog')).getByLabelText(/Tu contraseña para firmar/)).toHaveFocus();
+  });
+
+  it('shows the password error, clears the field and keeps the dialog open', async () => {
+    const onDone = vi.fn();
+    hooks.complete.mockRejectedValue({
+      status: 403,
+      code: 'SIGNATURE_PASSWORD_INVALID',
+      message: 'La contraseña no es correcta.',
+    });
+    render(<Step session={lastPending()} onDone={onDone} />);
+    const dialog = await open();
+
+    typePassword(dialog, 'mala');
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+    );
+
+    const still = screen.getByRole('dialog');
+    expect(within(still).getByRole('alert')).toHaveTextContent('La contraseña no es correcta.');
+    expect(within(still).getByLabelText(/Tu contraseña para firmar/)).toHaveValue('');
+    expect(within(still).getByRole('button', { name: 'Completar y cerrar atención' })).toBeDisabled();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('closes the dialog and shows the message when a sibling treatment is still unfinished', async () => {
+    const onDone = vi.fn();
+    hooks.complete.mockRejectedValue({
+      status: 409,
+      code: 'ENCOUNTER_HAS_UNFINISHED_TREATMENTS',
+      message: 'Quedan tratamientos sin terminar',
+    });
+    render(<Step session={lastPending()} onDone={onDone} />);
+    const dialog = await open();
+
+    typePassword(dialog, 'secreto');
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Quedan tratamientos sin terminar');
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('drops the password from the mutation after the attempt, whether it worked or not', async () => {
+    hooks.complete.mockRejectedValueOnce({ status: 403, code: 'SIGNATURE_PASSWORD_INVALID', message: 'No' });
+    render(<Step session={lastPending()} />);
+    const dialog = await open();
+
+    typePassword(dialog, 'mala');
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+    );
+    expect(hooks.reset).toHaveBeenCalledTimes(1);
+
+    typePassword(screen.getByRole('dialog'), 'buena');
+    await act(async () =>
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', { name: 'Completar y cerrar atención' }),
+      ),
+    );
+    expect(hooks.reset).toHaveBeenCalledTimes(2);
+  });
+
+  it('closes the dialog and lists what is missing when the API blocks the completion', async () => {
+    hooks.complete.mockRejectedValue({ status: 422, message: 'x', missing: ['AFTER_PHOTOS'] });
+    render(<Step session={lastPending()} />);
+    const dialog = await open();
+
+    typePassword(dialog, 'secreto');
+    await act(async () =>
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Faltan fotos de después');
+  });
+
+  it('offers only "Completar" while another treatment is pending', async () => {
+    render(<Step session={lastPending([{ id: 's2', status: 'READY_FOR_CONSENT', treatmentName: 'Relleno' }])} />);
+
+    const dialog = await open();
+
+    expect(within(dialog).getByRole('button', { name: 'Completar' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /cerrar atención/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/Tu contraseña para firmar/)).not.toBeInTheDocument();
   });
 });
 
@@ -302,13 +514,13 @@ describe('ProcedureStep notes', () => {
   });
 });
 
-describe('ProcedureStep cancel and no show', () => {
+describe('ProcedureStep cancel', () => {
   it('asks for a reason of 3 to 1000 characters and sends it', async () => {
     const onDone = vi.fn();
     render(<Step session={session()} onDone={onDone} />);
-    await click('Cancelar atención');
+    await click('Cancelar tratamiento');
 
-    const dialog = screen.getByRole('dialog', { name: 'Cancelar atención' });
+    const dialog = screen.getByRole('dialog', { name: 'Cancelar tratamiento' });
     const confirm = within(dialog).getByRole('button', { name: 'Confirmar cancelación' });
     expect(confirm).toBeDisabled();
     fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'ab' } });
@@ -322,20 +534,21 @@ describe('ProcedureStep cancel and no show', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it('does not say the appointment is cancelled when cancelling a started session', async () => {
+  it('says the encounter stays open and does not talk about the appointment', async () => {
     render(<Step session={inProgress(['COMPLETE', 'CANCEL'])} />);
-    await click('Cancelar atención');
+    await click('Cancelar tratamiento');
 
-    const dialog = screen.getByRole('dialog', { name: 'Cancelar atención' });
-    expect(dialog).toHaveTextContent('La atención termina y el motivo queda registrado.');
-    // The API completes the appointment of a started session: the patient attended.
+    const dialog = screen.getByRole('dialog', { name: 'Cancelar tratamiento' });
+    expect(dialog).toHaveTextContent(
+      'El tratamiento termina y el motivo queda registrado. La atención sigue abierta.',
+    );
     expect(dialog).not.toHaveTextContent(/cita/i);
   });
 
   it('keeps the dialog open with the API message when the cancellation fails', async () => {
-    hooks.cancel.mockRejectedValue({ status: 409, message: 'La atención ya terminó' });
+    hooks.cancel.mockRejectedValue({ status: 409, message: 'El tratamiento ya terminó' });
     render(<Step session={session()} />);
-    await click('Cancelar atención');
+    await click('Cancelar tratamiento');
 
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Motivo válido' } });
@@ -343,59 +556,21 @@ describe('ProcedureStep cancel and no show', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar cancelación' })),
     );
 
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('La atención ya terminó');
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('El tratamiento ya terminó');
     expect(within(dialog).getByLabelText(/Motivo/)).toHaveValue('Motivo válido');
   });
 
-  it('asks for confirmation before a no show and does not call the API when the user goes back', async () => {
-    render(<Step session={session()} />);
-
-    await click('No asistió');
-
-    const dialog = screen.getByRole('dialog', { name: 'Registrar inasistencia' });
-    await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Volver' })));
-
-    expect(hooks.noShow).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('disables the no show and start buttons while the no show is pending and sends it once', async () => {
-    const pending = deferred();
-    hooks.noShow.mockReturnValue(pending.promise);
-    render(<Step session={session()} />);
-    await click('No asistió');
-    await confirm('Confirmar inasistencia');
-
-    expect(screen.getByRole('button', { name: 'No asistió' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Iniciar procedimiento' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'No asistió' }));
-    expect(hooks.noShow).toHaveBeenCalledTimes(1);
-
-    await act(async () => pending.resolve({}));
-  });
-
-  it('registers a no show after the confirmation and tells the page', async () => {
-    const onDone = vi.fn();
-    render(<Step session={session()} onDone={onDone} />);
-
-    await click('No asistió');
-    await confirm('Confirmar inasistencia');
-
-    expect(hooks.noShow).toHaveBeenCalledTimes(1);
-    expect(onDone).toHaveBeenCalledTimes(1);
-  });
-
-  it('shows No asistió only while NO_SHOW is allowed', () => {
-    render(<Step session={inProgress()} />);
+  it('no longer offers a no show, even when the API still allows it', () => {
+    render(<Step session={session({ allowedCommands: ['START', 'CANCEL', 'NO_SHOW'] })} />);
 
     expect(screen.queryByRole('button', { name: 'No asistió' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancelar atención' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancelar tratamiento' })).toBeInTheDocument();
   });
 
   it('offers no action once the session ended', () => {
     render(<Step session={session({ status: 'CANCELLED', allowedCommands: [] })} />);
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.getByText(/Cancelada: esta atención ya no admite cambios/)).toBeInTheDocument();
+    expect(screen.getByText(/Cancelada: este tratamiento ya no admite cambios/)).toBeInTheDocument();
   });
 });

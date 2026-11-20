@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QUERY_KEYS } from '@/lib/constants';
 import { useAuthStore } from '@/store/authStore';
+import { toast } from 'sonner';
 import { useCloseEncounter, useStartEncounter } from './useEncounters';
 
 const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() }));
@@ -38,8 +39,34 @@ describe('encounter mutations', () => {
         QUERY_KEYS.PATIENT_ENCOUNTERS('patient-1'),
         QUERY_KEYS.PATIENT_SPECIALTY_RECORDS('patient-1'),
         QUERY_KEYS.PATIENT_CLINICAL_ALERTS('patient-1'),
+        QUERY_KEYS.PATIENT_PROCEDURE_CONSENTS('patient-1'),
       ]),
     );
+  });
+
+  it('reads the encounters again after a 409 when closing', async () => {
+    http.post.mockRejectedValue({ status: 409, message: 'La atención ya está cerrada' });
+    const { wrapper, keys } = setup();
+    const close = renderHook(() => useCloseEncounter('patient-1'), { wrapper });
+
+    await act(async () => {
+      await close.result.current.mutateAsync({ encounterId: 'encounter-1', password: 'clave' }).catch(() => undefined);
+    });
+
+    expect(keys()).toContainEqual(QUERY_KEYS.PATIENT_ENCOUNTERS('patient-1'));
+    expect(toast.error).toHaveBeenCalledWith('La atención ya está cerrada');
+  });
+
+  it('leaves the encounters alone after an error that is not a conflict', async () => {
+    http.post.mockRejectedValue({ status: 500, message: 'Error' });
+    const { wrapper, keys } = setup();
+    const close = renderHook(() => useCloseEncounter('patient-1'), { wrapper });
+
+    await act(async () => {
+      await close.result.current.mutateAsync({ encounterId: 'encounter-1', password: 'clave' }).catch(() => undefined);
+    });
+
+    expect(keys()).toEqual([]);
   });
 
   it('leaves the records alone when an encounter starts', async () => {

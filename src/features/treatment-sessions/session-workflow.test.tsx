@@ -10,6 +10,11 @@ vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
   return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
 });
 
+const sections = vi.hoisted(() => ({ enabled: new Set<string>() }));
+vi.mock('@/hooks/useSections', () => ({
+  useSections: () => ({ isEnabled: (key: string) => sections.enabled.has(key) }),
+}));
+
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 
 const hooks = vi.hoisted(() => ({
@@ -21,7 +26,6 @@ const hooks = vi.hoisted(() => ({
   revokeConsent: vi.fn(),
   complete: vi.fn(),
   cancel: vi.fn(),
-  noShow: vi.fn(),
   saveNotes: vi.fn(),
 }));
 
@@ -41,9 +45,8 @@ vi.mock('@/hooks/useTreatmentSessions', () => ({
     revokeConsent: mutation(hooks.revokeConsent),
     uploadMedia: mutation(vi.fn()),
     start: mutation(vi.fn()),
-    complete: mutation(hooks.complete),
+    complete: { ...mutation(hooks.complete), reset: vi.fn() },
     cancel: mutation(hooks.cancel),
-    noShow: mutation(hooks.noShow),
   }),
   useSaveProcedureNotes: () => mutation(hooks.saveNotes),
 }));
@@ -97,12 +100,15 @@ const session = (overrides: Partial<TreatmentSessionDetail> = {}): TreatmentSess
     media: [],
     requirements: { start: ['SIGNED_APPLICABLE_CONSENT'], complete: [] },
     allowedCommands: ['PRESENT_CONSENT', 'SIGN_CONSENT', 'REFUSE_CONSENT', 'CANCEL', 'NO_SHOW'],
+    encounterStatus: 'OPEN',
+    encounterSessions: [{ id: 'session-2', status: 'CONSENTED', treatmentName: 'Relleno' }],
     ...overrides,
   }) as TreatmentSessionDetail;
 
 beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.setState({ user: { id: 'pro' } as never });
+  sections.enabled.clear();
   hooks.session = session();
   hooks.updatedAt = 1;
   hooks.presentConsent.mockResolvedValue(document);
@@ -260,8 +266,12 @@ describe('SessionWorkflow', () => {
         allowedCommands: ['START', 'CANCEL', 'NO_SHOW'],
       });
     });
-    hooks.noShow.mockImplementation(async () => {
-      hooks.session = session({ status: 'NO_SHOW', requirements: { start: [], complete: [] }, allowedCommands: [] });
+    hooks.cancel.mockImplementation(async () => {
+      hooks.session = session({
+        status: 'CANCELLED',
+        requirements: { start: [], complete: [] },
+        allowedCommands: [],
+      });
     });
     const { rerender } = render(<SessionWorkflow id="session-1" />);
     fireEvent.click(stepButton(/^Consentimiento/));
@@ -280,11 +290,11 @@ describe('SessionWorkflow', () => {
     ).toBeInTheDocument();
 
     // The wait is over: a later automatic change still moves the focus.
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'No asistió' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancelar tratamiento' })));
+    const cancelDialog = screen.getByRole('dialog');
+    fireEvent.change(within(cancelDialog).getByLabelText(/Motivo/), { target: { value: 'Paciente con fiebre' } });
     await act(async () =>
-      fireEvent.click(
-        within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar inasistencia' }),
-      ),
+      fireEvent.click(within(cancelDialog).getByRole('button', { name: 'Confirmar cancelación' })),
     );
     rerender(<SessionWorkflow id="session-1" />);
 
@@ -379,6 +389,24 @@ describe('SessionWorkflow', () => {
         fireEvent.change(notesField(), { target: { value: 'Notas guardadas ' } });
         await act(async () => vi.advanceTimersByTime(5000));
 
+        expect(hooks.saveNotes).not.toHaveBeenCalled();
+      });
+
+      it('does not send a pending draft once the session was completed', async () => {
+        hooks.session = started();
+        hooks.complete.mockResolvedValue({});
+        const { unmount } = render(<SessionWorkflow id="session-1" />);
+
+        fireEvent.change(notesField(), { target: { value: 'Notas finales' } });
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Completar tratamiento' })));
+        await act(async () =>
+          fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Completar' })),
+        );
+        // The refetched session has not arrived yet: the draft must still not be sent.
+        await act(async () => vi.advanceTimersByTime(5000));
+        unmount();
+
+        expect(hooks.complete).toHaveBeenCalledWith({ procedureNotes: 'Notas finales' });
         expect(hooks.saveNotes).not.toHaveBeenCalled();
       });
 
@@ -527,7 +555,7 @@ describe('SessionWorkflow', () => {
       render(<SessionWorkflow id="session-1" />);
 
       expect(heading()).toHaveTextContent('Procedimiento');
-      expect(screen.getByRole('button', { name: 'Cerrar atención' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Completar tratamiento' })).toBeInTheDocument();
 
       fireEvent.click(stepButton(/Fotos antes/));
       expect(heading()).toHaveTextContent('Fotos antes');
@@ -552,11 +580,9 @@ describe('SessionWorkflow', () => {
       });
       const { rerender } = render(<SessionWorkflow id="session-1" />);
 
-      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cerrar atención' })));
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Completar tratamiento' })));
       await act(async () =>
-        fireEvent.click(
-          within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar cierre' }),
-        ),
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Completar' })),
       );
       rerender(<SessionWorkflow id="session-1" />);
 
@@ -577,7 +603,7 @@ describe('SessionWorkflow', () => {
       });
       const { rerender } = render(<SessionWorkflow id="session-1" />);
 
-      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancelar atención' })));
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancelar tratamiento' })));
       const dialog = screen.getByRole('dialog');
       fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Paciente con fiebre' } });
       await act(async () =>
@@ -590,29 +616,73 @@ describe('SessionWorkflow', () => {
       expect(heading()).toHaveFocus();
       expect(screen.getByText('Paso actual: Cierre')).toBeInTheDocument();
     });
-
-    it('moves the focus to the summary after marking a no show', async () => {
-      hooks.session = session({
-        status: 'CONSENTED',
+  });
+  describe('the encounter around the session', () => {
+    const inProgress = (overrides: Partial<TreatmentSessionDetail> = {}) =>
+      session({
+        status: 'IN_PROGRESS',
+        startedAt: '2026-10-15T15:00:00.000Z',
         consentDocumentId: 'doc-1',
         requirements: { start: [], complete: [] },
-        allowedCommands: ['START', 'CANCEL', 'NO_SHOW'],
+        allowedCommands: ['UPLOAD_AFTER', 'COMPLETE', 'CANCEL'],
+        ...overrides,
       });
-      hooks.noShow.mockImplementation(async () => {
-        hooks.session = session({ status: 'NO_SHOW', requirements: { start: [], complete: [] }, allowedCommands: [] });
-      });
-      const { rerender } = render(<SessionWorkflow id="session-1" />);
 
-      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'No asistió' })));
-      await act(async () =>
-        fireEvent.click(
-          within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar inasistencia' }),
-        ),
+    it('links the header back to the treatments tab, or to the specialties tab when enabled', () => {
+      const { unmount } = render(<SessionWorkflow id="session-1" />);
+      expect(screen.getByRole('link', { name: 'Volver al paciente' })).toHaveAttribute(
+        'href',
+        '/patients/patient-1?tab=treatments',
       );
-      rerender(<SessionWorkflow id="session-1" />);
+      unmount();
+
+      sections.enabled.add('core.clinical.specialties');
+      render(<SessionWorkflow id="session-1" />);
+      expect(screen.getByRole('link', { name: 'Volver al paciente' })).toHaveAttribute(
+        'href',
+        '/patients/patient-1?tab=specialties',
+      );
+    });
+
+    it('completes and closes the encounter from the wizard when it is the last pending treatment', async () => {
+      hooks.session = inProgress({ encounterSessions: [] });
+      hooks.complete.mockResolvedValue({});
+      render(<SessionWorkflow id="session-1" />);
+
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Completar tratamiento' })));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText(/Tu contraseña para firmar/), {
+        target: { value: 'secreto' },
+      });
+      await act(async () =>
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Completar y cerrar atención' })),
+      );
+
+      expect(hooks.complete).toHaveBeenCalledWith({ closeEncounter: true, password: 'secreto' });
+    });
+
+    it('shows the next treatment and the way back once the session is complete', () => {
+      hooks.session = inProgress({
+        status: 'CLINICAL_COMPLETE',
+        allowedCommands: [],
+        completedAt: '2026-10-15T16:00:00.000Z',
+      });
+      render(<SessionWorkflow id="session-1" />);
 
       expect(heading()).toHaveTextContent('Cierre');
-      expect(heading()).toHaveFocus();
+      expect(screen.getByRole('link', { name: 'Siguiente tratamiento: Relleno' })).toHaveAttribute(
+        'href',
+        '/treatment-sessions/session-2',
+      );
+      expect(screen.getByRole('link', { name: 'Volver a la atención' })).toBeInTheDocument();
+    });
+
+    it('does not offer the complete action to someone else than the professional', () => {
+      useAuthStore.setState({ user: { id: 'colleague' } as never });
+      hooks.session = inProgress({ encounterSessions: [], allowedCommands: [] });
+      render(<SessionWorkflow id="session-1" />);
+
+      expect(screen.queryByRole('button', { name: /Completar/ })).not.toBeInTheDocument();
     });
   });
   describe('for someone who is not the professional of the session', () => {
@@ -654,7 +724,7 @@ describe('SessionWorkflow', () => {
     const ACTION_HINTS =
       /se habilitan|se podrá iniciar|se presenta cuando|ya no se puede modificar|Todo está listo|Entrega el dispositivo/;
     const WRITE_BUTTONS =
-      /Guardar ficha|Mostrar consentimiento|Revocar consentimiento|Iniciar procedimiento|Cerrar atención|Cancelar atención|No asistió/;
+      /Guardar ficha|Mostrar consentimiento|Revocar consentimiento|Iniciar procedimiento|Completar tratamiento|Completar|Cancelar tratamiento|No asistió/;
 
     const expectReadOnly = (container: HTMLElement) => {
       expect(screen.queryByRole('button', { name: WRITE_BUTTONS })).not.toBeInTheDocument();
@@ -732,7 +802,7 @@ describe('SessionWorkflow', () => {
       fireEvent.click(stepButton(/^Consentimiento/));
       expect(screen.getByRole('button', { name: 'Revocar consentimiento' })).toBeEnabled();
       fireEvent.click(stepButton(/^Procedimiento/));
-      expect(screen.queryByRole('button', { name: /Iniciar procedimiento|Cancelar atención/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Iniciar procedimiento|Cancelar tratamiento/ })).not.toBeInTheDocument();
     });
   });
 });

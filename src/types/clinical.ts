@@ -1,5 +1,7 @@
 // Contracts of the clinical module definitions and tenant forms served by the API.
 
+import type { TreatmentSessionStatus } from './treatments';
+
 export type FormFieldType =
   | 'text'
   | 'textarea'
@@ -211,6 +213,12 @@ export interface Encounter {
   specialty?: { id: string; code: string; name: string };
   branch?: { id: string; name: string } | null;
   appointment?: { id: string; title: string; startTime: string } | null;
+  /** The treatment sessions held by the encounter, absent from APIs that predate them. */
+  treatmentSessions?: {
+    id: string;
+    status: TreatmentSessionStatus;
+    treatment: { id: string; name: string };
+  }[];
 }
 
 export interface EncounterInput {

@@ -5,7 +5,9 @@ import { toast } from 'sonner';
 import { treatmentSessionsApi } from '@/lib/api/endpoints';
 import { QUERY_KEYS } from '@/lib/constants';
 import type { ApiError } from '@/types';
+import { invalidateSignedEncounter } from './queryInvalidation';
 import type {
+  CompleteSessionInput,
   ConsentDocument,
   SessionMediaPhase,
   SignConsentInput,
@@ -57,21 +59,66 @@ export function useSaveProcedureNotes(id: string) {
   });
 }
 
-/** Opens a session of a treatment on a new procedure encounter of the patient. */
-export function useCreateTreatmentSession(patientId: string) {
+/** Opens one session per treatment on one procedure encounter of the patient. */
+export function useCreateTreatmentSessions(patientId: string) {
   const queryClient = useQueryClient();
-  return useMutation<Awaited<ReturnType<typeof treatmentSessionsApi.create>>, ApiError, TreatmentSessionInput>({
+  return useMutation<TreatmentSessionDetail[], ApiError, TreatmentSessionInput>({
     mutationFn: (data) => treatmentSessionsApi.create(patientId, data),
-    onSuccess: (session) => {
-      queryClient.setQueryData(QUERY_KEYS.TREATMENT_SESSION(session.id), session);
+    onSuccess: (sessions, input) => {
+      // With several sessions the earlier ones would carry a stale list of their siblings.
+      if (sessions.length === 1) {
+        queryClient.setQueryData(QUERY_KEYS.TREATMENT_SESSION(sessions[0].id), sessions[0]);
+      }
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId) });
+      // The sessions already visited list their siblings: a new one changes what they offer next.
+      if (input.encounterId) {
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey, state }) =>
+            queryKey[0] === 'treatment-sessions' &&
+            queryKey.length === 2 &&
+            (state.data as TreatmentSessionDetail | undefined)?.encounterId === input.encounterId,
+        });
+      }
       // The session opens an encounter and moves its appointment along.
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
-      toast.success('Atención de tratamiento iniciada');
+      toast.success(input.encounterId ? 'Tratamiento añadido' : 'Atención iniciada');
     },
     onError: (error) => {
+      if (error.status === 409) {
+        // The encounter moved on (closed, or one is already open): show what is there now.
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId) });
+        // The panel shows the open encounter after the refetch.
+        if (error.code === 'ENCOUNTER_ALREADY_OPEN') return;
+      }
       toast.error(error.message);
+    },
+  });
+}
+
+/** Records the no-show of the whole encounter: every session without activity. */
+export function useEncounterNoShow(patientId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<TreatmentSessionDetail[], ApiError, string>({
+    mutationFn: (encounterId) => treatmentSessionsApi.encounterNoShow(patientId, encounterId),
+    onSuccess: (missed) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId) });
+      // The sessions already visited would keep offering the commands of their old status.
+      for (const session of missed) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TREATMENT_SESSION(session.id) });
+      }
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
+      toast.success('Inasistencia registrada');
+    },
+    onError: (error) => {
+      if (error.status === 409) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId) });
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId) });
+        if (error.code === 'ENCOUNTER_ALREADY_OPEN') return;
+      }
+      toast.error(error.message || 'No fue posible registrar la inasistencia');
     },
   });
 }
@@ -85,13 +132,16 @@ export function useCreateTreatmentSession(patientId: string) {
 function useSessionMutation<TInput, TResult>(
   id: string,
   mutationFn: (input: TInput) => Promise<TResult>,
-  success: string,
-  onDone?: () => void,
+  success: string | ((input: TInput) => string),
+  onDone?: (result: TResult, input: TInput) => void,
 ) {
   const queryClient = useQueryClient();
   return useMutation<TResult, ApiError, TInput>({
     mutationFn,
-    onSuccess: () => {
+    // The variables of a command can hold a signing password: the cache keeps no copy of them
+    // once the command settles.
+    gcTime: 0,
+    onSuccess: (result, input) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TREATMENT_SESSION(id) });
       // The hook knows the session, not its patient: refresh the lists of every patient.
       queryClient.invalidateQueries({
@@ -103,8 +153,8 @@ function useSessionMutation<TInput, TResult>(
         predicate: ({ queryKey }) => queryKey[0] === 'patients' && queryKey[2] === 'encounters',
       });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.APPOINTMENTS });
-      onDone?.();
-      toast.success(success);
+      onDone?.(result, input);
+      toast.success(typeof success === 'function' ? success(input) : success);
     },
     onError: (error) => {
       // The session moved on elsewhere: read it again so commands it no longer allows go away.
@@ -172,18 +222,18 @@ export function useSessionCommand(id: string) {
     ),
     complete: useSessionMutation(
       id,
-      (procedureNotes?: string) => treatmentSessionsApi.complete(id, procedureNotes),
-      'Atención cerrada',
+      (input: CompleteSessionInput) => treatmentSessionsApi.complete(id, input),
+      (input) =>
+        input.closeEncounter ? 'Tratamiento completado y atención cerrada' : 'Tratamiento completado',
+      // Closing the encounter signs its records, like closing it from the panel.
+      (session, input) => {
+        if (input.closeEncounter) invalidateSignedEncounter(queryClient, session.patientId);
+      },
     ),
     cancel: useSessionMutation(
       id,
       (reason: string) => treatmentSessionsApi.cancel(id, reason),
-      'Atención cancelada',
-    ),
-    noShow: useSessionMutation<void, TreatmentSessionDetail>(
-      id,
-      () => treatmentSessionsApi.noShow(id),
-      'Inasistencia registrada',
+      'Tratamiento cancelado',
     ),
   };
 }
