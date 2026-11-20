@@ -341,6 +341,24 @@ describe('EncounterPanel', () => {
       expect(within(list).queryByRole('link')).not.toBeInTheDocument();
     });
 
+    it('limits the add-treatment dialog to the screen and scrolls the catalog, not the buttons', () => {
+      hooks.treatments = Array.from({ length: 20 }, (_, index) => ({
+        id: `c${index}`,
+        name: `Tratamiento ${index}`,
+        isActive: true,
+      }));
+      renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Añadir tratamiento' }));
+      const dialog = screen.getByRole('dialog', { name: 'Añadir tratamiento' });
+
+      expect(dialog).toHaveClass('max-h-[90dvh]');
+      const catalog = within(dialog).getByRole('group', { name: 'Tratamientos' });
+      expect(catalog).toHaveClass('overflow-y-auto');
+      // The actions are outside the scrolling area.
+      expect(catalog).not.toContainElement(within(dialog).getByRole('button', { name: 'Añadir' }));
+    });
+
     it('blocks closing while a treatment is unfinished and names it', () => {
       renderOpen(
         withSessions([
