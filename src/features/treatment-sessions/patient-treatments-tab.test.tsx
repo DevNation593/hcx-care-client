@@ -88,17 +88,17 @@ describe('PatientTreatmentsTab', () => {
     expect(screen.queryByRole('button', { name: 'Nueva atención' })).not.toBeInTheDocument();
   });
 
-  it('shows the encounter panel in treatments mode when specialties are off', () => {
+  it('shows the encounter panel in treatments mode without the specialties section', () => {
     render(<PatientTreatmentsTab patientId="patient-1" />);
 
     expect(screen.getByTestId('encounter-panel')).toHaveAttribute('data-mode', 'treatments');
   });
 
-  it('shows the encounter panel in specialties mode when specialties are on', () => {
+  it('shows the encounter panel in treatments mode also with the specialties section', () => {
     hooks.enabled.add('core.clinical.specialties');
     render(<PatientTreatmentsTab patientId="patient-1" />);
 
-    expect(screen.getByTestId('encounter-panel')).toHaveAttribute('data-mode', 'specialties');
+    expect(screen.getByTestId('encounter-panel')).toHaveAttribute('data-mode', 'treatments');
   });
 
   it('passes the appointment to attend and the own open encounter to the panel', () => {

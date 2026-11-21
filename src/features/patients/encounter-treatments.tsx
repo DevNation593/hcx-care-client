@@ -3,7 +3,7 @@
 import { useId, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { SESSION_STATUS_VARIANTS } from '@/features/treatment-sessions/patient-treatments-tab';
 import { useEncounterNoShow, useCreateTreatmentSessions } from '@/hooks/useTreatmentSessions';
 import { useTreatments } from '@/hooks/useTreatments';
@@ -23,6 +24,47 @@ import { SESSION_STATUS_LABELS, type TreatmentSessionStatus } from '@/types/trea
 
 export const TREATMENT_SESSIONS_SECTION = 'core.treatments.sessions';
 export const MAX_TREATMENTS_PER_ENCOUNTER = 10;
+
+/** 'treatments' starts from treatments alone; 'specialties' asks type and reason. */
+export type EncounterPanelMode = 'specialties' | 'treatments';
+
+/** Every user-facing string of the panel that names the encounter, by mode: "atención" or "tratamiento". */
+export const PANEL_COPY = {
+  specialties: {
+    title: 'Atención',
+    titleOpen: 'Atención en curso',
+    descriptionIdle: 'Inicia una atención para agrupar los registros de la consulta de hoy.',
+    descriptionOpen: 'Los registros que guardes quedan dentro de esta atención hasta que la cierres.',
+    start: 'Iniciar atención',
+    close: 'Cerrar atención',
+    closeDescription:
+      'Al cerrarla firmas la atención y sus registros: no admite más registros y su cita queda como atendida. Después, cada registro solo se corrige con una adenda; el original se conserva tal como se firmó.',
+    previous: 'Atenciones anteriores',
+    limit: `Máximo ${MAX_TREATMENTS_PER_ENCOUNTER} tratamientos por atención`,
+    treatmentList: 'Tratamientos de la atención',
+    addDescription: 'Elige los tratamientos que también se realizarán en esta atención.',
+    addEmpty: 'No quedan tratamientos activos por añadir a esta atención.',
+    noShowDescription:
+      'Se marcarán como no asistidos cada tratamiento y la cita de esta atención. Esta acción no se puede deshacer.',
+  },
+  treatments: {
+    title: 'Tratamiento',
+    titleOpen: 'Tratamiento en curso',
+    descriptionIdle: 'Inicia un tratamiento para la consulta de hoy.',
+    descriptionOpen: 'Los registros que guardes quedan dentro de este tratamiento hasta que lo cierres.',
+    start: 'Iniciar tratamiento',
+    close: 'Cerrar tratamiento',
+    closeDescription:
+      'Al cerrarlo firmas el tratamiento y sus registros: no admite más registros y su cita queda como atendida. Después, cada registro solo se corrige con una adenda; el original se conserva tal como se firmó.',
+    previous: 'Tratamientos anteriores',
+    limit: `Máximo ${MAX_TREATMENTS_PER_ENCOUNTER} tratamientos`,
+    treatmentList: 'Tratamientos incluidos',
+    addDescription: 'Elige los tratamientos que se sumarán a este tratamiento.',
+    addEmpty: 'No quedan tratamientos activos por añadir a este tratamiento.',
+    noShowDescription:
+      'Se marcarán como no asistidos cada tratamiento y la cita de este tratamiento. Esta acción no se puede deshacer.',
+  },
+} as const satisfies Record<EncounterPanelMode, Record<string, string>>;
 
 /** A session in these statuses still has clinical work pending: the encounter cannot be closed. */
 const UNFINISHED: TreatmentSessionStatus[] = [
@@ -57,48 +99,98 @@ export function canRecordNoShow(sessions: EncounterSessions = []): boolean {
   );
 }
 
-export function TreatmentCheckboxes({
+const PICKER_SELECT_CLASS = 'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[44px]';
+
+/**
+ * Picks treatments from the catalog with a labelled list and shows what was chosen, each with
+ * its remove button. `alreadyCounted` are the treatments that already count toward the limit
+ * (the live ones of the encounter, in the add dialog); the chosen ones are kept in catalog order.
+ */
+export function TreatmentPicker({
   options,
   selected,
-  limitReached,
-  onToggle,
+  onChange,
+  alreadyCounted = 0,
+  limitText,
+  emptyMessage,
 }: {
   options: { id: string; name: string }[];
   selected: string[];
-  limitReached: boolean;
-  onToggle: (id: string, checked: boolean) => void;
+  onChange: (ids: string[]) => void;
+  alreadyCounted?: number;
+  limitText: string;
+  emptyMessage?: string;
 }) {
+  const selectId = useId();
+  const [pending, setPending] = useState('');
+  const chosen = options.filter((item) => selected.includes(item.id));
+  const remaining = options.filter((item) => !selected.includes(item.id));
+  const limitReached = alreadyCounted + selected.length >= MAX_TREATMENTS_PER_ENCOUNTER;
+
+  const add = () => {
+    if (!pending || limitReached) return;
+    onChange([...selected, pending]);
+    setPending('');
+  };
+
   return (
-    <>
-      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-        {options.map((item) => {
-          const checked = selected.includes(item.id);
-          const disabled = !checked && limitReached;
-          return (
-            <label
-              key={item.id}
-              className={`flex min-h-[44px] items-center gap-2 rounded-md border border-input px-3 py-2 text-sm ${
-                disabled ? 'opacity-50' : 'cursor-pointer'
-              }`}
-            >
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={checked}
-                disabled={disabled}
-                onChange={(event) => onToggle(item.id, event.target.checked)}
-              />
-              {item.name}
-            </label>
-          );
-        })}
+    <div className="space-y-2">
+      {options.length === 0 && emptyMessage && (
+        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+      )}
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <Label htmlFor={selectId}>Tratamiento</Label>
+          <select
+            id={selectId}
+            value={pending}
+            disabled={remaining.length === 0}
+            onChange={(event) => setPending(event.target.value)}
+            className={PICKER_SELECT_CLASS}
+          >
+            <option value="">Selecciona un tratamiento</option>
+            {remaining.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-[44px]"
+          disabled={!pending || limitReached}
+          onClick={add}
+        >
+          Agregar
+        </Button>
       </div>
       {limitReached && (
-        <p className="text-sm text-muted-foreground">
-          Máximo {MAX_TREATMENTS_PER_ENCOUNTER} tratamientos por atención
+        <p role="status" className="text-sm text-muted-foreground">
+          {limitText}
         </p>
       )}
-    </>
+      {chosen.length > 0 && (
+        <ul aria-label="Tratamientos elegidos" className="divide-y rounded-md border border-input">
+          {chosen.map((item) => (
+            <li key={item.id} className="flex items-center justify-between gap-2 py-1 pl-3 pr-1 text-sm">
+              <span className="font-medium">{item.name}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 shrink-0"
+                aria-label={`Quitar ${item.name}`}
+                onClick={() => onChange(selected.filter((id) => id !== item.id))}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -109,13 +201,15 @@ export function TreatmentCheckboxes({
 export function EncounterTreatmentList({
   sessions,
   linked = true,
+  mode = 'specialties',
 }: {
   sessions: EncounterSessions;
   linked?: boolean;
+  mode?: EncounterPanelMode;
 }) {
   if (sessions.length === 0) return null;
   return (
-    <ul aria-label="Tratamientos de la atención" className="divide-y rounded-md border border-input">
+    <ul aria-label={PANEL_COPY[mode].treatmentList} className="divide-y rounded-md border border-input">
       {sessions.map((session) => (
         <li key={session.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
           <div className="flex flex-wrap items-center gap-2">
@@ -143,12 +237,15 @@ export function EncounterTreatmentList({
 export function AddTreatmentDialog({
   patientId,
   encounter,
+  mode,
   onClose,
 }: {
   patientId: string;
   encounter: Encounter;
+  mode: EncounterPanelMode;
   onClose: () => void;
 }) {
+  const copy = PANEL_COPY[mode];
   const router = useRouter();
   const legendId = useId();
   const create = useCreateTreatmentSessions(patientId);
@@ -158,16 +255,12 @@ export function AddTreatmentDialog({
   const present = countedSessions(encounter.treatmentSessions);
   const presentIds = new Set(present.map((session) => session.treatment.id));
   const available = catalog.filter((item) => !presentIds.has(item.id));
-  const limitReached = present.length + treatmentIds.length >= MAX_TREATMENTS_PER_ENCOUNTER;
-
-  const toggle = (id: string, checked: boolean) =>
-    setTreatmentIds((current) => (checked ? [...current, id] : current.filter((item) => item !== id)));
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (treatmentIds.length === 0 || create.isPending) return;
     try {
-      // Keep the catalog order, whatever order the boxes were checked in.
+      // Keep the catalog order, whatever order they were added in.
       const orderedIds = available.filter((item) => treatmentIds.includes(item.id)).map((item) => item.id);
       const sessions = await create.mutateAsync({ treatmentIds: orderedIds, encounterId: encounter.id });
       onClose();
@@ -189,24 +282,21 @@ export function AddTreatmentDialog({
         <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col gap-4">
           <DialogHeader>
             <DialogTitle id={`${legendId}-title`}>Añadir tratamiento</DialogTitle>
-            <DialogDescription>
-              Elige los tratamientos que también se realizarán en esta atención.
-            </DialogDescription>
+            <DialogDescription>{copy.addDescription}</DialogDescription>
           </DialogHeader>
           <fieldset aria-labelledby={legendId} className="min-h-0 flex-1 space-y-2 overflow-y-auto">
             <legend id={legendId} className="text-sm font-medium">
               Tratamientos
             </legend>
             {available.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No quedan tratamientos activos por añadir a esta atención.
-              </p>
+              <p className="text-sm text-muted-foreground">{copy.addEmpty}</p>
             ) : (
-              <TreatmentCheckboxes
+              <TreatmentPicker
                 options={available}
                 selected={treatmentIds}
-                limitReached={limitReached}
-                onToggle={toggle}
+                onChange={setTreatmentIds}
+                alreadyCounted={present.length}
+                limitText={copy.limit}
               />
             )}
           </fieldset>
@@ -227,10 +317,12 @@ export function AddTreatmentDialog({
 export function NoShowDialog({
   patientId,
   encounter,
+  mode,
   onClose,
 }: {
   patientId: string;
   encounter: Encounter;
+  mode: EncounterPanelMode;
   onClose: () => void;
 }) {
   const noShow = useEncounterNoShow(patientId);
@@ -253,10 +345,7 @@ export function NoShowDialog({
       <DialogContent role="dialog" aria-modal="true" aria-labelledby="no-show-title">
         <DialogHeader>
           <DialogTitle id="no-show-title">Registrar inasistencia</DialogTitle>
-          <DialogDescription>
-            Se marcarán como no asistidos cada tratamiento y la cita de esta atención. Esta acción no se
-            puede deshacer.
-          </DialogDescription>
+          <DialogDescription>{PANEL_COPY[mode].noShowDescription}</DialogDescription>
         </DialogHeader>
         {error && <Alert variant="destructive">{error}</Alert>}
         <DialogFooter className="gap-2">

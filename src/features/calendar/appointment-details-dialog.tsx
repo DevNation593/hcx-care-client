@@ -59,11 +59,11 @@ export function AppointmentDetailsDialog({
     user.id === appointment.professionalId &&
     canAccessClinicalNotes(user) &&
     ATTENDABLE.includes(appointment.status);
-  // The encounter panel lives in the specialties tab, or in the treatments tab without specialties.
-  const attendTab = isEnabled('core.clinical.specialties')
-    ? 'specialties'
-    : isEnabled('core.treatments.sessions')
-      ? 'treatments'
+  // With treatment sessions the encounter panel lives in the treatments tab; without them, in the specialties tab.
+  const attendTab = isEnabled('core.treatments.sessions')
+    ? 'treatments'
+    : isEnabled('core.clinical.specialties')
+      ? 'specialties'
       : null;
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {

@@ -28,6 +28,7 @@ import { useClinicalModules } from '@/hooks/useClinicalModules';
 import { LEGACY_ORDER_MODULE_KEY } from '@/types/clinical-orders';
 import { ProcedureConsents } from './procedure-consents';
 import { usePatientEncounters } from '@/hooks/useEncounters';
+import { useSections } from '@/hooks/useSections';
 import {
   useCorrectSpecialtyRecord,
   useCreateSpecialtyRecord,
@@ -40,6 +41,7 @@ import { useAuthStore } from '@/store/authStore';
 import type { ApiError, SpecialtyRecord } from '@/types';
 import type { ClinicalModuleDefinition, FormAlertLevel } from '@/types/clinical';
 import { describeEncounter, EncounterPanel } from './encounter-panel';
+import { TREATMENT_SESSIONS_SECTION } from './encounter-treatments';
 import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { SpecialtyRecordEntryForm } from './specialty-record-entry-form';
 import { hasTemplates, TemplatePicker } from './template-picker';
@@ -80,6 +82,9 @@ export function ClinicalRecordsTab({
     isHealthSpecialtyCode(state.user?.professionalProfile?.specialty?.code),
   );
   const { data: encounters = [] } = usePatientEncounters(patientId);
+  // With treatment sessions the encounter is started and closed from the Tratamientos tab.
+  const { isEnabled } = useSections();
+  const treatmentsOwnEncounter = isEnabled(TREATMENT_SESSIONS_SECTION);
   // One open encounter per professional and patient: new records go into it.
   const openEncounter = encounters.find(
     (encounter) => encounter.status === 'OPEN' && encounter.professionalId === userId,
@@ -122,13 +127,28 @@ export function ClinicalRecordsTab({
 
   return (
     <div className="space-y-6">
-      <EncounterPanel
-        patientId={patientId}
-        encounters={encounters}
-        openEncounter={openEncounter}
-        initialAppointmentId={startAppointmentId}
-        mode="specialties"
-      />
+      {treatmentsOwnEncounter ? (
+        <p className="text-sm text-muted-foreground">
+          Inicia y cierra los tratamientos en la pestaña{' '}
+          <Link
+            href={`/patients/${patientId}?tab=treatments${
+              startAppointmentId ? `&appointmentId=${encodeURIComponent(startAppointmentId)}` : ''
+            }`}
+            className="font-medium text-primary hover:underline"
+          >
+            Tratamientos
+          </Link>
+          .
+        </p>
+      ) : (
+        <EncounterPanel
+          patientId={patientId}
+          encounters={encounters}
+          openEncounter={openEncounter}
+          initialAppointmentId={startAppointmentId}
+          mode="specialties"
+        />
+      )}
 
       {healthProfile && (
         <ProcedureConsents patientId={patientId} openEncounterId={openEncounter?.id} />

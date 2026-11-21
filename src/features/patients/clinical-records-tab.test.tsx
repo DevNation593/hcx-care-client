@@ -17,6 +17,7 @@ const hooks = vi.hoisted(() => ({
   modules: [] as unknown[],
   alerts: [] as unknown[],
   encounters: [] as unknown[],
+  enabled: new Set<string>(),
   create: vi.fn(),
   correct: vi.fn(),
   remove: vi.fn(),
@@ -40,8 +41,10 @@ vi.mock('@/hooks/useEncounters', () => ({
   useRemoveEncounter: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/hooks/useBranches', () => ({ useBranches: () => ({ data: [] }) }));
-// The encounter panel reads the enabled sections; this suite renders without a QueryClient.
-vi.mock('@/hooks/useSections', () => ({ useSections: () => ({ isEnabled: () => true }) }));
+// The tab and the encounter panel read the enabled sections; this suite renders without a QueryClient.
+vi.mock('@/hooks/useSections', () => ({
+  useSections: () => ({ isEnabled: (key: string) => hooks.enabled.has(key) }),
+}));
 vi.mock('@/hooks/useAppointments', () => ({ useAppointments: () => ({ data: [] }) }));
 vi.mock('@/hooks/useClinicalModules', () => ({
   useClinicalModules: () => ({ data: hooks.modules, isError: false, isPending: false, error: null }),
@@ -112,6 +115,7 @@ beforeEach(() => {
   hooks.records = [record()];
   hooks.alerts = [];
   hooks.encounters = [];
+  hooks.enabled = new Set();
   hooks.create.mockResolvedValue(undefined);
   hooks.correct.mockResolvedValue(undefined);
   hooks.remove.mockResolvedValue(undefined);
@@ -155,6 +159,52 @@ describe('ClinicalRecordsTab', () => {
       fireEvent.change(document.getElementById('record-weightKg')!, { target: { value: '70' } });
       await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Guardar registro' })));
     };
+
+    describe('with the treatment sessions section on', () => {
+      beforeEach(() => {
+        hooks.enabled = new Set(['core.treatments.sessions']);
+      });
+
+      it('renders no encounter panel, only a pointer to the Tratamientos tab', () => {
+        render(<ClinicalRecordsTab patientId="patient-1" />);
+
+        expect(screen.queryByText('Atención')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Iniciar atención' })).not.toBeInTheDocument();
+        expect(screen.getByText(/Inicia y cierra los tratamientos en la pestaña/)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Tratamientos' })).toHaveAttribute(
+          'href',
+          '/patients/patient-1?tab=treatments',
+        );
+      });
+
+      it('carries the appointment to attend into the link', () => {
+        render(<ClinicalRecordsTab patientId="patient-1" startAppointmentId="appointment-1" />);
+
+        expect(screen.getByRole('link', { name: 'Tratamientos' })).toHaveAttribute(
+          'href',
+          '/patients/patient-1?tab=treatments&appointmentId=appointment-1',
+        );
+      });
+
+      it('still writes new records into the open encounter', async () => {
+        hooks.encounters = [openEncounter];
+        render(<ClinicalRecordsTab patientId="patient-1" />);
+
+        expect(screen.queryByText('Atención en curso')).not.toBeInTheDocument();
+        await saveVitals();
+
+        expect(hooks.create).toHaveBeenCalledWith(
+          expect.objectContaining({ moduleKey: 'general.vital-signs', encounterId: 'encounter-1' }),
+        );
+      });
+    });
+
+    it('renders the encounter panel in specialties mode with the sessions section off', () => {
+      render(<ClinicalRecordsTab patientId="patient-1" />);
+
+      expect(screen.getByRole('button', { name: 'Iniciar atención' })).toBeInTheDocument();
+      expect(screen.queryByText(/Inicia y cierra los tratamientos/)).not.toBeInTheDocument();
+    });
 
     it('writes new records into the open encounter of the professional', async () => {
       hooks.encounters = [openEncounter];

@@ -56,12 +56,10 @@ export function PatientTreatmentsTab({
   const openEncounter = encounters.find(
     (encounter) => encounter.status === 'OPEN' && encounter.professionalId === userId,
   );
-  // With specialties on, the panel asks for type and reason; without them, only for treatments.
-  const mode = isEnabled('core.clinical.specialties') ? 'specialties' : 'treatments';
 
   return (
     <div className="space-y-6">
-      {/* The treatments mode only makes sense with the sessions section on. */}
+      {/* Here the panel is the "Tratamiento": treatments only, no type or reason. */}
       {isEnabled('core.treatments.sessions') &&
         (encountersQuery.isPending ? (
           <p role="status" className="text-sm text-muted-foreground">
@@ -85,7 +83,7 @@ export function PatientTreatmentsTab({
             encounters={encounters}
             openEncounter={openEncounter}
             initialAppointmentId={initialAppointmentId}
-            mode={mode}
+            mode="treatments"
           />
         ))}
       <Card>
