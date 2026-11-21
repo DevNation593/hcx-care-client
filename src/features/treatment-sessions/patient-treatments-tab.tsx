@@ -96,17 +96,17 @@ export function PatientTreatmentsTab({
         <CardContent>
           {sessions.isPending ? (
             <p role="status" className="text-sm text-muted-foreground">
-              Cargando atenciones…
+              Cargando tratamientos…
             </p>
           ) : sessions.isError ? (
-            <Alert variant="destructive" title="No se pudieron cargar las atenciones">
+            <Alert variant="destructive" title="No se pudieron cargar los tratamientos">
               <Button variant="outline" size="sm" className="mt-2" onClick={() => sessions.refetch()}>
                 Reintentar
               </Button>
             </Alert>
           ) : !sessions.data?.length ? (
             <p className="text-sm text-muted-foreground">
-              Este {terms.one} aún no tiene atenciones de tratamiento.
+              Este {terms.one} aún no tiene tratamientos.
             </p>
           ) : (
             <ul className="divide-y rounded-md border border-input">

@@ -143,6 +143,6 @@ describe('PatientTreatmentsTab', () => {
     hooks.sessions = { ...hooks.sessions, data: [] };
     render(<PatientTreatmentsTab patientId="patient-1" />);
 
-    expect(screen.getByText('Este paciente aún no tiene atenciones de tratamiento.')).toBeInTheDocument();
+    expect(screen.getByText('Este paciente aún no tiene tratamientos.')).toBeInTheDocument();
   });
 });
