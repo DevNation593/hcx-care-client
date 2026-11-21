@@ -287,7 +287,11 @@ function PatientDetailPageContent() {
         )}
         {activeTab === 'specialties' && canSeeClinical && (
           <div className="space-y-6">
-            <ClinicalRecordsTab patientId={patientId} startAppointmentId={startAppointmentId} />
+            <ClinicalRecordsTab
+              patientId={patientId}
+              startAppointmentId={startAppointmentId}
+              onOpenTreatments={() => setActiveTab('treatments')}
+            />
             {canSeeProcedures && !proceduresInHistory && <ProcedureHistory patientId={patientId} />}
           </div>
         )}

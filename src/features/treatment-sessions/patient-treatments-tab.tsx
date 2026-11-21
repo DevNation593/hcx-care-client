@@ -56,20 +56,18 @@ export function PatientTreatmentsTab({
   const openEncounter = encounters.find(
     (encounter) => encounter.status === 'OPEN' && encounter.professionalId === userId,
   );
-  // With specialties on, the panel asks for type and reason; without them, only for treatments.
-  const mode = isEnabled('core.clinical.specialties') ? 'specialties' : 'treatments';
 
   return (
     <div className="space-y-6">
-      {/* The treatments mode only makes sense with the sessions section on. */}
+      {/* Here the panel is the "Tratamiento": treatments only, no type or reason. */}
       {isEnabled('core.treatments.sessions') &&
         (encountersQuery.isPending ? (
           <p role="status" className="text-sm text-muted-foreground">
-            Cargando la atención…
+            Cargando el tratamiento…
           </p>
         ) : encountersQuery.isError ? (
           // A failed read is not an empty list: starting an encounter could clash with an open one.
-          <Alert variant="destructive" title="No se pudo cargar la atención">
+          <Alert variant="destructive" title="No se pudo cargar el tratamiento">
             <Button
               variant="outline"
               size="sm"
@@ -85,30 +83,30 @@ export function PatientTreatmentsTab({
             encounters={encounters}
             openEncounter={openEncounter}
             initialAppointmentId={initialAppointmentId}
-            mode={mode}
+            mode="treatments"
           />
         ))}
       <Card>
         <CardHeader>
           <CardTitle>Tratamientos</CardTitle>
           <CardDescription>
-            Cada atención sigue la ficha, el consentimiento, las fotos y el procedimiento del tratamiento.
+            Cada tratamiento sigue la ficha, el consentimiento, las fotos y el procedimiento del tratamiento.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {sessions.isPending ? (
             <p role="status" className="text-sm text-muted-foreground">
-              Cargando atenciones…
+              Cargando tratamientos…
             </p>
           ) : sessions.isError ? (
-            <Alert variant="destructive" title="No se pudieron cargar las atenciones">
+            <Alert variant="destructive" title="No se pudieron cargar los tratamientos">
               <Button variant="outline" size="sm" className="mt-2" onClick={() => sessions.refetch()}>
                 Reintentar
               </Button>
             </Alert>
           ) : !sessions.data?.length ? (
             <p className="text-sm text-muted-foreground">
-              Este {terms.one} aún no tiene atenciones de tratamiento.
+              Este {terms.one} aún no tiene tratamientos.
             </p>
           ) : (
             <ul className="divide-y rounded-md border border-input">

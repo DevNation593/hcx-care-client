@@ -143,12 +143,23 @@ describe('AppointmentDetailsDialog', () => {
       }) as User;
     const attentionLink = () => screen.queryByRole('link', { name: /atención/ });
 
-    it('takes the professional of the appointment to the patient record to start it', () => {
+    it('takes the professional of the appointment to the specialties tab to start it', () => {
+      mocks.enabled = new Set(['core.clinical.specialties']);
       renderDetails({ user: professional() });
 
       expect(screen.getByRole('link', { name: 'Iniciar atención' })).toHaveAttribute(
         'href',
         '/patients/patient-1?tab=specialties&appointmentId=appointment-1',
+      );
+    });
+
+    it('opens the treatments tab whenever treatment sessions are on, even with specialties', () => {
+      mocks.enabled = new Set(['core.clinical.specialties', 'core.treatments.sessions']);
+      renderDetails({ user: professional() });
+
+      expect(screen.getByRole('link', { name: 'Iniciar atención' })).toHaveAttribute(
+        'href',
+        '/patients/patient-1?tab=treatments&appointmentId=appointment-1',
       );
     });
 

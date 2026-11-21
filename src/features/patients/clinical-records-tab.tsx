@@ -28,6 +28,7 @@ import { useClinicalModules } from '@/hooks/useClinicalModules';
 import { LEGACY_ORDER_MODULE_KEY } from '@/types/clinical-orders';
 import { ProcedureConsents } from './procedure-consents';
 import { usePatientEncounters } from '@/hooks/useEncounters';
+import { useSections } from '@/hooks/useSections';
 import {
   useCorrectSpecialtyRecord,
   useCreateSpecialtyRecord,
@@ -40,6 +41,7 @@ import { useAuthStore } from '@/store/authStore';
 import type { ApiError, SpecialtyRecord } from '@/types';
 import type { ClinicalModuleDefinition, FormAlertLevel } from '@/types/clinical';
 import { describeEncounter, EncounterPanel } from './encounter-panel';
+import { TREATMENT_SESSIONS_SECTION } from './encounter-treatments';
 import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { SpecialtyRecordEntryForm } from './specialty-record-entry-form';
 import { hasTemplates, TemplatePicker } from './template-picker';
@@ -63,10 +65,13 @@ function errorMessage(error: unknown): string | undefined {
 export function ClinicalRecordsTab({
   patientId,
   startAppointmentId,
+  onOpenTreatments,
 }: {
   patientId: string;
   /** Arriving from the agenda to attend this appointment. */
   startAppointmentId?: string;
+  /** Opens the Tratamientos tab: the page owns which tab is active, a link would only change the URL. */
+  onOpenTreatments: () => void;
 }) {
   const { data: records = [], isLoading } = usePatientSpecialtyRecords(patientId);
   const modulesQuery = useClinicalModules();
@@ -80,6 +85,9 @@ export function ClinicalRecordsTab({
     isHealthSpecialtyCode(state.user?.professionalProfile?.specialty?.code),
   );
   const { data: encounters = [] } = usePatientEncounters(patientId);
+  // With treatment sessions the encounter is started and closed from the Tratamientos tab.
+  const { isEnabled } = useSections();
+  const treatmentsOwnEncounter = isEnabled(TREATMENT_SESSIONS_SECTION);
   // One open encounter per professional and patient: new records go into it.
   const openEncounter = encounters.find(
     (encounter) => encounter.status === 'OPEN' && encounter.professionalId === userId,
@@ -122,13 +130,27 @@ export function ClinicalRecordsTab({
 
   return (
     <div className="space-y-6">
-      <EncounterPanel
-        patientId={patientId}
-        encounters={encounters}
-        openEncounter={openEncounter}
-        initialAppointmentId={startAppointmentId}
-        mode="specialties"
-      />
+      {treatmentsOwnEncounter ? (
+        <p className="text-sm text-muted-foreground">
+          Inicia y cierra los tratamientos en la pestaña{' '}
+          <button
+            type="button"
+            onClick={onOpenTreatments}
+            className="font-medium text-primary hover:underline"
+          >
+            Tratamientos
+          </button>
+          .
+        </p>
+      ) : (
+        <EncounterPanel
+          patientId={patientId}
+          encounters={encounters}
+          openEncounter={openEncounter}
+          initialAppointmentId={startAppointmentId}
+          mode="specialties"
+        />
+      )}
 
       {healthProfile && (
         <ProcedureConsents patientId={patientId} openEncounterId={openEncounter?.id} />
@@ -136,8 +158,9 @@ export function ClinicalRecordsTab({
 
       {!openEncounter && recordable.length > 0 && (
         <p className="text-sm text-muted-foreground">
-          No tienes una atención abierta con este {terms.one}: lo que guardes queda firmado al instante
-          y después solo se corrige con una adenda.
+          {treatmentsOwnEncounter ? 'No tienes un tratamiento en curso' : 'No tienes una atención abierta'} con
+          este {terms.one}: lo que guardes queda firmado al instante y después solo se corrige con una
+          adenda.
         </p>
       )}
       <SpecialtyRecordEntryForm
