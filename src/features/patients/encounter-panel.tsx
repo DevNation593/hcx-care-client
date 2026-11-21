@@ -152,7 +152,9 @@ export function EncounterPanel({
                   No asistió
                 </Button>
               )}
-              {mode !== 'treatments' && openEncounter.recordCount === 0 && sessions.length === 0 && (
+              {/* Whatever the mode: an empty encounter started by mistake (or before treatments had
+                  their own panel) has no other way out than closing and signing it. */}
+              {openEncounter.recordCount === 0 && sessions.length === 0 && (
                 <Button variant="outline" onClick={() => setRemoving(true)}>
                   <Trash2 className="mr-2 h-4 w-4" />
                   Eliminar atención

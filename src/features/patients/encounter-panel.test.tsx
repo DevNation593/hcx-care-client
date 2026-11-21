@@ -742,10 +742,16 @@ describe('EncounterPanel', () => {
       expect(screen.queryByRole('button', { name: 'Eliminar atención' })).not.toBeInTheDocument();
     });
 
-    it('does not offer to remove the encounter in treatments mode', () => {
+    it('does not offer to remove a treatments-mode encounter that has treatments', () => {
       renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]), 'treatments');
 
       expect(screen.queryByRole('button', { name: 'Eliminar atención' })).not.toBeInTheDocument();
+    });
+
+    it('still offers to remove an empty encounter in treatments mode', () => {
+      renderOpen(withSessions([]), 'treatments');
+
+      expect(screen.getByRole('button', { name: 'Eliminar atención' })).toBeInTheDocument();
     });
   });
 

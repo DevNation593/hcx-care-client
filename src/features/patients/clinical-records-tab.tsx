@@ -65,10 +65,13 @@ function errorMessage(error: unknown): string | undefined {
 export function ClinicalRecordsTab({
   patientId,
   startAppointmentId,
+  onOpenTreatments,
 }: {
   patientId: string;
   /** Arriving from the agenda to attend this appointment. */
   startAppointmentId?: string;
+  /** Opens the Tratamientos tab: the page owns which tab is active, a link would only change the URL. */
+  onOpenTreatments: () => void;
 }) {
   const { data: records = [], isLoading } = usePatientSpecialtyRecords(patientId);
   const modulesQuery = useClinicalModules();
@@ -130,14 +133,13 @@ export function ClinicalRecordsTab({
       {treatmentsOwnEncounter ? (
         <p className="text-sm text-muted-foreground">
           Inicia y cierra los tratamientos en la pestaña{' '}
-          <Link
-            href={`/patients/${patientId}?tab=treatments${
-              startAppointmentId ? `&appointmentId=${encodeURIComponent(startAppointmentId)}` : ''
-            }`}
+          <button
+            type="button"
+            onClick={onOpenTreatments}
             className="font-medium text-primary hover:underline"
           >
             Tratamientos
-          </Link>
+          </button>
           .
         </p>
       ) : (
