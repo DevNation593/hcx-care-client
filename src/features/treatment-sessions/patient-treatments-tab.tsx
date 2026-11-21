@@ -63,11 +63,11 @@ export function PatientTreatmentsTab({
       {isEnabled('core.treatments.sessions') &&
         (encountersQuery.isPending ? (
           <p role="status" className="text-sm text-muted-foreground">
-            Cargando la atención…
+            Cargando el tratamiento…
           </p>
         ) : encountersQuery.isError ? (
           // A failed read is not an empty list: starting an encounter could clash with an open one.
-          <Alert variant="destructive" title="No se pudo cargar la atención">
+          <Alert variant="destructive" title="No se pudo cargar el tratamiento">
             <Button
               variant="outline"
               size="sm"
@@ -90,7 +90,7 @@ export function PatientTreatmentsTab({
         <CardHeader>
           <CardTitle>Tratamientos</CardTitle>
           <CardDescription>
-            Cada atención sigue la ficha, el consentimiento, las fotos y el procedimiento del tratamiento.
+            Cada tratamiento sigue la ficha, el consentimiento, las fotos y el procedimiento del tratamiento.
           </CardDescription>
         </CardHeader>
         <CardContent>

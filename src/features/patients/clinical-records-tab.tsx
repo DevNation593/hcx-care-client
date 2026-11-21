@@ -156,8 +156,9 @@ export function ClinicalRecordsTab({
 
       {!openEncounter && recordable.length > 0 && (
         <p className="text-sm text-muted-foreground">
-          No tienes una atención abierta con este {terms.one}: lo que guardes queda firmado al instante
-          y después solo se corrige con una adenda.
+          {treatmentsOwnEncounter ? 'No tienes un tratamiento en curso' : 'No tienes una atención abierta'} con
+          este {terms.one}: lo que guardes queda firmado al instante y después solo se corrige con una
+          adenda.
         </p>
       )}
       <SpecialtyRecordEntryForm

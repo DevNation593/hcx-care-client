@@ -118,7 +118,7 @@ describe('PatientTreatmentsTab', () => {
     hooks.encountersState = { isPending: false, isError: true, refetch: vi.fn() };
     render(<PatientTreatmentsTab patientId="patient-1" />);
 
-    expect(screen.getByText('No se pudo cargar la atención')).toBeInTheDocument();
+    expect(screen.getByText('No se pudo cargar el tratamiento')).toBeInTheDocument();
     expect(screen.queryByTestId('encounter-panel')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
     expect(hooks.encountersState.refetch).toHaveBeenCalledTimes(1);
@@ -128,7 +128,7 @@ describe('PatientTreatmentsTab', () => {
     hooks.encountersState = { isPending: true, isError: false, refetch: vi.fn() };
     render(<PatientTreatmentsTab patientId="patient-1" />);
 
-    expect(screen.getByText('Cargando la atención…')).toBeInTheDocument();
+    expect(screen.getByText('Cargando el tratamiento…')).toBeInTheDocument();
     expect(screen.queryByTestId('encounter-panel')).not.toBeInTheDocument();
   });
 

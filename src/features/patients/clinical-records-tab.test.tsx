@@ -177,6 +177,13 @@ describe('ClinicalRecordsTab', () => {
         );
       });
 
+      it('warns in terms of "tratamiento" when there is none in course', () => {
+        render(<ClinicalRecordsTab patientId="patient-1" />);
+
+        expect(screen.getByText(/No tienes un tratamiento en curso con este/)).toBeInTheDocument();
+        expect(screen.queryByText(/No tienes una atención abierta/)).not.toBeInTheDocument();
+      });
+
       it('carries the appointment to attend into the link', () => {
         render(<ClinicalRecordsTab patientId="patient-1" startAppointmentId="appointment-1" />);
 
@@ -425,6 +432,7 @@ describe('ClinicalRecordsTab', () => {
     it('warns that without an open encounter a record is signed as it is saved', () => {
       render(<ClinicalRecordsTab patientId="patient-1" />);
 
+      expect(screen.getByText(/No tienes una atención abierta con este/)).toBeInTheDocument();
       expect(screen.getByText(/queda firmado al instante/)).toBeInTheDocument();
     });
   });

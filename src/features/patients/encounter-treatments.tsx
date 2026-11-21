@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, X } from 'lucide-react';
@@ -59,10 +59,10 @@ export const PANEL_COPY = {
     previous: 'Tratamientos anteriores',
     limit: `Máximo ${MAX_TREATMENTS_PER_ENCOUNTER} tratamientos`,
     treatmentList: 'Tratamientos incluidos',
-    addDescription: 'Elige los tratamientos que se sumarán a este tratamiento.',
-    addEmpty: 'No quedan tratamientos activos por añadir a este tratamiento.',
+    addDescription: 'Elige los tratamientos que también se realizarán en esta consulta.',
+    addEmpty: 'No quedan tratamientos activos por añadir.',
     noShowDescription:
-      'Se marcarán como no asistidos cada tratamiento y la cita de este tratamiento. Esta acción no se puede deshacer.',
+      'Se marcarán como no asistidos todos los tratamientos incluidos y la cita. Esta acción no se puede deshacer.',
   },
 } as const satisfies Record<EncounterPanelMode, Record<string, string>>;
 
@@ -122,15 +122,43 @@ export function TreatmentPicker({
   emptyMessage?: string;
 }) {
   const selectId = useId();
-  const [pending, setPending] = useState('');
+  const selectRef = useRef<HTMLSelectElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const refocus = useRef(false);
+  const [rawPending, setPending] = useState('');
+  const [announcement, setAnnouncement] = useState('');
   const chosen = options.filter((item) => selected.includes(item.id));
   const remaining = options.filter((item) => !selected.includes(item.id));
+  // A refetched catalog may drop the pending choice: never act on an id that is not offered.
+  const pending = remaining.some((item) => item.id === rawPending) ? rawPending : '';
   const limitReached = alreadyCounted + selected.length >= MAX_TREATMENTS_PER_ENCOUNTER;
+
+  useEffect(() => {
+    if (rawPending !== pending) setPending(pending);
+  }, [rawPending, pending]);
+
+  // The focused button disables or unmounts when the list changes: keep focus inside the picker.
+  useEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    const select = selectRef.current;
+    if (select && !select.disabled) select.focus();
+    else listRef.current?.querySelector<HTMLElement>('li:last-child button')?.focus();
+  }, [selected]);
 
   const add = () => {
     if (!pending || limitReached) return;
+    const name = options.find((item) => item.id === pending)?.name ?? '';
+    refocus.current = true;
+    setAnnouncement(`${name} agregado`);
     onChange([...selected, pending]);
     setPending('');
+  };
+
+  const remove = (item: { id: string; name: string }) => {
+    refocus.current = true;
+    setAnnouncement(`${item.name} quitado`);
+    onChange(selected.filter((id) => id !== item.id));
   };
 
   return (
@@ -143,6 +171,7 @@ export function TreatmentPicker({
           <Label htmlFor={selectId}>Tratamiento</Label>
           <select
             id={selectId}
+            ref={selectRef}
             value={pending}
             disabled={remaining.length === 0}
             onChange={(event) => setPending(event.target.value)}
@@ -166,13 +195,19 @@ export function TreatmentPicker({
           Agregar
         </Button>
       </div>
+      <div aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
+      {pending && selected.length === 0 && (
+        <p className="text-sm text-muted-foreground">Pulsa Agregar para incluir el tratamiento elegido.</p>
+      )}
       {limitReached && (
         <p role="status" className="text-sm text-muted-foreground">
           {limitText}
         </p>
       )}
       {chosen.length > 0 && (
-        <ul aria-label="Tratamientos elegidos" className="divide-y rounded-md border border-input">
+        <ul ref={listRef} aria-label="Tratamientos elegidos" className="divide-y rounded-md border border-input">
           {chosen.map((item) => (
             <li key={item.id} className="flex items-center justify-between gap-2 py-1 pl-3 pr-1 text-sm">
               <span className="font-medium">{item.name}</span>
@@ -182,7 +217,7 @@ export function TreatmentPicker({
                 size="icon"
                 className="h-11 w-11 shrink-0"
                 aria-label={`Quitar ${item.name}`}
-                onClick={() => onChange(selected.filter((id) => id !== item.id))}
+                onClick={() => remove(item)}
               >
                 <X className="h-4 w-4" aria-hidden="true" />
               </Button>

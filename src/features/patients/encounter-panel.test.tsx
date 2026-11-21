@@ -339,6 +339,47 @@ describe('EncounterPanel', () => {
       expect(optionNames()).toContain('Tratamiento 2');
     });
 
+    it('keeps focus in the picker after adding and after removing', () => {
+      hooks.treatments = catalog(3);
+      open('treatments');
+
+      check('Tratamiento 1');
+      expect(screen.getByLabelText('Tratamiento')).toHaveFocus();
+      expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent('Tratamiento 1 agregado');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Quitar Tratamiento 1' }));
+      expect(screen.getByLabelText('Tratamiento')).toHaveFocus();
+      expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent('Tratamiento 1 quitado');
+    });
+
+    it('explains why starting is disabled while a choice was not added yet', () => {
+      hooks.treatments = catalog(2);
+      open('treatments');
+      const hint = 'Pulsa Agregar para incluir el tratamiento elegido.';
+
+      expect(screen.queryByText(hint)).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('Tratamiento'), { target: { value: optionValue('Tratamiento 2') } });
+      expect(screen.getByText(hint)).toBeInTheDocument();
+      expect(startButton()).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+      expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    });
+
+    it('drops a pending choice that the refreshed catalog no longer offers', () => {
+      hooks.treatments = catalog(2);
+      const view = render(<EncounterPanel patientId="patient-1" encounters={[]} mode="treatments" />);
+      fireEvent.click(screen.getByRole('button', { name: START_LABEL.treatments }));
+      fireEvent.change(screen.getByLabelText('Tratamiento'), { target: { value: optionValue('Tratamiento 2') } });
+      expect(screen.getByRole('button', { name: 'Agregar' })).toBeEnabled();
+
+      hooks.treatments = catalog(1);
+      view.rerender(<EncounterPanel patientId="patient-1" encounters={[]} mode="treatments" />);
+
+      expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
+      expect(screen.queryByText('Pulsa Agregar para incluir el tratamiento elegido.')).not.toBeInTheDocument();
+    });
+
     it('shows the empty-catalog message with the picker disabled', () => {
       hooks.treatments = [];
       open('treatments');
@@ -396,7 +437,7 @@ describe('EncounterPanel', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'No asistió' }));
       const dialog = screen.getByRole('dialog', { name: 'Registrar inasistencia' });
-      expect(dialog).toHaveTextContent(/la cita de este tratamiento/);
+      expect(dialog).toHaveTextContent(/todos los tratamientos incluidos y la cita/);
       expect(dialog).not.toHaveTextContent(/atención/i);
     });
   });
