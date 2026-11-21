@@ -30,9 +30,11 @@ import {
   EncounterTreatmentList,
   MAX_TREATMENTS_PER_ENCOUNTER,
   NoShowDialog,
+  PANEL_COPY,
   TREATMENT_SESSIONS_SECTION,
-  TreatmentCheckboxes,
+  TreatmentPicker,
   unfinishedSessions,
+  type EncounterPanelMode,
 } from './encounter-treatments';
 import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { useAuthStore } from '@/store/authStore';
@@ -48,7 +50,7 @@ const SELECT_CLASS = 'mt-1 w-full rounded-md border border-input bg-background p
 const ATTENDABLE = [AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type EncounterPanelMode = 'specialties' | 'treatments';
+export type { EncounterPanelMode };
 
 export function describeEncounter(encounter: Pick<Encounter, 'encounterType' | 'startedAt'>): string {
   const type = ENCOUNTER_TYPE_LABELS[encounter.encounterType as EncounterType] ?? encounter.encounterType;
@@ -85,23 +87,22 @@ export function EncounterPanel({
   const unfinished = unfinishedSessions(sessions);
   const closeBlocked = unfinished.length > 0;
   const addLimitReached = countedSessions(sessions).length >= MAX_TREATMENTS_PER_ENCOUNTER;
+  const copy = PANEL_COPY[mode];
 
   return (
     <Card className={openEncounter ? 'border-primary/50' : undefined}>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle>{openEncounter ? 'Atención en curso' : 'Atención'}</CardTitle>
+            <CardTitle>{openEncounter ? copy.titleOpen : copy.title}</CardTitle>
             <CardDescription>
-              {openEncounter
-                ? 'Los registros que guardes quedan dentro de esta atención hasta que la cierres.'
-                : 'Inicia una atención para agrupar los registros de la consulta de hoy.'}
+              {openEncounter ? copy.descriptionOpen : copy.descriptionIdle}
             </CardDescription>
           </div>
           {!openEncounter && !starting && (
             <Button onClick={() => setStarting(true)}>
               <Play className="mr-2 h-4 w-4" />
-              Iniciar atención
+              {copy.start}
             </Button>
           )}
         </div>
@@ -122,7 +123,11 @@ export function EncounterPanel({
               </span>
             </div>
             <p className="whitespace-pre-wrap text-sm">{openEncounter.reason}</p>
-            <EncounterTreatmentList sessions={sessions} linked={isEnabled(TREATMENT_SESSIONS_SECTION)} />
+            <EncounterTreatmentList
+              sessions={sessions}
+              linked={isEnabled(TREATMENT_SESSIONS_SECTION)}
+              mode={mode}
+            />
             <div className="flex flex-wrap gap-2">
               <Button
                 onClick={() => setClosing(true)}
@@ -130,7 +135,7 @@ export function EncounterPanel({
                 aria-describedby={closeBlocked ? 'close-blocked-hint' : undefined}
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" />
-                Cerrar atención
+                {copy.close}
               </Button>
               {isEnabled(TREATMENT_SESSIONS_SECTION) && (
                 <Button variant="outline" onClick={() => setAdding(true)} disabled={addLimitReached}>
@@ -139,9 +144,7 @@ export function EncounterPanel({
                 </Button>
               )}
               {isEnabled(TREATMENT_SESSIONS_SECTION) && addLimitReached && (
-                <span className="self-center text-sm text-muted-foreground">
-                  Máximo {MAX_TREATMENTS_PER_ENCOUNTER} tratamientos por atención
-                </span>
+                <span className="self-center text-sm text-muted-foreground">{copy.limit}</span>
               )}
               {isEnabled(TREATMENT_SESSIONS_SECTION) && canRecordNoShow(sessions) && (
                 <Button variant="outline" onClick={() => setMarkingNoShow(true)}>
@@ -149,7 +152,9 @@ export function EncounterPanel({
                   No asistió
                 </Button>
               )}
-              {mode !== 'treatments' && openEncounter.recordCount === 0 && sessions.length === 0 && (
+              {/* Whatever the mode: an empty encounter started by mistake (or before treatments had
+                  their own panel) has no other way out than closing and signing it. */}
+              {openEncounter.recordCount === 0 && sessions.length === 0 && (
                 <Button variant="outline" onClick={() => setRemoving(true)}>
                   <Trash2 className="mr-2 h-4 w-4" />
                   Eliminar atención
@@ -176,7 +181,7 @@ export function EncounterPanel({
         {previous.length > 0 && (
           <details className="rounded-md border border-input">
             <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
-              Atenciones anteriores ({previous.length})
+              {copy.previous} ({previous.length})
             </summary>
             <ul className="divide-y border-t">
               {previous.map((encounter) => (
@@ -227,6 +232,7 @@ export function EncounterPanel({
         <CloseEncounterDialog
           patientId={patientId}
           encounter={openEncounter}
+          mode={mode}
           onClose={() => setClosing(false)}
         />
       )}
@@ -234,6 +240,7 @@ export function EncounterPanel({
         <AddTreatmentDialog
           patientId={patientId}
           encounter={openEncounter}
+          mode={mode}
           onClose={() => setAdding(false)}
         />
       )}
@@ -241,6 +248,7 @@ export function EncounterPanel({
         <NoShowDialog
           patientId={patientId}
           encounter={openEncounter}
+          mode={mode}
           onClose={() => setMarkingNoShow(false)}
         />
       )}
@@ -284,12 +292,9 @@ function StartEncounterForm({
   // The catalog is read only when it will be shown.
   const { data: catalog = [] } = useTreatments({ active: true }, { enabled: catalogVisible });
   const showTreatments = treatmentsMode || (catalogVisible && catalog.length > 0);
-  const limitReached = treatmentIds.length >= MAX_TREATMENTS_PER_ENCOUNTER;
+  const copy = PANEL_COPY[mode];
   const canSubmit = treatmentsMode ? treatmentIds.length > 0 : Boolean(reason.trim());
   const pending = start.isPending || create.isPending;
-
-  const toggleTreatment = (id: string, checked: boolean) =>
-    setTreatmentIds((current) => (checked ? [...current, id] : current.filter((item) => item !== id)));
 
   const activeBranches = branches.filter((branch) => branch.isActive);
   // Own appointments of the last week that are still to be attended.
@@ -313,7 +318,7 @@ function StartEncounterForm({
         onDone();
         return;
       }
-      // Keep the catalog order, whatever order the boxes were checked in.
+      // Keep the catalog order, whatever order they were added in.
       const orderedIds = catalog.filter((item) => treatmentIds.includes(item.id)).map((item) => item.id);
       const sessions = await create.mutateAsync({
         treatmentIds: orderedIds,
@@ -395,16 +400,13 @@ function StartEncounterForm({
               'Tratamientos (opcional)'
             )}
           </legend>
-          {catalog.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay tratamientos activos en el catálogo.</p>
-          ) : (
-            <TreatmentCheckboxes
-              options={catalog}
-              selected={treatmentIds}
-              limitReached={limitReached}
-              onToggle={toggleTreatment}
-            />
-          )}
+          <TreatmentPicker
+            options={catalog}
+            selected={treatmentIds}
+            onChange={setTreatmentIds}
+            limitText={copy.limit}
+            emptyMessage="No hay tratamientos activos en el catálogo."
+          />
         </fieldset>
       )}
       {!treatmentsMode && (
@@ -426,7 +428,7 @@ function StartEncounterForm({
           Cancelar
         </Button>
         <Button type="submit" disabled={!canSubmit} loading={pending}>
-          Iniciar atención
+          {copy.start}
         </Button>
       </div>
     </form>
@@ -436,12 +438,15 @@ function StartEncounterForm({
 function CloseEncounterDialog({
   patientId,
   encounter,
+  mode,
   onClose,
 }: {
   patientId: string;
   encounter: Encounter;
+  mode: EncounterPanelMode;
   onClose: () => void;
 }) {
+  const copy = PANEL_COPY[mode];
   const close = useCloseEncounter(patientId);
   const [summary, setSummary] = useState('');
   const [password, setPassword] = useState('');
@@ -472,12 +477,8 @@ function CloseEncounterDialog({
       <DialogContent>
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Cerrar atención</DialogTitle>
-            <DialogDescription>
-              Al cerrarla firmas la atención y sus registros: no admite más registros y su cita queda
-              como atendida. Después, cada registro solo se corrige con una adenda; el original se
-              conserva tal como se firmó.
-            </DialogDescription>
+            <DialogTitle>{copy.close}</DialogTitle>
+            <DialogDescription>{copy.closeDescription}</DialogDescription>
           </DialogHeader>
           <div>
             <Label htmlFor="encounter-summary">Resumen o indicaciones de cierre</Label>

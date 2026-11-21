@@ -108,8 +108,19 @@ vi.mock('next/navigation', () => ({
 // The tabs have their own tests; here only which one opens, and with what, matters.
 vi.mock('@/features/patients/clinical-records-tab', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/patients/clinical-records-tab')>()),
-  ClinicalRecordsTab: ({ startAppointmentId }: { startAppointmentId?: string }) => (
-    <div data-testid="records-tab">{startAppointmentId ?? 'no appointment'}</div>
+  ClinicalRecordsTab: ({
+    startAppointmentId,
+    onOpenTreatments,
+  }: {
+    startAppointmentId?: string;
+    onOpenTreatments: () => void;
+  }) => (
+    <div data-testid="records-tab">
+      {startAppointmentId ?? 'no appointment'}
+      <button type="button" onClick={onOpenTreatments}>
+        Abrir Tratamientos
+      </button>
+    </div>
   ),
 }));
 vi.mock('@/features/treatment-sessions/patient-treatments-tab', () => ({
@@ -249,6 +260,16 @@ describe('patient detail opened from the agenda', () => {
     renderPage();
 
     expect(screen.getByTestId('records-tab')).toHaveTextContent('appointment-1');
+  });
+
+  it('switches to the treatments tab, with the appointment, when the records tab asks for it', () => {
+    mocks.search = 'tab=specialties&appointmentId=appointment-1';
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Tratamientos' }));
+
+    expect(screen.queryByTestId('records-tab')).not.toBeInTheDocument();
+    expect(screen.getByTestId('treatments-tab')).toHaveTextContent('appointment-1');
   });
 
   it('opens the treatments tab with the appointment to attend', () => {

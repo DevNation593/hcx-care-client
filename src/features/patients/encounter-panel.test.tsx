@@ -89,6 +89,25 @@ beforeEach(() => {
   useAuthStore.setState({ user: { id: 'me', tenantId: 'tenant-1' } as never });
 });
 
+const START_LABEL = { specialties: 'Iniciar atención', treatments: 'Iniciar tratamiento' } as const;
+
+/** The value of the picker option that carries this name (ids are not what a user sees). */
+const optionValue = (name: string, scope: HTMLElement = document.body) => {
+  const select = within(scope).getByLabelText('Tratamiento') as HTMLSelectElement;
+  const option = Array.from(select.options).find((item) => item.text === name);
+  if (!option) throw new Error(`No option "${name}" in the picker`);
+  return option.value;
+};
+const optionNames = (scope: HTMLElement = document.body) =>
+  Array.from((within(scope).getByLabelText('Tratamiento') as HTMLSelectElement).options).map(
+    (option) => option.text,
+  );
+/** Chooses a treatment in the picker and adds it to the list. */
+const check = (name: string, scope: HTMLElement = document.body) => {
+  fireEvent.change(within(scope).getByLabelText('Tratamiento'), { target: { value: optionValue(name, scope) } });
+  fireEvent.click(within(scope).getByRole('button', { name: 'Agregar' }));
+};
+
 const submit = (name: string) => act(async () => fireEvent.click(screen.getByRole('button', { name })));
 
 describe('EncounterPanel', () => {
@@ -191,12 +210,13 @@ describe('EncounterPanel', () => {
         name: `Tratamiento ${index + 1}`,
         isActive: true,
       }));
+    let startLabel: string = START_LABEL.specialties;
     const open = (mode: 'specialties' | 'treatments') => {
+      startLabel = START_LABEL[mode];
       render(<EncounterPanel patientId="patient-1" encounters={[]} mode={mode} />);
-      fireEvent.click(screen.getByRole('button', { name: 'Iniciar atención' }));
+      fireEvent.click(screen.getByRole('button', { name: startLabel }));
     };
-    const check = (name: string) => fireEvent.click(screen.getByRole('checkbox', { name }));
-    const startButton = () => screen.getAllByRole('button', { name: 'Iniciar atención' }).at(-1)!;
+    const startButton = () => screen.getAllByRole('button', { name: startLabel }).at(-1)!;
 
     it('starts a plain encounter when no treatment is checked', async () => {
       hooks.treatments = catalog(3);
@@ -247,7 +267,7 @@ describe('EncounterPanel', () => {
       open('specialties');
 
       expect(screen.queryByRole('group', { name: 'Tratamientos (opcional)' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Tratamiento')).not.toBeInTheDocument();
       // The catalog is not even requested while its section is off.
       expect(hooks.catalogCalls.length).toBeGreaterThan(0);
       expect(hooks.catalogCalls.every((enabled) => enabled === false)).toBe(true);
@@ -280,12 +300,145 @@ describe('EncounterPanel', () => {
       hooks.treatments = catalog(11);
       open('specialties');
 
-      expect(screen.queryByText('Máximo 10 tratamientos por atención')).not.toBeInTheDocument();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
       for (let index = 1; index <= 10; index += 1) check(`Tratamiento ${index}`);
 
-      expect(screen.getByRole('checkbox', { name: 'Tratamiento 11' })).toBeDisabled();
-      expect(screen.getByRole('checkbox', { name: 'Tratamiento 1' })).toBeEnabled();
-      expect(screen.getByText('Máximo 10 tratamientos por atención')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
+      expect(screen.getByRole('status')).toHaveTextContent('Máximo 10 tratamientos por atención');
+      // Removing one frees the slot again.
+      fireEvent.click(screen.getByRole('button', { name: 'Quitar Tratamiento 1' }));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('Tratamiento'), { target: { value: optionValue('Tratamiento 11') } });
+      expect(screen.getByRole('button', { name: 'Agregar' })).toBeEnabled();
+    });
+
+    it('says the limit without "por atención" in treatments mode', () => {
+      hooks.treatments = catalog(10);
+      open('treatments');
+
+      for (let index = 1; index <= 10; index += 1) check(`Tratamiento ${index}`);
+
+      expect(screen.getByRole('status')).toHaveTextContent(/^Máximo 10 tratamientos$/);
+    });
+
+    it('picks from a list: adds to a named list, hides what is chosen and removes it again', () => {
+      hooks.treatments = catalog(3);
+      open('treatments');
+
+      expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
+      expect(screen.queryByRole('list', { name: 'Tratamientos elegidos' })).not.toBeInTheDocument();
+
+      check('Tratamiento 2');
+      const chosen = screen.getByRole('list', { name: 'Tratamientos elegidos' });
+      expect(within(chosen).getAllByRole('listitem')).toHaveLength(1);
+      expect(within(chosen).getByText('Tratamiento 2')).toBeInTheDocument();
+      expect(optionNames()).not.toContain('Tratamiento 2');
+
+      fireEvent.click(within(chosen).getByRole('button', { name: 'Quitar Tratamiento 2' }));
+      expect(screen.queryByRole('list', { name: 'Tratamientos elegidos' })).not.toBeInTheDocument();
+      expect(optionNames()).toContain('Tratamiento 2');
+    });
+
+    it('keeps focus in the picker after adding and after removing', () => {
+      hooks.treatments = catalog(3);
+      open('treatments');
+
+      check('Tratamiento 1');
+      expect(screen.getByLabelText('Tratamiento')).toHaveFocus();
+      expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent('Tratamiento 1 agregado');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Quitar Tratamiento 1' }));
+      expect(screen.getByLabelText('Tratamiento')).toHaveFocus();
+      expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent('Tratamiento 1 quitado');
+    });
+
+    it('explains why starting is disabled while a choice was not added yet', () => {
+      hooks.treatments = catalog(2);
+      open('treatments');
+      const hint = 'Pulsa Agregar para incluir el tratamiento elegido.';
+
+      expect(screen.queryByText(hint)).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('Tratamiento'), { target: { value: optionValue('Tratamiento 2') } });
+      expect(screen.getByText(hint)).toBeInTheDocument();
+      expect(startButton()).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+      expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    });
+
+    it('drops a pending choice that the refreshed catalog no longer offers', () => {
+      hooks.treatments = catalog(2);
+      const view = render(<EncounterPanel patientId="patient-1" encounters={[]} mode="treatments" />);
+      fireEvent.click(screen.getByRole('button', { name: START_LABEL.treatments }));
+      fireEvent.change(screen.getByLabelText('Tratamiento'), { target: { value: optionValue('Tratamiento 2') } });
+      expect(screen.getByRole('button', { name: 'Agregar' })).toBeEnabled();
+
+      hooks.treatments = catalog(1);
+      view.rerender(<EncounterPanel patientId="patient-1" encounters={[]} mode="treatments" />);
+
+      expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
+      expect(screen.queryByText('Pulsa Agregar para incluir el tratamiento elegido.')).not.toBeInTheDocument();
+    });
+
+    it('shows the empty-catalog message with the picker disabled', () => {
+      hooks.treatments = [];
+      open('treatments');
+
+      expect(screen.getByText('No hay tratamientos activos en el catálogo.')).toBeInTheDocument();
+      expect(screen.getByLabelText('Tratamiento')).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
+    });
+  });
+
+  describe('copy by mode', () => {
+    it('says "atención" in specialties mode', () => {
+      render(<EncounterPanel patientId="patient-1" encounters={[]} mode="specialties" />);
+
+      expect(screen.getByText('Atención')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Iniciar atención' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Iniciar tratamiento' })).not.toBeInTheDocument();
+    });
+
+    it('says "tratamiento" everywhere in treatments mode', () => {
+      const closed = encounter({ id: 'old', status: 'CLOSED' });
+      render(<EncounterPanel patientId="patient-1" encounters={[closed]} mode="treatments" />);
+
+      expect(screen.getByText('Tratamiento')).toBeInTheDocument();
+      expect(screen.getByText('Inicia un tratamiento para la consulta de hoy.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Iniciar tratamiento' })).toBeInTheDocument();
+      expect(screen.getByText('Tratamientos anteriores (1)')).toBeInTheDocument();
+      expect(screen.queryByText(/atención/i)).not.toBeInTheDocument();
+    });
+
+    const withSession = (status: string) =>
+      encounter({
+        treatmentSessions: [
+          { id: 's1', status, treatment: { id: 't1', name: 'Toxina' } },
+        ] as Encounter['treatmentSessions'],
+      });
+
+    it('says "tratamiento" for the one in course and its closing', () => {
+      const open = withSession('CLINICAL_COMPLETE');
+      render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="treatments" />);
+
+      expect(screen.getByText('Tratamiento en curso')).toBeInTheDocument();
+      expect(
+        screen.getByText('Los registros que guardes quedan dentro de este tratamiento hasta que lo cierres.'),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cerrar tratamiento' }));
+      expect(screen.getByRole('heading', { name: 'Cerrar tratamiento' })).toBeInTheDocument();
+      expect(screen.getByText(/firmas el tratamiento/)).not.toHaveTextContent(/atención/i);
+    });
+
+    it('says "tratamiento" in the no-show dialog', () => {
+      const open = withSession('CONSENTED');
+      render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="treatments" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'No asistió' }));
+      const dialog = screen.getByRole('dialog', { name: 'Registrar inasistencia' });
+      expect(dialog).toHaveTextContent(/todos los tratamientos incluidos y la cita/);
+      expect(dialog).not.toHaveTextContent(/atención/i);
     });
   });
 
@@ -398,9 +551,10 @@ describe('EncounterPanel', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Añadir tratamiento' }));
       const dialog = screen.getByRole('dialog', { name: 'Añadir tratamiento' });
-      expect(within(dialog).queryByRole('checkbox', { name: 'Toxina' })).not.toBeInTheDocument();
-      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Relleno' }));
-      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Peeling' }));
+      // Toxina is already live in the encounter: it is not offered.
+      expect(optionNames(dialog)).not.toContain('Toxina');
+      check('Relleno', dialog);
+      check('Peeling', dialog);
       await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Añadir' })));
 
       expect(hooks.create).toHaveBeenCalledWith({ treatmentIds: ['t2', 't3'], encounterId: 'encounter-1' });
@@ -414,7 +568,7 @@ describe('EncounterPanel', () => {
       renderOpen(withSessions([]));
 
       fireEvent.click(screen.getByRole('button', { name: 'Añadir tratamiento' }));
-      fireEvent.click(screen.getByRole('checkbox', { name: 'Peeling' }));
+      check('Peeling', screen.getByRole('dialog'));
       await act(async () =>
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Añadir' })),
       );
@@ -434,11 +588,19 @@ describe('EncounterPanel', () => {
       renderOpen(withSessions(present));
 
       fireEvent.click(screen.getByRole('button', { name: 'Añadir tratamiento' }));
-      fireEvent.click(screen.getByRole('checkbox', { name: 'Catálogo 1' }));
-      fireEvent.click(screen.getByRole('checkbox', { name: 'Catálogo 2' }));
+      const dialog = screen.getByRole('dialog', { name: 'Añadir tratamiento' });
+      check('Catálogo 1', dialog);
+      expect(within(dialog).getByRole('button', { name: 'Agregar' })).toBeDisabled();
+      expect(within(dialog).queryByRole('status')).not.toBeInTheDocument();
+      fireEvent.change(within(dialog).getByLabelText('Tratamiento'), {
+        target: { value: optionValue('Catálogo 2', dialog) },
+      });
+      expect(within(dialog).getByRole('button', { name: 'Agregar' })).toBeEnabled();
+      check('Catálogo 2', dialog);
 
-      expect(screen.getByRole('checkbox', { name: 'Catálogo 3' })).toBeDisabled();
-      expect(screen.getByText('Máximo 10 tratamientos por atención')).toBeInTheDocument();
+      // 8 present + 2 chosen = 10.
+      expect(within(dialog).getByRole('button', { name: 'Agregar' })).toBeDisabled();
+      expect(within(dialog).getByRole('status')).toHaveTextContent('Máximo 10 tratamientos por atención');
     });
 
     it('offers again a treatment whose session was cancelled and does not count it', () => {
@@ -461,14 +623,18 @@ describe('EncounterPanel', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Añadir tratamiento' }));
       const dialog = screen.getByRole('dialog', { name: 'Añadir tratamiento' });
-      expect(within(dialog).getByRole('checkbox', { name: 'Toxina' })).toBeInTheDocument();
-      expect(within(dialog).getByRole('checkbox', { name: 'Peeling' })).toBeInTheDocument();
-      // 7 counted: three more fit, so the fourth box is the first one refused.
-      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Toxina' }));
-      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Peeling' }));
-      expect(within(dialog).getByRole('checkbox', { name: 'Catálogo 1' })).toBeEnabled();
-      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Catálogo 1' }));
-      expect(within(dialog).getByRole('checkbox', { name: 'Catálogo 2' })).toBeDisabled();
+      expect(optionNames(dialog)).toContain('Toxina');
+      expect(optionNames(dialog)).toContain('Peeling');
+      // 7 counted: three more fit, so "Agregar" is refused after the third.
+      check('Toxina', dialog);
+      check('Peeling', dialog);
+      fireEvent.change(within(dialog).getByLabelText('Tratamiento'), {
+        target: { value: optionValue('Catálogo 1', dialog) },
+      });
+      expect(within(dialog).getByRole('button', { name: 'Agregar' })).toBeEnabled();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Agregar' }));
+      expect(within(dialog).getByRole('button', { name: 'Agregar' })).toBeDisabled();
+      expect(within(dialog).getByRole('status')).toBeInTheDocument();
     });
 
     it('disables "Añadir tratamiento" and says why when ten treatments are already counted', () => {
@@ -576,10 +742,16 @@ describe('EncounterPanel', () => {
       expect(screen.queryByRole('button', { name: 'Eliminar atención' })).not.toBeInTheDocument();
     });
 
-    it('does not offer to remove the encounter in treatments mode', () => {
+    it('does not offer to remove a treatments-mode encounter that has treatments', () => {
       renderOpen(withSessions([session('s1', 'Toxina', 'INTAKE_IN_PROGRESS')]), 'treatments');
 
       expect(screen.queryByRole('button', { name: 'Eliminar atención' })).not.toBeInTheDocument();
+    });
+
+    it('still offers to remove an empty encounter in treatments mode', () => {
+      renderOpen(withSessions([]), 'treatments');
+
+      expect(screen.getByRole('button', { name: 'Eliminar atención' })).toBeInTheDocument();
     });
   });
 

@@ -17,6 +17,7 @@ const hooks = vi.hoisted(() => ({
   modules: [] as unknown[],
   alerts: [] as unknown[],
   encounters: [] as unknown[],
+  enabled: new Set<string>(),
   create: vi.fn(),
   correct: vi.fn(),
   remove: vi.fn(),
@@ -40,8 +41,10 @@ vi.mock('@/hooks/useEncounters', () => ({
   useRemoveEncounter: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/hooks/useBranches', () => ({ useBranches: () => ({ data: [] }) }));
-// The encounter panel reads the enabled sections; this suite renders without a QueryClient.
-vi.mock('@/hooks/useSections', () => ({ useSections: () => ({ isEnabled: () => true }) }));
+// The tab and the encounter panel read the enabled sections; this suite renders without a QueryClient.
+vi.mock('@/hooks/useSections', () => ({
+  useSections: () => ({ isEnabled: (key: string) => hooks.enabled.has(key) }),
+}));
 vi.mock('@/hooks/useAppointments', () => ({ useAppointments: () => ({ data: [] }) }));
 vi.mock('@/hooks/useClinicalModules', () => ({
   useClinicalModules: () => ({ data: hooks.modules, isError: false, isPending: false, error: null }),
@@ -112,6 +115,7 @@ beforeEach(() => {
   hooks.records = [record()];
   hooks.alerts = [];
   hooks.encounters = [];
+  hooks.enabled = new Set();
   hooks.create.mockResolvedValue(undefined);
   hooks.correct.mockResolvedValue(undefined);
   hooks.remove.mockResolvedValue(undefined);
@@ -123,7 +127,7 @@ beforeEach(() => {
 
 describe('ClinicalRecordsTab', () => {
   it('reads each record with its definition, its author and its alerts', () => {
-    render(<ClinicalRecordsTab patientId="patient-1" />);
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
     expect(screen.getByText('Luis Mora · Nutrición · 01/10/2026')).toBeInTheDocument();
     expect(screen.getByText('70 kg')).toBeInTheDocument();
@@ -133,7 +137,7 @@ describe('ClinicalRecordsTab', () => {
   });
 
   it('offers only the modules the professional can record', () => {
-    render(<ClinicalRecordsTab patientId="patient-1" />);
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
     const select = screen.getByLabelText('Tipo de registro');
     expect(within(select).getByRole('option', { name: 'Signos vitales' })).toBeInTheDocument();
@@ -156,9 +160,65 @@ describe('ClinicalRecordsTab', () => {
       await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Guardar registro' })));
     };
 
+    describe('with the treatment sessions section on', () => {
+      beforeEach(() => {
+        hooks.enabled = new Set(['core.treatments.sessions']);
+      });
+
+      it('renders no encounter panel, only a pointer to the Tratamientos tab', () => {
+        render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
+
+        expect(screen.queryByText('Atención')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Iniciar atención' })).not.toBeInTheDocument();
+        expect(screen.getByText(/Inicia y cierra los tratamientos en la pestaña/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Tratamientos' })).toBeInTheDocument();
+      });
+
+      it('warns in terms of "tratamiento" when there is none in course', () => {
+        render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
+
+        expect(screen.getByText(/No tienes un tratamiento en curso con este/)).toBeInTheDocument();
+        expect(screen.queryByText(/No tienes una atención abierta/)).not.toBeInTheDocument();
+      });
+
+      it('asks the page to open the Tratamientos tab instead of only changing the URL', () => {
+        const onOpenTreatments = vi.fn();
+        render(
+          <ClinicalRecordsTab
+            patientId="patient-1"
+            startAppointmentId="appointment-1"
+            onOpenTreatments={onOpenTreatments}
+          />,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Tratamientos' }));
+
+        expect(onOpenTreatments).toHaveBeenCalledTimes(1);
+      });
+
+      it('still writes new records into the open encounter', async () => {
+        hooks.encounters = [openEncounter];
+        render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
+
+        expect(screen.queryByText('Atención en curso')).not.toBeInTheDocument();
+        await saveVitals();
+
+        expect(hooks.create).toHaveBeenCalledWith(
+          expect.objectContaining({ moduleKey: 'general.vital-signs', encounterId: 'encounter-1' }),
+        );
+      });
+    });
+
+    it('renders the encounter panel in specialties mode with the sessions section off', () => {
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Iniciar atención' })).toBeInTheDocument();
+      expect(screen.queryByText(/Inicia y cierra los tratamientos/)).not.toBeInTheDocument();
+    });
+
     it('writes new records into the open encounter of the professional', async () => {
       hooks.encounters = [openEncounter];
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
       expect(screen.getByText('Atención en curso')).toBeInTheDocument();
       await saveVitals();
@@ -170,7 +230,7 @@ describe('ClinicalRecordsTab', () => {
 
     it('leaves the record outside any encounter when the open one belongs to someone else', async () => {
       hooks.encounters = [{ ...openEncounter, professionalId: 'someone-else' }];
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
       expect(screen.queryByText('Atención en curso')).not.toBeInTheDocument();
       fireEvent.change(screen.getByLabelText('Tipo de registro'), { target: { value: 'general.vital-signs' } });
@@ -187,7 +247,7 @@ describe('ClinicalRecordsTab', () => {
 
     it('asks no password for a record written into the open encounter', async () => {
       hooks.encounters = [openEncounter];
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
       await saveVitals();
 
@@ -201,7 +261,7 @@ describe('ClinicalRecordsTab', () => {
           encounter: { id: 'encounter-1', encounterType: 'CONTROL', status: 'CLOSED', startedAt: '2026-10-01T15:00:00.000Z' },
         }),
       ];
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
       expect(screen.getByText('Atención: Control · 01/10/2026')).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Imprimir Signos vitales' })).toHaveAttribute(
@@ -213,14 +273,14 @@ describe('ClinicalRecordsTab', () => {
 
   it('lets only the author correct or remove a record', () => {
     hooks.records = [record(), record({ id: 'record-2', professionalId: 'someone-else', notes: 'De otro profesional' })];
-    render(<ClinicalRecordsTab patientId="patient-1" />);
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
     expect(screen.getAllByRole('button', { name: 'Corregir Signos vitales' })).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Eliminar Signos vitales' })).toHaveLength(1);
   });
 
   it('corrects a record with a reason and the data of its own version', async () => {
-    render(<ClinicalRecordsTab patientId="patient-1" />);
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Corregir Signos vitales' }));
     const save = screen.getByRole('button', { name: 'Guardar corrección' });
@@ -248,7 +308,7 @@ describe('ClinicalRecordsTab', () => {
     hooks.records = [
       record({ moduleKey: 'nutrition.assessments', data: { weightKg: '70', bmi: 24 }, alerts: [] }),
     ];
-    render(<ClinicalRecordsTab patientId="patient-1" />);
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
     // The legacy version still names its fields; extra keys are shown as stored.
     expect(screen.getByText('Peso (kg)')).toBeInTheDocument();
@@ -269,7 +329,7 @@ describe('ClinicalRecordsTab', () => {
   });
 
   it('removes a record only with a reason', async () => {
-    render(<ClinicalRecordsTab patientId="patient-1" />);
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Eliminar Signos vitales' }));
     const confirm = screen.getByRole('button', { name: 'Eliminar registro' });
@@ -286,7 +346,7 @@ describe('ClinicalRecordsTab', () => {
       record({ version: 3 }),
       record({ id: 'record-2', moduleKey: 'nutrition.assessments', data: { weightKg: '71' }, alerts: [], notes: null }),
     ];
-    render(<ClinicalRecordsTab patientId="patient-1" />);
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
     expect(within(cardOf('Control mensual')).getByText('Corregido')).toBeInTheDocument();
 
@@ -301,7 +361,7 @@ describe('ClinicalRecordsTab', () => {
 
     it('offers its author an addendum instead of correcting or removing it', () => {
       hooks.records = [signed()];
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
       expect(within(cardOf('Control mensual')).getByText('Firmado')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Corregir con adenda Signos vitales' })).toBeInTheDocument();
@@ -311,14 +371,14 @@ describe('ClinicalRecordsTab', () => {
 
     it('offers no addendum to someone who is not the author', () => {
       hooks.records = [signed({ professionalId: 'someone-else' })];
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
       expect(screen.queryByRole('button', { name: /adenda/i })).not.toBeInTheDocument();
     });
 
     it('saves the addendum with its reason, linked to the signed record', async () => {
       hooks.records = [signed()];
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Corregir con adenda Signos vitales' }));
       const save = screen.getByRole('button', { name: 'Guardar adenda' });
@@ -348,7 +408,7 @@ describe('ClinicalRecordsTab', () => {
         signed({ id: 'addendum', amendsRecordId: 'record-1', amendmentReason: 'Peso mal digitado', notes: 'Nueva' }),
         signed({ amendedBy: { id: 'addendum', createdAt: '2026-10-02T09:00:00.000Z' } }),
       ];
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
       const original = cardOf('Control mensual');
       expect(within(original).getByText('Corregido por adenda')).toBeInTheDocument();
@@ -363,7 +423,7 @@ describe('ClinicalRecordsTab', () => {
 
     it('drops an edit that the record no longer accepts and lets the history reload', async () => {
       hooks.correct.mockRejectedValue({ code: 'CLINICAL_RECORD_VERSION_CONFLICT', message: 'Alguien más modificó este registro.' });
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Corregir Signos vitales' }));
       fireEvent.change(screen.getByLabelText(/Motivo/), { target: { value: 'x' } });
@@ -373,14 +433,15 @@ describe('ClinicalRecordsTab', () => {
     });
 
     it('warns that without an open encounter a record is signed as it is saved', () => {
-      render(<ClinicalRecordsTab patientId="patient-1" />);
+      render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
+      expect(screen.getByText(/No tienes una atención abierta con este/)).toBeInTheDocument();
       expect(screen.getByText(/queda firmado al instante/)).toBeInTheDocument();
     });
   });
 
   it('takes procedure consents only for a health professional', () => {
-    const { unmount } = render(<ClinicalRecordsTab patientId="patient-1" />);
+    const { unmount } = render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
     expect(screen.getByText('Consentimientos de procedimientos')).toBeInTheDocument();
     unmount();
 
@@ -392,13 +453,13 @@ describe('ClinicalRecordsTab', () => {
         professionalProfile: { isActive: true, specialty: { code: 'AESTHETICS' } },
       } as never,
     });
-    render(<ClinicalRecordsTab patientId="patient-1" />);
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
     expect(screen.queryByText('Consentimientos de procedimientos')).not.toBeInTheDocument();
   });
 
   it('says so when the patient has no records', () => {
     hooks.records = [];
-    render(<ClinicalRecordsTab patientId="patient-1" />);
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
     expect(screen.getByText('Aún no hay registros clínicos de este paciente.')).toBeInTheDocument();
   });
