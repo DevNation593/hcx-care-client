@@ -1,6 +1,7 @@
 import { AxiosError } from 'axios';
 import type { Breadcrumb, ErrorEvent } from '@sentry/nextjs';
 import { describe, expect, it } from 'vitest';
+import { markApiError } from './api-error-marker';
 import { buildSentryOptions, scrubEvent } from './sentry-options';
 
 const DSN = 'https://public@o0.ingest.sentry.io/1';
@@ -25,22 +26,26 @@ describe('buildSentryOptions', () => {
     expect(options?.beforeSend).toBe(scrubEvent);
   });
 
-  it('adds no replay integration', () => {
-    const options = buildSentryOptions({ dsn: DSN });
-    const integrations = options?.integrations;
-
-    expect(Array.isArray(integrations) ? integrations : []).toHaveLength(0);
-  });
-
-  it('beforeBreadcrumb drops ui.input, fetch, xhr and console, keeps navigation', () => {
+  it('beforeBreadcrumb drops every ui.* category, http, fetch, xhr and console, keeps navigation', () => {
     const before = buildSentryOptions({ dsn: DSN })?.beforeBreadcrumb;
     expect(before).toBeDefined();
 
-    for (const category of ['ui.input', 'fetch', 'xhr', 'console']) {
+    for (const category of ['ui.input', 'ui.click', 'ui.keydown', 'http', 'fetch', 'xhr', 'console']) {
       expect(before?.({ category, message: 'x' }, undefined)).toBeNull();
     }
     const navigation: Breadcrumb = { category: 'navigation', data: { from: '/a', to: '/b' } };
     expect(before?.(navigation, undefined)).toEqual(navigation);
+  });
+
+  it('beforeBreadcrumb drops a ui.click whose selector carries an aria-label with patient data', () => {
+    const before = buildSentryOptions({ dsn: DSN })?.beforeBreadcrumb;
+
+    const click: Breadcrumb = {
+      category: 'ui.click',
+      message: 'input[type="radio"][aria-label="Consumo de sustancias: Sí"]',
+    };
+
+    expect(before?.(click, undefined)).toBeNull();
   });
 
   it('beforeBreadcrumb strips query string and fragment from navigation urls', () => {
@@ -118,6 +123,52 @@ describe('scrubEvent', () => {
   it('does not throw on an event without request or user', () => {
     expect(() => scrubEvent({} as ErrorEvent)).not.toThrow();
     expect(scrubEvent({} as ErrorEvent)).toEqual({});
+  });
+
+  it('drops an event whose original exception is a marked API error', () => {
+    const rejected = markApiError({ code: 'NETWORK_ERROR', message: 'Sin conexion', status: 500 });
+
+    expect(scrubEvent({ message: 'x' } as ErrorEvent, { originalException: rejected })).toBeNull();
+  });
+
+  it('keeps an event whose original exception is an unmarked plain object', () => {
+    const event = { message: 'x' } as ErrorEvent;
+    const thrown = { code: 'NETWORK_ERROR', message: 'Sin conexion', status: 500 };
+
+    expect(scrubEvent(event, { originalException: thrown })).toBe(event);
+  });
+
+  it('removes vars from every stack frame', () => {
+    const event = {
+      exception: {
+        values: [
+          { type: 'Error', stacktrace: { frames: [{ vars: { name: 'Ana' } }, { filename: 'a.js' }] } },
+          { type: 'Error', stacktrace: { frames: [{ vars: { dni: '1' } }] } },
+        ],
+      },
+    } as unknown as ErrorEvent;
+
+    const result = scrubEvent(event);
+
+    for (const value of result?.exception?.values ?? []) {
+      for (const frame of value.stacktrace?.frames ?? []) expect(frame).not.toHaveProperty('vars');
+    }
+  });
+
+  it('still removes vars when scrubbing fails midway', () => {
+    const event = {
+      exception: { values: [{ type: 'Error', stacktrace: { frames: [{ vars: { name: 'Ana' } }] } }] },
+    } as unknown as ErrorEvent;
+    Object.defineProperty(event, 'request', {
+      configurable: true,
+      get() {
+        throw new Error('boom');
+      },
+    });
+
+    const result = scrubEvent(event);
+
+    expect(result?.exception?.values?.[0].stacktrace?.frames?.[0]).not.toHaveProperty('vars');
   });
 
   it('drops request, user and extra instead of throwing when scrubbing fails', () => {

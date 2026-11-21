@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isMarkedApiError } from './api-error-marker';
 import type { Breadcrumb, BrowserOptions, ErrorEvent, EventHint } from '@sentry/nextjs';
 
 /**
@@ -26,11 +27,19 @@ export function buildSentryOptions(env: {
   };
 }
 
-/** Categories that can carry what the user typed, request bodies or logged patient data. */
-const DROPPED_BREADCRUMB_CATEGORIES = new Set(['ui.input', 'fetch', 'xhr', 'console']);
+/** Categories that can carry request URLs or bodies and logged patient data. */
+const DROPPED_BREADCRUMB_CATEGORIES = new Set(['http', 'fetch', 'xhr', 'console']);
+
+/**
+ * Every `ui.*` breadcrumb is dropped: `ui.click` carries the CSS selector of the element,
+ * including aria-label/title/name/alt, which the app fills with patient names and answers.
+ */
+function isDroppedCategory(category: string | undefined): boolean {
+  return !!category && (category.startsWith('ui.') || DROPPED_BREADCRUMB_CATEGORIES.has(category));
+}
 
 function filterBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
-  if (breadcrumb.category && DROPPED_BREADCRUMB_CATEGORIES.has(breadcrumb.category)) return null;
+  if (isDroppedCategory(breadcrumb.category)) return null;
   if (breadcrumb.category === 'navigation' && breadcrumb.data) {
     const data = { ...breadcrumb.data };
     for (const key of ['from', 'to'] as const) {
@@ -56,18 +65,32 @@ function stripQueryAndFragment(url: string): string {
 export function scrubEvent(event: ErrorEvent, hint?: EventHint): ErrorEvent | null {
   try {
     // The API reports its own 5xx and 4xx are expected: reporting them here would duplicate.
-    if (axios.isAxiosError(hint?.originalException)) return null;
+    // The API client rejects with marked plain ApiError objects; AxiosError is kept as well.
+    const original = hint?.originalException;
+    if (axios.isAxiosError(original) || isMarkedApiError(original)) return null;
 
     scrubRequest(event);
     scrubUser(event);
     // `extra` holds the whole object when something that is not an Error is thrown.
     delete event.extra;
+    scrubFrameVariables(event);
   } catch {
     delete event.request;
     delete event.user;
     delete event.extra;
+    try {
+      scrubFrameVariables(event);
+    } catch {
+      delete event.exception;
+    }
   }
   return event;
+}
+
+function scrubFrameVariables(event: ErrorEvent): void {
+  for (const exception of event.exception?.values ?? []) {
+    for (const frame of exception.stacktrace?.frames ?? []) delete frame.vars;
+  }
 }
 
 function scrubRequest(event: ErrorEvent): void {
