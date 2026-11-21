@@ -1,7 +1,13 @@
+import { withSentryConfig } from '@sentry/nextjs/config';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  experimental: {
+    // Next 14 only loads src/instrumentation.ts with this flag.
+    instrumentationHook: true,
+  },
   images: {
     domains: [],
     formats: ['image/avif', 'image/webp'],
@@ -26,4 +32,19 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+
+// Build-time only: SENTRY_* are never NEXT_PUBLIC. Without the token the build still
+// succeeds and source maps are neither generated for Sentry nor uploaded.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: sentryAuthToken,
+  // Uploaded maps are deleted from the build output afterwards, so they are never served.
+  sourcemaps: {
+    disable: !sentryAuthToken,
+    deleteSourcemapsAfterUpload: true,
+  },
+  widenClientFileUpload: true,
+  telemetry: false,
+});

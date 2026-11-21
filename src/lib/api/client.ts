@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, STORAGE_KEYS } from '@/lib/constants';
+import { markApiError } from '@/lib/monitoring/api-error-marker';
 import { ApiError } from '@/types';
 import { MISSING_REQUIREMENT_LABELS, type MissingRequirement } from '@/types/treatments';
 import type { BillingCode, ClinicalBillingCode } from '@/types/cash';
@@ -80,7 +81,7 @@ class ApiClient {
 
         // Never try token refresh for auth endpoints (login/reset/etc.)
         if (error.response?.status === 401 && isAuthEndpoint) {
-          return Promise.reject(this.normalizeError(error));
+          return Promise.reject(markApiError(this.normalizeError(error)));
         }
 
         // A temporary password blocks every request but the change itself.
@@ -139,11 +140,11 @@ class ApiClient {
             if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
               window.location.href = '/login';
             }
-            return Promise.reject(this.normalizeError(error));
+            return Promise.reject(markApiError(this.normalizeError(error)));
           }
         }
 
-        return Promise.reject(this.normalizeError(error));
+        return Promise.reject(markApiError(this.normalizeError(error)));
       }
     );
   }
