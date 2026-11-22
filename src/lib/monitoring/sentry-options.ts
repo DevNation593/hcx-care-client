@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { isMarkedApiError } from './api-error-marker';
 import { isBrowserReportingAllowed } from './browser-gate';
+import { scrubSamplingMetadata } from './sentry-envelope';
 import type { Breadcrumb, BrowserOptions, ErrorEvent, EventHint } from '@sentry/nextjs';
 
 /**
@@ -20,6 +21,17 @@ export function buildSentryOptions(env: {
     dsn,
     environment: env.environment || 'development',
     tracesSampleRate: 0,
+    // Browser, server and edge never sample by default, whatever a request or a `<meta
+    // name="sentry-trace">` says: with `tracesSampleRate: 0` the SDK still inherits the sampling
+    // decision of an incoming trace, so anyone could force a transaction (with the full URL and
+    // headers of the request) by sending `sentry-trace: <id>-<id>-1`. The server and the edge keep
+    // this at any rate: tracing lives in the browser only (`buildBrowserSentryOptions`).
+    tracesSampler: () => 0,
+    beforeSendTransaction: () => null,
+    // At any rate, in the browser, the server and the edge: no `sentry-trace` or `baggage` header on
+    // any outgoing request. By default the SDK adds them (to every destination on the server, to the
+    // same origin in the browser) even when the trace is not sampled.
+    tracePropagationTargets: [],
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 0,
     sendDefaultPii: false,
@@ -82,10 +94,13 @@ export function scrubEvent(event: ErrorEvent, hint?: EventHint): ErrorEvent | nu
     // `extra` holds the whole object when something that is not an Error is thrown.
     delete event.extra;
     scrubFrameVariables(event);
+    // The `trace` header of the envelope is copied from here: no route, no request, no scopes.
+    scrubSamplingMetadata(event);
   } catch {
     delete event.request;
     delete event.user;
     delete event.extra;
+    delete event.sdkProcessingMetadata;
     try {
       scrubFrameVariables(event);
     } catch {

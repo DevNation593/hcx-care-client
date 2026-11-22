@@ -3,9 +3,33 @@
 import { useEffect } from 'react';
 import * as Sentry from '@sentry/nextjs';
 import { setBrowserReportingAllowed } from '@/lib/monitoring/browser-gate';
-import { buildBrowserSentryOptions } from '@/lib/monitoring/browser-options';
+import { applyBrowserReportingGate } from '@/lib/monitoring/browser-reporting-options';
+import { buildBrowserSentryOptions } from '@/lib/monitoring/sentry-browser-options';
+import { buildSentryOptions } from '@/lib/monitoring/sentry-options';
 import { useConsent } from './consent';
 import { clearPendingBrowserErrors, flushPendingBrowserErrors } from './pending-browser-errors';
+
+/**
+ * The options of the browser SDK, which this component is the only place to initialize
+ * (SEC-WEB-09: no global `sentry.client.config.ts`): the common options, plus Web Vitals when
+ * NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE is set, all behind the reporting gate.
+ *
+ * NEXT_PUBLIC_* is inlined at build time, and next.config.mjs always defines this one (empty when it
+ * is not set). Without a sample rate the condition below is the constant `''`: the Web Vitals branch
+ * is dead code and nothing of `sentry-browser-options` (scrubbers, tracing integration options)
+ * reaches the bundle. The condition must stay the literal `process.env.NEXT_PUBLIC_...` expression
+ * and next.config.mjs must keep defining it (`sentry-bundle-gating.test.ts` checks both). An invalid
+ * value still means rate 0.
+ */
+function buildOptions(env: { dsn?: string; environment?: string }) {
+  const options = process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE
+    ? buildBrowserSentryOptions({
+        ...env,
+        tracesSampleRate: process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE,
+      })
+    : buildSentryOptions(env);
+  return applyBrowserReportingGate(options);
+}
 
 /** Breadcrumbs gathered while reporting was not allowed must never ride along in a later event. */
 function clearBreadcrumbs(): void {
@@ -28,7 +52,7 @@ export function SentryBrowser({ dsn, environment }: { dsn: string | undefined; e
   useEffect(() => {
     if (!active) return;
     if (!Sentry.getClient()) {
-      const options = buildBrowserSentryOptions({ dsn, environment });
+      const options = buildOptions({ dsn, environment });
       if (!options) return;
       Sentry.init(options);
     }

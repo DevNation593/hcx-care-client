@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { MoreHorizontal, Search, X } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +21,12 @@ import {
 import { useInvoiceRequests, useInvoicingPermissions } from '@/hooks/useInvoicing';
 import { requireTenantId, useTenantId } from '@/hooks/useTenantScope';
 import { invoicingApi } from '@/lib/api/invoicing-api';
-import { INVOICE_STATUS_LABELS, type InvoiceRequest, type InvoiceStatus } from '@/types/invoicing';
+import {
+  INVOICE_STATUS_LABELS,
+  type InvoiceRequest,
+  type InvoiceStatus,
+  type SriMessage,
+} from '@/types/invoicing';
 import type { ApiError } from '@/types';
 import { InvoiceActionsMenu, type InvoiceDocumentKind } from './invoice-actions-menu';
 
@@ -41,6 +46,16 @@ function statusVariant(status: InvoiceStatus) {
   if (status === 'AUTHORIZED') return 'default' as const;
   if (status === 'REJECTED' || status === 'FAILED') return 'destructive' as const;
   return 'secondary' as const;
+}
+
+/** Only a rejected or failed request has a reason worth opening; the others never show the toggle. */
+function hasRejectionDetail(status: InvoiceStatus) {
+  return status === 'REJECTED' || status === 'FAILED';
+}
+
+/** "identifier · message · additionalInfo" without the empty parts. */
+function formatSriMessage(message: SriMessage) {
+  return [message.identifier, message.message, message.additionalInfo].filter(Boolean).join(' · ');
 }
 
 interface OpenMenu {
@@ -63,6 +78,9 @@ export function IssuedInvoicesTable({ branchId }: { branchId?: string }) {
   const [status, setStatus] = useState<InvoiceStatus | ''>('');
   const [page, setPage] = useState(1);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
+  // Ids of the requests whose rejection reason is open on the current page; cleared when the page,
+  // the status filter or the search changes.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [notice, setNotice] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const focusOnClose = useRef<HTMLElement | null>(null);
@@ -93,6 +111,19 @@ export function IssuedInvoicesTable({ branchId }: { branchId?: string }) {
     setMenu(null);
     if (restoreFocus) focusOnClose.current?.focus();
   }, []);
+
+  // Open reasons belong to the page being looked at: a new page, filter or search starts closed.
+  useEffect(() => {
+    setExpanded((current) => (current.size === 0 ? current : new Set()));
+  }, [page, status, search]);
+
+  function toggleDetail(id: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }
 
   function openMenu(next: OpenMenu, opener: HTMLElement | null) {
     focusOnClose.current = opener;
@@ -251,73 +282,127 @@ export function IssuedInvoicesTable({ branchId }: { branchId?: string }) {
               <TableBody>
                 {items.map((request) => {
                   const label = request.number ?? `de la orden ${request.orderNumber ?? ''}`.trim();
+                  const detailable = hasRejectionDetail(request.status);
+                  const open = detailable && expanded.has(request.id);
+                  const panelId = `invoice-rejection-${request.id}`;
+                  const outcome = request.status === 'REJECTED' ? 'rechazo' : 'fallo';
+                  const error = request.lastError;
+                  // An entry with every field empty would render as a blank paragraph.
+                  const sriLines = (error?.messages ?? []).map(formatSriMessage).filter(Boolean);
                   return (
-                    <TableRow
-                      key={request.id}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        openMenu(
-                          {
-                            request,
-                            x: event.clientX,
-                            y: event.clientY,
-                            align: 'start',
-                          },
-                          document.activeElement as HTMLElement | null,
-                        );
-                      }}
-                    >
-                      <TableCell className="whitespace-nowrap font-medium">
-                        {request.number ?? (
-                          <span className="font-normal text-muted-foreground">Sin número aún</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {formatIssueDate(request.issueDate)}
-                      </TableCell>
-                      <TableCell className="min-w-[12rem] max-w-xs break-words">
-                        {request.customerName ?? <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariant(request.status)}>
-                          {INVOICE_STATUS_LABELS[request.status]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {request.orderNumber ? `#${request.orderNumber}` : '—'}
-                      </TableCell>
-                      <TableCell className="py-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Acciones de la factura ${label}`}
-                          aria-haspopup="menu"
-                          aria-expanded={menu?.request.id === request.id}
-                          disabled={downloading}
-                          data-invoice-menu-trigger="true"
-                          onClick={(event) => {
-                            const button = event.currentTarget;
-                            if (menu?.request.id === request.id) {
-                              closeMenu(true);
-                              return;
-                            }
-                            const box = button.getBoundingClientRect();
-                            openMenu(
-                              {
-                                request,
-                                x: box.right,
-                                y: box.bottom + 4,
-                                align: 'end',
-                              },
-                              button,
-                            );
-                          }}
-                        >
-                          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                    <Fragment key={request.id}>
+                      <TableRow
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          openMenu(
+                            {
+                              request,
+                              x: event.clientX,
+                              y: event.clientY,
+                              align: 'start',
+                            },
+                            document.activeElement as HTMLElement | null,
+                          );
+                        }}
+                      >
+                        <TableCell className="whitespace-nowrap font-medium">
+                          {request.number ?? (
+                            <span className="font-normal text-muted-foreground">Sin número aún</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {formatIssueDate(request.issueDate)}
+                        </TableCell>
+                        <TableCell className="min-w-[12rem] max-w-xs break-words">
+                          {request.customerName ?? <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <Badge variant={statusVariant(request.status)}>
+                              {INVOICE_STATUS_LABELS[request.status]}
+                            </Badge>
+                            {detailable && (
+                              <button
+                                type="button"
+                                aria-expanded={open}
+                                aria-controls={open ? panelId : undefined}
+                                aria-label={`${open ? 'Ocultar' : 'Ver'} motivo del ${outcome} de la factura ${label}`}
+                                className="rounded-sm text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                onClick={() => toggleDetail(request.id)}
+                              >
+                                {open ? 'Ocultar motivo' : 'Ver motivo'}
+                              </button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {request.orderNumber ? `#${request.orderNumber}` : '—'}
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Acciones de la factura ${label}`}
+                            aria-haspopup="menu"
+                            aria-expanded={menu?.request.id === request.id}
+                            disabled={downloading}
+                            data-invoice-menu-trigger="true"
+                            onClick={(event) => {
+                              const button = event.currentTarget;
+                              if (menu?.request.id === request.id) {
+                                closeMenu(true);
+                                return;
+                              }
+                              const box = button.getBoundingClientRect();
+                              openMenu(
+                                {
+                                  request,
+                                  x: box.right,
+                                  y: box.bottom + 4,
+                                  align: 'end',
+                                },
+                                button,
+                              );
+                            }}
+                          >
+                            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      {open && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="py-2">
+                            <Alert
+                              variant="destructive"
+                              id={panelId}
+                              role="region"
+                              aria-label={`Motivo del ${outcome} de la factura ${label}`}
+                              className="break-words"
+                            >
+                              {error ? (
+                                <>
+                                  <p className="whitespace-pre-wrap">{error.message}</p>
+                                  {error.code && (
+                                    <p className="text-xs opacity-80">Código: {error.code}</p>
+                                  )}
+                                  {sriLines.map((line, index) => (
+                                    <p key={index} className="whitespace-pre-wrap">
+                                      {line}
+                                    </p>
+                                  ))}
+                                </>
+                              ) : (
+                                <p>
+                                  No se registró un motivo para esta factura. Revisa los datos del
+                                  cliente o contacta a soporte.
+                                </p>
+                              )}
+                            </Alert>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -325,7 +410,7 @@ export function IssuedInvoicesTable({ branchId }: { branchId?: string }) {
           </Card>
           <p className="text-xs text-muted-foreground">
             Clic derecho sobre una factura, o el botón de acciones, para descargar su XML o su
-            RIDE.
+            RIDE. En las facturas rechazadas o fallidas, «Ver motivo» muestra la explicación.
           </p>
         </>
       )}
