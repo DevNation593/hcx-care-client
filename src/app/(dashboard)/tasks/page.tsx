@@ -3,8 +3,9 @@
 import { SectionGate } from '@/components/layout/section-gate';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useTasks, useCreateTask, useDeleteTask } from '@/hooks/useTasks';
-import { usePagination } from '@/hooks/usePagination';
+import { useTasksPage, useTaskSummary, useCreateTask, useDeleteTask } from '@/hooks/useTasks';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useFallbackToLastPage, useServerPage } from '@/hooks/useServerPage';
 import { tasksApi, usersApi, patientsApi, extractArray } from '@/lib/api/endpoints';
 import { useAuthStore } from '@/store/authStore';
 import { assignableUsers } from '@/features/tasks/task-assignees';
@@ -80,9 +81,28 @@ function TasksPageContent() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
 
-  // Fetch tasks
-  const { data: tasks, isLoading, error: tasksError } = useTasks();
+  // The box answers every keystroke; the request waits until typing pauses.
+  const debouncedSearch = useDebouncedValue(search.trim());
+  const serverStatus = statusFilter === 'ALL' ? undefined : statusFilter;
+  const serverPriority = priorityFilter === 'ALL' ? undefined : priorityFilter;
+
+  // Search, filters and paging all run on the server; one page of tasks at a time.
+  const { page, setPage } = useServerPage(`${debouncedSearch}|${statusFilter}|${priorityFilter}`);
+  const {
+    data: tasksPage,
+    isLoading,
+    isPlaceholderData,
+    error: tasksError,
+  } = useTasksPage({ search: debouncedSearch, status: serverStatus, priority: serverPriority, page });
+  const { data: summary } = useTaskSummary({ search: debouncedSearch, priority: serverPriority });
   const { mutate: deleteTask, isPending: isDeleting } = useDeleteTask();
+  const tasks = tasksPage?.items ?? [];
+  const meta = tasksPage?.meta;
+  useFallbackToLastPage(
+    page,
+    setPage,
+    meta && { totalPages: meta.totalPages, settled: !isPlaceholderData },
+  );
 
   // Complete task mutation
   const completeTask = useMutation({
@@ -99,37 +119,19 @@ function TasksPageContent() {
     },
   });
 
-  // Filter and search
-  const filteredTasks = (tasks || []).filter((task) => {
-    const matchesSearch =
-      !search ||
-      task.title.toLowerCase().includes(search.toLowerCase()) ||
-      task.description?.toLowerCase().includes(search.toLowerCase()) ||
-      task.patient?.firstName?.toLowerCase().includes(search.toLowerCase()) ||
-      task.patient?.lastName?.toLowerCase().includes(search.toLowerCase());
-
-    const matchesStatus = statusFilter === 'ALL' || task.status === statusFilter;
-    const matchesPriority = priorityFilter === 'ALL' || task.priority === priorityFilter;
-
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
-
-  // Group tasks
-  const pendingTasks = filteredTasks.filter(
+  // The page is grouped by state under its headings. The headings and the cards count the whole
+  // list, which one page cannot: those totals come from the summary (and, under a status filter,
+  // from the list itself, whose rows all belong to one group).
+  const pagePendingTasks = tasks.filter(
     (t) => t.status === TaskStatus.PENDING || t.status === TaskStatus.IN_PROGRESS
   );
-  const completedTasks = filteredTasks.filter((t) => t.status === TaskStatus.COMPLETED);
-  const cancelledTasks = filteredTasks.filter((t) => t.status === TaskStatus.CANCELLED);
-
-  // Pages run through the groups in order, so the headings keep counting the whole list.
-  const pagination = usePagination([...pendingTasks, ...completedTasks, ...cancelledTasks], {
-    resetKey: `${search}|${statusFilter}|${priorityFilter}`,
-  });
-  const pageTaskIds = new Set(pagination.pageItems.map((task) => task.id));
-  const onPage = (task: Task) => pageTaskIds.has(task.id);
-  const pagePendingTasks = pendingTasks.filter(onPage);
-  const pageCompletedTasks = completedTasks.filter(onPage);
-  const pageCancelledTasks = cancelledTasks.filter(onPage);
+  const pageCompletedTasks = tasks.filter((t) => t.status === TaskStatus.COMPLETED);
+  const pageCancelledTasks = tasks.filter((t) => t.status === TaskStatus.CANCELLED);
+  const groupTotal = (fromSummary: number | undefined, onPage: Task[]) =>
+    statusFilter === 'ALL' ? fromSummary ?? onPage.length : meta?.total ?? onPage.length;
+  const pendingTotal = groupTotal(summary?.pending, pagePendingTasks);
+  const completedTotal = groupTotal(summary?.completed, pageCompletedTasks);
+  const cancelledTotal = groupTotal(summary?.cancelled, pageCancelledTasks);
 
   const handleDelete = () => {
     if (deleteTaskId) {
@@ -250,7 +252,7 @@ function TasksPageContent() {
             <div className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-blue-500" />
               <div>
-                <p className="text-2xl font-bold">{pendingTasks.length}</p>
+                <p className="text-2xl font-bold">{summary?.pending ?? '—'}</p>
                 <p className="text-xs text-muted-foreground">Pendientes</p>
               </div>
             </div>
@@ -261,9 +263,7 @@ function TasksPageContent() {
             <div className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-red-500" />
               <div>
-                <p className="text-2xl font-bold">
-                  {pendingTasks.filter((t) => isOverdue(t)).length}
-                </p>
+                <p className="text-2xl font-bold">{summary?.overdue ?? '—'}</p>
                 <p className="text-xs text-muted-foreground">Vencidas</p>
               </div>
             </div>
@@ -274,7 +274,7 @@ function TasksPageContent() {
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-500" />
               <div>
-                <p className="text-2xl font-bold">{completedTasks.length}</p>
+                <p className="text-2xl font-bold">{summary?.completed ?? '—'}</p>
                 <p className="text-xs text-muted-foreground">Completadas</p>
               </div>
             </div>
@@ -285,7 +285,7 @@ function TasksPageContent() {
             <div className="flex items-center gap-2">
               <X className="h-5 w-5 text-gray-500" />
               <div>
-                <p className="text-2xl font-bold">{cancelledTasks.length}</p>
+                <p className="text-2xl font-bold">{summary?.cancelled ?? '—'}</p>
                 <p className="text-xs text-muted-foreground">Canceladas</p>
               </div>
             </div>
@@ -300,7 +300,7 @@ function TasksPageContent() {
             <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
-      ) : filteredTasks.length === 0 ? (
+      ) : tasks.length === 0 ? (
         <Card>
           <CardContent className="py-12">
             <div className="text-center text-muted-foreground">
@@ -321,13 +321,16 @@ function TasksPageContent() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
+        <div
+          className={cn('space-y-6', isPlaceholderData && 'opacity-60 transition-opacity')}
+          aria-busy={isPlaceholderData}
+        >
           {/* Pending / In Progress */}
           {pagePendingTasks.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Clock className="h-5 w-5" />
-                Activas ({pendingTasks.length})
+                Activas ({pendingTotal})
               </h2>
               {pagePendingTasks.map((task) => (
                 <TaskCard
@@ -346,7 +349,7 @@ function TasksPageContent() {
             <div className="space-y-3">
               <h2 className="text-lg font-semibold flex items-center gap-2 text-muted-foreground">
                 <CheckCircle2 className="h-5 w-5" />
-                Completadas ({completedTasks.length})
+                Completadas ({completedTotal})
               </h2>
               {pageCompletedTasks.map((task) => (
                 <TaskCard
@@ -364,7 +367,7 @@ function TasksPageContent() {
             <div className="space-y-3">
               <h2 className="text-lg font-semibold flex items-center gap-2 text-muted-foreground">
                 <X className="h-5 w-5" />
-                Canceladas ({cancelledTasks.length})
+                Canceladas ({cancelledTotal})
               </h2>
               {pageCancelledTasks.map((task) => (
                 <TaskCard
@@ -377,13 +380,15 @@ function TasksPageContent() {
             </div>
           )}
 
-          <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            total={pagination.total}
-            pageSize={pagination.pageSize}
-            onPageChange={pagination.setPage}
-          />
+          {meta && (
+            <Pagination
+              page={page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              pageSize={meta.limit}
+              onPageChange={setPage}
+            />
+          )}
         </div>
       )}
 

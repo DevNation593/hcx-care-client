@@ -41,6 +41,8 @@ import {
   MfaSetup,
   MfaStatus,
   PaginatedResponse,
+  ListPage,
+  PageMeta,
   SubscriptionPayment,
   PlatformPlan,
   PlatformPlanInput,
@@ -1136,9 +1138,23 @@ export const usersApi = {
 // PATIENTS API (tenant-scoped)
 // ==========================================
 
+export type PatientStatusFilter = 'active' | 'inactive' | 'all';
+
+export interface PatientPageParams {
+  search?: string;
+  status?: PatientStatusFilter;
+  page: number;
+  limit: number;
+}
+
 export const patientsApi = {
+  /** The whole list (an array) unless `page`/`limit` are sent: selectors and the dashboard rely on that. */
   list: (params?: { search?: string; isActive?: boolean; page?: number; limit?: number }, tenantId?: string) =>
     apiClient.get<PaginatedResponse<Patient>>(API_ENDPOINTS.PATIENTS(getTenantId(tenantId)), { params }),
+
+  /** One page, paged by the server. */
+  listPage: (params: PatientPageParams, tenantId?: string) =>
+    apiClient.get<ListPage<Patient> | Patient[]>(API_ENDPOINTS.PATIENTS(getTenantId(tenantId)), { params }),
 
   get: (patientId: string, tenantId?: string) =>
     apiClient.get<PatientDetail>(API_ENDPOINTS.PATIENT_DETAIL(getTenantId(tenantId), patientId)),
@@ -1298,9 +1314,35 @@ export const sessionPlansApi = {
 // TASKS API (tenant-scoped)
 // ==========================================
 
+export interface TaskPageParams {
+  search?: string;
+  status?: string;
+  priority?: string;
+  page: number;
+  limit: number;
+}
+
+export interface TaskSummary {
+  /** PENDING and IN_PROGRESS. */
+  pending: number;
+  /** Those of `pending` whose due date has passed. */
+  overdue: number;
+  completed: number;
+  cancelled: number;
+}
+
 export const tasksApi = {
+  /** The whole list (an array) unless `page`/`limit` are sent: the dashboard and the patient record rely on that. */
   list: (params?: { patientId?: string; assignedToId?: string; status?: string; priority?: string; page?: number; limit?: number }) =>
     apiClient.get<PaginatedResponse<Task>>(API_ENDPOINTS.TASKS(getTenantId()), { params }),
+
+  /** One page, paged by the server. */
+  listPage: (params: TaskPageParams, tenantId?: string) =>
+    apiClient.get<ListPage<Task> | Task[]>(API_ENDPOINTS.TASKS(getTenantId(tenantId)), { params }),
+
+  /** Counts per state of the tasks the caller can see, under the same search and priority filters as the list. */
+  summary: (params?: { search?: string; priority?: string }, tenantId?: string) =>
+    apiClient.get<TaskSummary>(`${API_ENDPOINTS.TASKS(getTenantId(tenantId))}/summary`, { params }),
 
   get: (taskId: string) =>
     apiClient.get<Task>(API_ENDPOINTS.TASK_DETAIL(getTenantId(), taskId)),
@@ -1464,4 +1506,45 @@ export const auditLogsApi = {
 
 export function extractArray<T>(response: PaginatedResponse<T> | T[]): T[] {
   return Array.isArray(response) ? response : (response.data ?? []);
+}
+
+let warnedUnpagedList = false;
+
+export interface PageResult<T> {
+  items: T[];
+  meta: PageMeta;
+}
+
+/**
+ * Rows and `meta` of a page. A server that does not page yet answers the whole list as an array;
+ * then the requested page is cut here, so the list keeps working while API and web deploy apart.
+ * `totalPages` is at least 1 so a pager never shows "page 1 of 0". The API must be deployed before
+ * the web (see api/docs/DEPLOYMENT.md): this fallback downloads the whole list, so it warns once per session.
+ */
+export function extractPage<T>(
+  response: ListPage<T> | T[],
+  request: { page: number; limit: number },
+): PageResult<T> {
+  if (Array.isArray(response)) {
+    if (!warnedUnpagedList) {
+      warnedUnpagedList = true;
+      console.warn(
+        'The API answered a paged list request with the whole list: it does not page on the server yet. Deploy the API before the web.',
+      );
+    }
+    const start = (request.page - 1) * request.limit;
+    return {
+      items: response.slice(start, start + request.limit),
+      meta: {
+        page: request.page,
+        limit: request.limit,
+        total: response.length,
+        totalPages: Math.max(1, Math.ceil(response.length / request.limit)),
+      },
+    };
+  }
+  return {
+    items: response.data ?? [],
+    meta: { ...response.meta, totalPages: Math.max(1, response.meta.totalPages) },
+  };
 }

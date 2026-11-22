@@ -2,8 +2,11 @@
 
 import { SectionGate } from '@/components/layout/section-gate';
 import { useState } from 'react';
-import { usePatients } from '@/hooks/usePatients';
-import { usePagination } from '@/hooks/usePagination';
+import { usePatientsPage } from '@/hooks/usePatients';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useFallbackToLastPage, useServerPage } from '@/hooks/useServerPage';
+import { DEFAULT_PAGE_SIZE } from '@/lib/constants';
+import type { PatientStatusFilter } from '@/lib/api/endpoints';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -17,19 +20,30 @@ import { formatDate } from '@/lib/utils';
 import { describeIdentification } from '@/features/patients/patient-identity';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
 
+// The list starts on the active patients; archived ones are one filter away ("Todos", "Inactivos").
+const DEFAULT_STATUS_FILTER: PatientStatusFilter = 'active';
+
 function PatientsPageContent() {
   const terms = usePatientTerms();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const { data: patientsData, isLoading } = usePatients({ search });
-
-  const filteredPatients = (patientsData || []).filter((patient) => {
-    if (statusFilter === 'active') return patient.isActive;
-    if (statusFilter === 'inactive') return !patient.isActive;
-    return true;
+  const [statusFilter, setStatusFilter] = useState<PatientStatusFilter>(DEFAULT_STATUS_FILTER);
+  // The box answers every keystroke; the request waits until typing pauses.
+  const debouncedSearch = useDebouncedValue(search.trim());
+  const { page, setPage } = useServerPage(`${debouncedSearch}|${statusFilter}`);
+  const { data: patientsPage, isLoading, isPlaceholderData } = usePatientsPage({
+    search: debouncedSearch,
+    status: statusFilter,
+    page,
+    limit: DEFAULT_PAGE_SIZE,
   });
-  const pagination = usePagination(filteredPatients, { resetKey: `${search}|${statusFilter}` });
+  const patients = patientsPage?.items ?? [];
+  const meta = patientsPage?.meta;
+  useFallbackToLastPage(
+    page,
+    setPage,
+    meta && { totalPages: meta.totalPages, settled: !isPlaceholderData },
+  );
 
   return (
     <div className="space-y-6">
@@ -67,7 +81,7 @@ function PatientsPageContent() {
             >
               <Filter className="h-4 w-4 mr-2" />
               Filtros
-              {statusFilter !== 'all' && (
+              {statusFilter !== DEFAULT_STATUS_FILTER && (
                 <Badge variant="secondary" className="ml-2 h-5 px-1.5">
                   1
                 </Badge>
@@ -103,11 +117,11 @@ function PatientsPageContent() {
                   </Button>
                 </div>
               </div>
-              {statusFilter !== 'all' && (
+              {statusFilter !== DEFAULT_STATUS_FILTER && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setStatusFilter('all')}
+                  onClick={() => setStatusFilter(DEFAULT_STATUS_FILTER)}
                   className="self-end"
                 >
                   <X className="h-4 w-4 mr-1" />
@@ -120,9 +134,9 @@ function PatientsPageContent() {
         <CardContent>
           {isLoading ? (
             <SkeletonTable />
-          ) : filteredPatients && filteredPatients.length > 0 ? (
+          ) : patients.length > 0 ? (
             <>
-            <div className="overflow-x-auto">
+            <div className={isPlaceholderData ? 'overflow-x-auto opacity-60 transition-opacity' : 'overflow-x-auto'} aria-busy={isPlaceholderData}>
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
@@ -136,7 +150,7 @@ function PatientsPageContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pagination.pageItems.map((patient) => (
+                  {patients.map((patient) => (
                     <tr key={patient.id} className="border-b hover:bg-muted/50">
                       <td className="py-3 px-4">
                         <div>
@@ -181,14 +195,16 @@ function PatientsPageContent() {
                 </tbody>
               </table>
             </div>
-            <Pagination
-              className="mt-4"
-              page={pagination.page}
-              totalPages={pagination.totalPages}
-              total={pagination.total}
-              pageSize={pagination.pageSize}
-              onPageChange={pagination.setPage}
-            />
+            {meta && (
+              <Pagination
+                className="mt-4"
+                page={page}
+                totalPages={meta.totalPages}
+                total={meta.total}
+                pageSize={meta.limit}
+                onPageChange={setPage}
+              />
+            )}
             </>
           ) : (
             <div className="text-center py-12 text-muted-foreground">

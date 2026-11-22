@@ -920,6 +920,20 @@ export interface PaginatedResponse<T> {
   };
 }
 
+/** `meta` of the lists the API pages on the server (patients, tasks, appointments) when asked with `page`/`limit`. */
+export interface PageMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/** What those lists answer when the request carries `page` or `limit`; without them they answer a bare array. */
+export interface ListPage<T> {
+  data: T[];
+  meta: PageMeta;
+}
+
 export interface ApiError {
   message: string;
   status?: number;
