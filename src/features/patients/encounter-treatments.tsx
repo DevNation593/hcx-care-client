@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { SESSION_STATUS_VARIANTS } from '@/features/treatment-sessions/patient-treatments-tab';
 import { useEncounterNoShow, useCreateTreatmentSessions } from '@/hooks/useTreatmentSessions';
 import { useTreatments } from '@/hooks/useTreatments';
+import { withReturnTab } from '@/lib/patient-tabs';
 import type { Encounter } from '@/types/clinical';
 import { SESSION_STATUS_LABELS, type TreatmentSessionStatus } from '@/types/treatments';
 
@@ -255,7 +256,7 @@ export function EncounterTreatmentList({
           </div>
           {linked && (
             <Link
-              href={`/treatment-sessions/${session.id}`}
+              href={withReturnTab(`/treatment-sessions/${session.id}`, mode)}
               aria-label={`Continuar ${session.treatment.name}`}
               className="inline-flex min-h-[44px] items-center gap-1 text-sm font-medium text-primary hover:underline"
             >
@@ -299,7 +300,7 @@ export function AddTreatmentDialog({
       const orderedIds = available.filter((item) => treatmentIds.includes(item.id)).map((item) => item.id);
       const sessions = await create.mutateAsync({ treatmentIds: orderedIds, encounterId: encounter.id });
       onClose();
-      if (sessions.length === 1) router.push(`/treatment-sessions/${sessions[0].id}`);
+      if (sessions.length === 1) router.push(withReturnTab(`/treatment-sessions/${sessions[0].id}`, mode));
     } catch {
       // The hook already reported the error; the dialog stays open to retry.
     }

@@ -8,11 +8,11 @@ import type { ApiError } from '@/types';
 import type { EncounterInput } from '@/types/clinical';
 import { invalidateEncounterSessions, invalidateSignedEncounter } from './queryInvalidation';
 
-export function usePatientEncounters(patientId: string) {
+export function usePatientEncounters(patientId: string, enabled = true) {
   return useQuery({
     queryKey: QUERY_KEYS.PATIENT_ENCOUNTERS(patientId),
     queryFn: () => encountersApi.list(patientId),
-    enabled: Boolean(patientId),
+    enabled: Boolean(patientId) && enabled,
   });
 }
 

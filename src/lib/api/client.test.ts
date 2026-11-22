@@ -110,6 +110,21 @@ describe('ApiClient error normalization', () => {
     });
   });
 
+  it('shows the message of a 503 that tells a migration is missing, with its code', async () => {
+    interceptor.status = 503;
+    interceptor.responseData = {
+      statusCode: 503,
+      code: 'DATABASE_MIGRATION_PENDING',
+      message:
+        'No se puede agregar otro tratamiento a esta atención: al servidor le falta una actualización de la base de datos. Avisa al administrador del sistema.',
+    };
+    await expect(apiClient.post('/tenants/t/patients/p/treatment-sessions', {})).rejects.toMatchObject({
+      status: 503,
+      code: 'DATABASE_MIGRATION_PENDING',
+      message: expect.stringContaining('actualización de la base de datos'),
+    });
+  });
+
   it('keeps the generic message when a file error body is not JSON', async () => {
     interceptor.status = 500;
     interceptor.responseData = new Blob(['<html>Bad gateway</html>'], { type: 'text/html' });
