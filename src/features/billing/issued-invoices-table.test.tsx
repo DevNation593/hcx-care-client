@@ -364,3 +364,234 @@ describe('download menu', () => {
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
 });
+
+describe('rejection detail', () => {
+  const rejected = (overrides: Partial<InvoiceRequest> = {}) =>
+    invoice({
+      id: 'req-rej',
+      status: 'REJECTED',
+      artifacts: { xml: false, ride: false },
+      lastError: {
+        code: 'SRI_REJECTED',
+        message: 'El SRI rechazó la factura.',
+        messages: [
+          {
+            identifier: '35',
+            message: 'ERROR SECUENCIAL REGISTRADO',
+            additionalInfo: 'Secuencial 000000123 ya existe',
+            type: 'ERROR',
+          },
+          { identifier: null, message: 'Segundo aviso', additionalInfo: null, type: null },
+        ],
+      },
+      ...overrides,
+    });
+  const toggle = (name: RegExp) => screen.getByRole('button', { name });
+
+  it('keeps the reason closed, opens it with the button and hides it again', async () => {
+    api.list.mockResolvedValue(page([rejected()]));
+    renderTable();
+    await screen.findByText('Rosa Mora');
+    const button = toggle(/Ver motivo del rechazo de la factura 001-001-000000123/);
+    expect(button.tagName).toBe('BUTTON');
+    expect(button).toHaveAttribute('type', 'button');
+    expect(button).toHaveTextContent('Ver motivo');
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    // Nothing to control while the panel is not in the page.
+    expect(button).not.toHaveAttribute('aria-controls');
+    expect(screen.queryByText('El SRI rechazó la factura.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+
+    // A native button is activated by Enter/Space, which the browser turns into this click.
+    button.focus();
+    expect(button).toHaveFocus();
+    fireEvent.click(button);
+
+    const open = toggle(/Ocultar motivo del rechazo de la factura 001-001-000000123/);
+    expect(open).toHaveAttribute('aria-expanded', 'true');
+    expect(open).toHaveTextContent('Ocultar motivo');
+    const panel = screen.getByRole('region', {
+      name: 'Motivo del rechazo de la factura 001-001-000000123',
+    });
+    expect(open).toHaveAttribute('aria-controls', panel.id);
+    expect(panel).toHaveTextContent('El SRI rechazó la factura.');
+    expect(panel).toHaveTextContent('Código: SRI_REJECTED');
+    expect(
+      within(panel).getByText('35 · ERROR SECUENCIAL REGISTRADO · Secuencial 000000123 ya existe'),
+    ).toBeVisible();
+    expect(within(panel).getByText('Segundo aviso')).toBeVisible();
+    // The reason sits in its own row right under the invoice, spanning every column.
+    expect(rowOf('Rosa Mora').nextElementSibling).toContainElement(panel);
+    expect(panel.closest('td')).toHaveAttribute('colspan', '6');
+
+    fireEvent.click(open);
+    expect(toggle(/Ver motivo del rechazo/)).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('El SRI rechazó la factura.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  });
+
+  it('labels each toggle with its own invoice and opens them independently', async () => {
+    api.list.mockResolvedValue(
+      page([
+        rejected(),
+        rejected({
+          id: 'req-failed',
+          status: 'FAILED',
+          number: '001-001-000000124',
+          customerName: 'Luis Vera',
+          lastError: { code: 'X', message: 'Fallo interno', messages: [] },
+        }),
+      ]),
+    );
+    renderTable();
+    await screen.findByText('Luis Vera');
+    fireEvent.click(toggle(/Ver motivo del fallo de la factura 001-001-000000124/));
+    expect(screen.getByText('Fallo interno')).toBeInTheDocument();
+    expect(screen.queryByText('El SRI rechazó la factura.')).not.toBeInTheDocument();
+    expect(toggle(/Ver motivo del rechazo de la factura 001-001-000000123/)).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it.each(['REJECTED', 'FAILED'] as const)(
+    'explains that a %s invoice came without a reason',
+    async (status) => {
+      api.list.mockResolvedValue(page([rejected({ status, lastError: null })]));
+      renderTable();
+      await screen.findByText('Rosa Mora');
+      fireEvent.click(toggle(/Ver motivo/));
+      expect(screen.getByRole('region')).toHaveTextContent(
+        'No se registró un motivo para esta factura.',
+      );
+    },
+  );
+
+  it('does not break when the error carries no list of SRI messages', async () => {
+    api.list.mockResolvedValue(
+      page([rejected({ lastError: { code: 'X', message: 'Solo mensaje' } })]),
+    );
+    renderTable();
+    await screen.findByText('Rosa Mora');
+    fireEvent.click(toggle(/Ver motivo/));
+    expect(screen.getByRole('region')).toHaveTextContent('Solo mensaje');
+  });
+
+  it.each(['AUTHORIZED', 'REQUESTED', 'PROCESSING'] as const)(
+    'offers no reason for a %s invoice, even if it carries an error',
+    async (status) => {
+      api.list.mockResolvedValue(
+        page([
+          invoice({
+            status,
+            lastError: { code: 'X', message: 'Error antiguo', messages: [] },
+          }),
+        ]),
+      );
+      renderTable();
+      await screen.findByText('Rosa Mora');
+      expect(screen.queryByRole('button', { name: /motivo/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('region')).not.toBeInTheDocument();
+      expect(screen.queryByText('Error antiguo')).not.toBeInTheDocument();
+    },
+  );
+
+  it('shows HTML from the API as literal text, never as elements', async () => {
+    api.list.mockResolvedValue(
+      page([
+        rejected({
+          lastError: {
+            code: 'X',
+            message: '<img src=x onerror=alert(1)>',
+            messages: [
+              { identifier: null, message: '<b>hola</b>', additionalInfo: null, type: null },
+            ],
+          },
+        }),
+      ]),
+    );
+    renderTable();
+    await screen.findByText('Rosa Mora');
+    fireEvent.click(toggle(/Ver motivo/));
+    const panel = screen.getByRole('region');
+    expect(within(panel).getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
+    expect(within(panel).getByText('<b>hola</b>')).toBeInTheDocument();
+    expect(panel.querySelector('img, b')).toBeNull();
+  });
+
+  it('leaves the actions menu and its disabled downloads untouched', async () => {
+    api.list.mockResolvedValue(page([rejected()]));
+    renderTable();
+    await screen.findByText('Rosa Mora');
+    fireEvent.click(toggle(/Ver motivo/));
+    const actions = screen.getByRole('button', {
+      name: 'Acciones de la factura 001-001-000000123',
+    });
+    fireEvent.click(actions);
+    expect(actions).toHaveAttribute('aria-expanded', 'true');
+    screen.getAllByRole('menuitem').forEach((item) => {
+      expect(item).toHaveAttribute('aria-disabled', 'true');
+      expect(item).toHaveTextContent('No disponible: la factura no fue autorizada.');
+    });
+    // Opening the menu does not close the reason, and the reason toggle does not open the menu.
+    expect(screen.getByRole('region')).toBeInTheDocument();
+    fireEvent.click(actions);
+    fireEvent.click(toggle(/Ocultar motivo/));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(api.download).not.toHaveBeenCalled();
+  });
+
+  it('drops an open reason when its invoice leaves the page', async () => {
+    api.list.mockResolvedValue(page([rejected()]));
+    renderTable();
+    await screen.findByText('Rosa Mora');
+    fireEvent.click(toggle(/Ver motivo/));
+    api.list.mockResolvedValue(page([invoice({ id: 'req-2', number: '001-001-000000200' })]));
+    fireEvent.change(screen.getByLabelText('Estado de factura'), {
+      target: { value: 'AUTHORIZED' },
+    });
+    await screen.findByText('001-001-000000200');
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(screen.queryByText('El SRI rechazó la factura.')).not.toBeInTheDocument();
+  });
+
+  it('does not render a blank line for an SRI message with every field empty', async () => {
+    api.list.mockResolvedValue(
+      page([
+        rejected({
+          lastError: {
+            code: 'X',
+            message: 'Motivo general',
+            messages: [
+              { identifier: null, message: null, additionalInfo: null, type: null },
+              { identifier: '', message: 'Detalle real', additionalInfo: '', type: null },
+            ],
+          },
+        }),
+      ]),
+    );
+    renderTable();
+    await screen.findByText('Rosa Mora');
+    fireEvent.click(toggle(/Ver motivo/));
+    const paragraphs = Array.from(screen.getByRole('region').querySelectorAll('p'));
+    expect(paragraphs.map((p) => p.textContent)).toEqual([
+      'Motivo general',
+      'Código: X',
+      'Detalle real',
+    ]);
+  });
+
+  it('starts closed again after the status filter changes', async () => {
+    api.list.mockResolvedValue(page([rejected()]));
+    renderTable();
+    await screen.findByText('Rosa Mora');
+    fireEvent.click(toggle(/Ver motivo/));
+    expect(screen.getByRole('region')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Estado de factura'), {
+      target: { value: 'REJECTED' },
+    });
+    const again = await screen.findByRole('button', { name: /Ver motivo/ });
+    expect(again).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  });
+});
