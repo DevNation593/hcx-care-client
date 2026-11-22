@@ -290,7 +290,9 @@ export const API_ENDPOINTS = {
 
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'access_token',
-  REFRESH_TOKEN: 'refresh_token',
+  // No longer written: the refresh token lives in an HttpOnly cookie. Kept only to erase the
+  // value that earlier versions left in localStorage.
+  LEGACY_REFRESH_TOKEN: 'refresh_token',
   USER: 'user',
   TENANT: 'tenant',
   THEME: 'theme',

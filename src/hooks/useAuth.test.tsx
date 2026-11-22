@@ -26,7 +26,6 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 const login = async (user: Partial<User>) => {
   vi.mocked(authApi.login).mockResolvedValue({
     accessToken: 'a',
-    refreshToken: 'r',
     user: { id: 'user-1', tenantId: 'tenant-1', ...user } as User,
   } as Awaited<ReturnType<typeof authApi.login>>);
   const { result } = renderHook(() => useLogin(), { wrapper });
@@ -43,6 +42,16 @@ beforeEach(() => {
 });
 
 describe('useLogin', () => {
+  it('keeps only the access token in localStorage and removes a legacy refresh token', async () => {
+    localStorage.setItem('refresh_token', 'legacy.refresh.jwt');
+    vi.mocked(tenantsApi.get).mockResolvedValue({ id: 'tenant-1' } as Tenant);
+
+    await login({ role: UserRole.MASTER, mustChangePassword: false });
+
+    expect(localStorage.getItem('access_token')).toBe('a');
+    expect(localStorage.getItem('refresh_token')).toBeNull();
+  });
+
   it('does not request the tenant when an ADMIN logs in and reports no error', async () => {
     await login({ role: UserRole.ADMIN });
     expect(tenantsApi.get).not.toHaveBeenCalled();

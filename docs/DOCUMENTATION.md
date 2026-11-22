@@ -351,8 +351,10 @@ function MyComponent() {
 
 Características:
 - Instancia de Axios configurada
-- Interceptor de request: Añade token JWT
-- Interceptor de response: Manejo de errores y refresh token automático
+- Interceptor de request: Añade el access token JWT (`localStorage`)
+- Interceptor de response: Manejo de errores y renovación automática del access token
+- El refresh token **no** se guarda en el navegador legible por scripts: la API lo envía en la cookie `HttpOnly` `refresh_token`. El cliente usa `withCredentials: true` y la cabecera `X-Client: web` en todas las peticiones, y `/auth/refresh` se llama sin cuerpo. Las peticiones que fallan con 401 durante la renovación esperan en cola y se repiten con el token nuevo.
+- Al cargar, se borra la clave `refresh_token` que dejaban las versiones anteriores en `localStorage`. Si hay un usuario persistido y el access token falta o caducó, `authStore` renueva la sesión con la cookie antes de marcar `hasHydrated`; si la API responde 401 o 403 se limpia la sesión.
 - Métodos HTTP: `get`, `post`, `put`, `patch`, `delete`, `upload`
 
 ```typescript

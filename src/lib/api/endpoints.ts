@@ -456,18 +456,8 @@ export const authApi = {
   regenerateRecoveryCodes: (code: string) =>
     apiClient.post<{ recoveryCodes: string[] }>(`${API_ENDPOINTS.MFA}/recovery-codes`, { code }),
 
-  refresh: (refreshToken: string) =>
-    apiClient
-      .post<{ accessToken: string; refreshToken: string; user?: User }>(API_ENDPOINTS.REFRESH, {
-        refreshToken,
-      })
-      .then((raw) => ({
-        accessToken: raw.accessToken,
-        refreshToken: raw.refreshToken,
-      })),
-
-  logout: (refreshToken: string) =>
-    apiClient.post<void>(API_ENDPOINTS.LOGOUT, { refreshToken }),
+  // The refresh token travels in the HttpOnly cookie: the API reads it and clears it.
+  logout: () => apiClient.post<void>(API_ENDPOINTS.LOGOUT),
 
   logoutAll: () =>
     apiClient.post<void>(API_ENDPOINTS.LOGOUT_ALL),
