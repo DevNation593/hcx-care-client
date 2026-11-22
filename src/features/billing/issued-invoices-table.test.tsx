@@ -114,8 +114,57 @@ describe('IssuedInvoicesTable', () => {
   it('offers a retry when the list cannot be loaded', async () => {
     api.list.mockRejectedValueOnce(new Error('boom'));
     renderTable();
-    fireEvent.click(await screen.findByRole('button', { name: 'Reintentar facturas' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('No se pudieron cargar las facturas.');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText('Aún no hay facturas emitidas.')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    api.list.mockClear();
+    fireEvent.click(within(alert).getByRole('button', { name: 'Reintentar facturas' }));
+    expect(api.list).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('001-001-000000123')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  describe('when a refresh fails after the list had loaded', () => {
+    const loadThenFailRefresh = async () => {
+      const view = renderTable();
+      await screen.findByText('Rosa Mora');
+      api.list.mockRejectedValue(new Error('boom'));
+      // A failed download makes the component refetch the list on its own; that refetch fails.
+      api.download.mockRejectedValue({ message: 'Archivo no disponible.' });
+      fireEvent.click(screen.getByRole('button', { name: /Acciones de la factura/ }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Descargar XML' }));
+      await screen.findByText(/No se pudieron actualizar las facturas/);
+      return view;
+    };
+
+    it('keeps the cached rows and warns they may be outdated', async () => {
+      await loadThenFailRefresh();
+      expect(screen.getByRole('table', { name: 'Facturas emitidas' })).toBeInTheDocument();
+      expect(rowOf('Rosa Mora')).toHaveTextContent('Autorizada');
+      const warning = screen
+        .getAllByRole('alert')
+        .find((el) => /No se pudieron actualizar las facturas/.test(el.textContent ?? ''))!;
+      expect(warning).toHaveTextContent('Los datos mostrados pueden estar desactualizados.');
+      expect(within(warning).getByRole('button', { name: 'Reintentar facturas' })).toBeVisible();
+      expect(screen.queryByText('No se pudieron cargar las facturas.')).not.toBeInTheDocument();
+    });
+
+    it('retries the refresh and clears the warning once it succeeds', async () => {
+      await loadThenFailRefresh();
+      api.list.mockClear();
+      api.list.mockResolvedValue(page([invoice({ customerName: 'Rosa Mora Actualizada' })]));
+      const warning = screen
+        .getAllByRole('alert')
+        .find((el) => /No se pudieron actualizar las facturas/.test(el.textContent ?? ''))!;
+      fireEvent.click(within(warning).getByRole('button', { name: 'Reintentar facturas' }));
+      expect(api.list).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText('Rosa Mora Actualizada')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.queryByText(/No se pudieron actualizar las facturas/)).not.toBeInTheDocument(),
+      );
+    });
   });
 
   it('does not query without billing.view', () => {

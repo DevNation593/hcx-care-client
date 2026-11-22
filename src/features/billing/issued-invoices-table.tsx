@@ -203,6 +203,16 @@ export function IssuedInvoicesTable({ branchId }: { branchId?: string }) {
           </p>
         ))}
 
+      {/* A failed refetch keeps the cached rows on screen: say they could not be verified. */}
+      {!invalidTerm && invoices.isError && invoices.data && (
+        <Alert variant="warning">
+          No se pudieron actualizar las facturas. Los datos mostrados pueden estar desactualizados.{' '}
+          <Button type="button" variant="link" onClick={() => void invoices.refetch()}>
+            Reintentar facturas
+          </Button>
+        </Alert>
+      )}
+
       {invalidTerm ? null : invoices.isPending ? (
         <Skeleton className="h-48" role="status" aria-label="Cargando facturas" />
       ) : invoices.isError && !invoices.data ? (
