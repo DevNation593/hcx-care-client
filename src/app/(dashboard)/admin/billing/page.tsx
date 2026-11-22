@@ -5,7 +5,7 @@ import { FileText } from 'lucide-react';
 import { SectionGate } from '@/components/layout/section-gate';
 import { Label } from '@/components/ui/label';
 import { LegacyInvoicesCard } from '@/features/billing/legacy-invoices-card';
-import { InvoicesTab } from '@/features/cash/invoices-tab';
+import { IssuedInvoicesTable } from '@/features/billing/issued-invoices-table';
 import { useBranches } from '@/hooks/useBranches';
 import { useInvoicingPermissions } from '@/hooks/useInvoicing';
 
@@ -47,7 +47,7 @@ function IssuedInvoicesContent() {
           </div>
         )}
       </div>
-      <InvoicesTab key={branchId} branchId={branchId || undefined} />
+      <IssuedInvoicesTable key={branchId} branchId={branchId || undefined} />
       <LegacyInvoicesCard enabled={view} />
     </div>
   );

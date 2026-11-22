@@ -100,7 +100,7 @@ describe('BillingPage history', () => {
 
   it('shows no former-provider card while the clinic has none of those receipts', async () => {
     renderPage();
-    expect(await screen.findByText('No hay facturas para estos filtros.')).toBeInTheDocument();
+    expect(await screen.findByText('Aún no hay facturas emitidas.')).toBeInTheDocument();
     await waitFor(() => expect(api.listInvoices).toHaveBeenCalled());
     expect(screen.queryByText('Comprobantes anteriores')).not.toBeInTheDocument();
   });
@@ -110,7 +110,7 @@ describe('BillingPage issued invoices', () => {
   it('lists the invoices requested to the SRI across every branch', async () => {
     api.list.mockResolvedValue({ items: [request()], total: 1, page: 1, pageSize: 20 });
     renderPage();
-    expect(await screen.findByText('Orden #12')).toBeInTheDocument();
+    expect(await screen.findByText('#12')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Facturas emitidas/ })).toBeInTheDocument();
     expect(api.list).toHaveBeenCalledWith('tenant-1', expect.not.objectContaining({ branchId: expect.anything() }));
   });
@@ -129,7 +129,7 @@ describe('BillingPage issued invoices', () => {
 
   it('holds no billing settings: they live in their own submodule', async () => {
     renderPage();
-    await screen.findByText('No hay facturas para estos filtros.');
+    await screen.findByText('Aún no hay facturas emitidas.');
     expect(api.issuer).not.toHaveBeenCalled();
     expect(screen.queryByLabelText('RUC')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
@@ -141,7 +141,7 @@ describe('BillingPage issued invoices', () => {
 it('shows the invoices to an assistant with billing access', async () => {
   api.list.mockResolvedValue({ items: [request()], total: 1, page: 1, pageSize: 20 });
   renderPage(UserRole.ASISTENTE);
-  expect(await screen.findByText('Orden #12')).toBeInTheDocument();
+  expect(await screen.findByText('#12')).toBeInTheDocument();
 });
 it('does not load invoice history without billing.view', () => {
   api.view = false;

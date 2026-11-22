@@ -46,7 +46,7 @@ export const invoicingApi = {
     const anchor = document.createElement('a');
     try {
       anchor.href = url;
-      anchor.download = `${request.number || request.id}.${kind === 'ride' ? 'pdf' : 'xml'}`;
+      anchor.download = `factura-${request.number || request.id}.${kind === 'ride' ? 'pdf' : 'xml'}`;
       document.body.appendChild(anchor);
       anchor.click();
     } finally {
