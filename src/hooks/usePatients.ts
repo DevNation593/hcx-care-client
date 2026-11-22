@@ -1,8 +1,14 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { patientsApi, extractArray } from '@/lib/api/endpoints';
-import { QUERY_KEYS } from '@/lib/constants';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  patientsApi,
+  extractArray,
+  extractPage,
+  type PatientPageParams,
+  type PatientStatusFilter,
+} from '@/lib/api/endpoints';
+import { DEFAULT_PAGE_SIZE, QUERY_KEYS } from '@/lib/constants';
 import { PatientInput } from '@/types';
 import { toast } from 'sonner';
 import { invalidateScopedLists } from './queryInvalidation';
@@ -16,6 +22,27 @@ export function usePatients(params?: Parameters<typeof patientsApi.list>[0]) {
     queryKey: QUERY_KEYS.PATIENTS_SCOPED(tenantId ?? '', params),
     queryFn: async () => extractArray(await patientsApi.list(params, requireTenantId(tenantId))),
     enabled: !!tenantId,
+  });
+}
+
+/**
+ * One page of the patient list, paged and searched by the server. The previous page stays on
+ * screen while the next one loads, so changing page or search does not flash an empty table.
+ * `usePatients` stays the whole list, for the selectors that need every patient.
+ */
+export function usePatientsPage(params: { search?: string; status?: PatientStatusFilter; page: number; limit?: number }) {
+  const tenantId = useTenantId();
+  const request: PatientPageParams = {
+    search: params.search?.trim() || undefined,
+    status: params.status,
+    page: params.page,
+    limit: params.limit ?? DEFAULT_PAGE_SIZE,
+  };
+  return useQuery({
+    queryKey: QUERY_KEYS.PATIENTS_PAGE_SCOPED(tenantId ?? '', request),
+    queryFn: async () => extractPage(await patientsApi.listPage(request, requireTenantId(tenantId)), request),
+    enabled: !!tenantId,
+    placeholderData: keepPreviousData,
   });
 }
 
