@@ -16,6 +16,14 @@ describe('ErrorFallback', () => {
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
   });
 
+  it('does not claim the error was reported', () => {
+    render(<ErrorFallback error={new Error('boom')} reset={vi.fn()} />);
+    expect(
+      screen.getByText('Ocurrió un error inesperado. Puedes reintentar; si el problema continúa, contacta a soporte.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/reportado/i)).not.toBeInTheDocument();
+  });
+
   it('reports the error to Sentry once on mount', () => {
     const error = new Error('boom');
     render(<ErrorFallback error={error} reset={vi.fn()} />);

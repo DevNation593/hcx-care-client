@@ -1,7 +1,8 @@
 import { AxiosError } from 'axios';
 import type { Breadcrumb, ErrorEvent } from '@sentry/nextjs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { markApiError } from './api-error-marker';
+import { setBrowserReportingAllowed } from './browser-gate';
 import { buildSentryOptions, scrubEvent } from './sentry-options';
 
 const DSN = 'https://public@o0.ingest.sentry.io/1';
@@ -60,7 +61,45 @@ describe('buildSentryOptions', () => {
   });
 });
 
+describe('scrubEvent browser gate', () => {
+  afterEach(() => {
+    setBrowserReportingAllowed(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('discards every event in the browser while the gate is closed', () => {
+    expect(typeof window).toBe('object');
+
+    expect(scrubEvent({ message: 'boom' } as ErrorEvent, { originalException: new Error('boom') })).toBeNull();
+  });
+
+  it('returns the scrubbed event in the browser once the gate is open', () => {
+    setBrowserReportingAllowed(true);
+    const event = { request: { url: 'https://x/a?q=Ana' } } as unknown as ErrorEvent;
+
+    expect(scrubEvent(event)?.request?.url).toBe('https://x/a');
+  });
+
+  it('does not depend on the gate on the server or edge (no window)', () => {
+    vi.stubGlobal('window', undefined);
+    const event = { request: { url: 'https://x/a?q=Ana' } } as unknown as ErrorEvent;
+
+    expect(scrubEvent(event)?.request?.url).toBe('https://x/a');
+  });
+
+  it('leaves beforeBreadcrumb unaffected by the gate', () => {
+    const before = buildSentryOptions({ dsn: DSN })?.beforeBreadcrumb;
+    const navigation: Breadcrumb = { category: 'navigation', data: { from: '/a', to: '/b' } };
+
+    expect(before?.(navigation, undefined)).toEqual(navigation);
+  });
+});
+
 describe('scrubEvent', () => {
+  // The gate only matters in the browser; these cases exercise the scrubbing itself.
+  beforeEach(() => setBrowserReportingAllowed(true));
+  afterEach(() => setBrowserReportingAllowed(false));
+
   it('drops events whose original exception is an AxiosError', () => {
     const event = { message: 'Network Error' } as ErrorEvent;
 

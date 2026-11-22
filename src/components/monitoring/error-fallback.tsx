@@ -13,7 +13,7 @@ export function ErrorFallback({ error, reset }: { error: Error & { digest?: stri
     <main className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
       <h1 className="text-3xl font-bold">Algo salió mal</h1>
       <p className="mt-3 max-w-md text-muted-foreground">
-        Ocurrió un error inesperado. Ya quedó reportado y lo revisaremos. Puedes reintentar.
+        Ocurrió un error inesperado. Puedes reintentar; si el problema continúa, contacta a soporte.
       </p>
       <Button type="button" className="mt-8" onClick={() => reset()}>
         Reintentar
