@@ -296,6 +296,12 @@ function ConfirmDialog({
 }
 
 /**
+ * The three buttons of the last-pending dialog do not fit in one row of the modal: each takes the
+ * full width on a phone, and its label wraps instead of sticking out when even that is not enough.
+ */
+const FOOTER_BUTTON = 'h-auto min-h-11 w-full whitespace-normal py-2 text-center sm:w-auto';
+
+/**
  * Completing the last pending treatment of an encounter: close the encounter too (it signs, so it
  * asks the password again) or complete the treatment and stay in the encounter.
  */
@@ -364,13 +370,26 @@ function LastPendingDialog({
             />
           </div>
           <DialogFooter className="gap-2">
-            <Button type="button" size="lg" variant="outline" onClick={onClose}>
+            <Button type="button" size="lg" variant="outline" className={FOOTER_BUTTON} onClick={onClose}>
               Volver
             </Button>
-            <Button type="button" size="lg" variant="outline" disabled={busy} onClick={onCompleteAndStay}>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className={FOOTER_BUTTON}
+              disabled={busy}
+              onClick={onCompleteAndStay}
+            >
               Completar y seguir en la atención
             </Button>
-            <Button type="submit" size="lg" disabled={busy || !password} loading={busy}>
+            <Button
+              type="submit"
+              size="lg"
+              className={FOOTER_BUTTON}
+              disabled={busy || !password}
+              loading={busy}
+            >
               Completar y cerrar atención
             </Button>
           </DialogFooter>
