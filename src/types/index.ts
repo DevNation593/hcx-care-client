@@ -529,13 +529,12 @@ export type UpdateSelfProfileInput = Partial<Pick<User, 'firstName' | 'lastName'
 
 export interface AuthTokens {
   accessToken: string;
-  refreshToken: string;
   expiresIn: number;
 }
 
+/** The refresh token is not part of it: the API sends it only in an HttpOnly cookie. */
 export interface AuthResponse {
   accessToken: string;
-  refreshToken: string;
   user: User;
 }
 

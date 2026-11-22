@@ -3,10 +3,20 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User, Tenant } from '@/types';
-import { STORAGE_KEYS } from '@/lib/constants';
 import { apiClient } from '@/lib/api/client';
 import { authApi } from '@/lib/api/endpoints';
 
+/**
+ * A persisted user whose access token is missing or expired gets a new one from the refresh
+ * cookie as the app starts. If the API answers 401 the session is over and it is cleared, as
+ * any request that fails to refresh does.
+ */
+async function restoreSession(state: AuthState): Promise<void> {
+  if (!state.isAuthenticated || !state.user) return;
+  if ((await apiClient.restoreSession()) === 'expired') {
+    state.clearAuth();
+  }
+}
 
 interface AuthState {
   user: User | null;
@@ -39,12 +49,8 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (user, tenant) => set({ user, tenant, isAuthenticated: true }),
       logout: async () => {
         try {
-          const refreshToken = typeof window !== 'undefined' 
-            ? localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN) 
-            : null;
-          if (refreshToken) {
-            await authApi.logout(refreshToken);
-          }
+          // The API revokes the refresh token of the cookie and clears the cookie.
+          await authApi.logout();
         } catch (error) {
           console.error('Logout error:', error);
         } finally {
@@ -70,7 +76,9 @@ export const useAuthStore = create<AuthState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
-          state.setHasHydrated(true);
+          // The routes wait for `hasHydrated`: it turns true once the session is settled, so
+          // their first requests already carry a valid access token.
+          void restoreSession(state).finally(() => state.setHasHydrated(true));
         }
       },
     }
