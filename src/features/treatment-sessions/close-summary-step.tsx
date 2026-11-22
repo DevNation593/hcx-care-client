@@ -11,7 +11,9 @@ import {
 import { DOCUMENT_STATUS_LABELS, formatSignedAt } from './consent-step';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
 import { useSections } from '@/hooks/useSections';
-import { encounterBackHref, unfinishedSiblings } from './encounter-navigation';
+import { useReturnTab } from '@/hooks/useReturnTab';
+import { withReturnTab } from '@/lib/patient-tabs';
+import { encounterBackHref, encounterBackLabel, unfinishedSiblings } from './encounter-navigation';
 
 // Statuses that end a session without closing it clinically.
 const ENDED_NOTICES: Partial<Record<TreatmentSessionStatus, string>> = {
@@ -39,6 +41,7 @@ function consentState(session: TreatmentSessionDetail): string {
 export function CloseSummaryStep({ session }: { session: TreatmentSessionDetail }) {
   const terms = usePatientTerms();
   const { isEnabled } = useSections();
+  const from = useReturnTab();
   // Only an open encounter has a next treatment to go to.
   const nextSession =
     session.encounterStatus === 'OPEN' ? unfinishedSiblings(session)[0] : undefined;
@@ -91,17 +94,17 @@ export function CloseSummaryStep({ session }: { session: TreatmentSessionDetail 
       <div className="flex flex-col gap-2 border-t pt-4 text-sm sm:flex-row sm:items-center">
         {nextSession && (
           <Link
-            href={`/treatment-sessions/${nextSession.id}`}
+            href={withReturnTab(`/treatment-sessions/${nextSession.id}`, from)}
             className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 font-medium text-primary-foreground hover:bg-primary/90"
           >
             Siguiente tratamiento: {nextSession.treatmentName}
           </Link>
         )}
         <Link
-          href={encounterBackHref(session.patientId, isEnabled('core.clinical.specialties'))}
+          href={encounterBackHref(session.patientId, isEnabled('core.clinical.specialties'), from)}
           className="inline-flex min-h-11 items-center justify-center rounded-md border border-input px-4 font-medium hover:bg-accent"
         >
-          Volver a la atención
+          {encounterBackLabel(from)}
         </Link>
       </div>
     </div>

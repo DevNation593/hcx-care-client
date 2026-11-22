@@ -15,11 +15,11 @@ import type {
   TreatmentSessionInput,
 } from '@/types/treatments';
 
-export function usePatientTreatmentSessions(patientId: string) {
+export function usePatientTreatmentSessions(patientId: string, enabled = true) {
   return useQuery({
     queryKey: QUERY_KEYS.PATIENT_TREATMENT_SESSIONS(patientId),
     queryFn: () => treatmentSessionsApi.listForPatient(patientId),
-    enabled: Boolean(patientId),
+    enabled: Boolean(patientId) && enabled,
   });
 }
 

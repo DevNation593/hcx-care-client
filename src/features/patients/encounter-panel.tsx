@@ -18,10 +18,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAppointments } from '@/hooks/useAppointments';
 import { useBranches } from '@/hooks/useBranches';
+import { usePatientClinicalNotes } from '@/hooks/useClinicalNotes';
 import { useCloseEncounter, useRemoveEncounter, useStartEncounter } from '@/hooks/useEncounters';
 import { useSections } from '@/hooks/useSections';
 import { useCreateTreatmentSessions } from '@/hooks/useTreatmentSessions';
 import { useTreatments } from '@/hooks/useTreatments';
+import { withReturnTab } from '@/lib/patient-tabs';
 import { formatDate } from '@/lib/utils';
 import {
   AddTreatmentDialog,
@@ -39,6 +41,7 @@ import {
 import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { useAuthStore } from '@/store/authStore';
 import { AppointmentStatus } from '@/types';
+import { canAccessClinicalNotes } from '@/types/guards';
 import {
   ENCOUNTER_TYPE_LABELS,
   ENCOUNTER_TYPES,
@@ -57,6 +60,49 @@ export function describeEncounter(encounter: Pick<Encounter, 'encounterType' | '
   return `${type} · ${formatDate(encounter.startedAt, 'dd/MM/yyyy')}`;
 }
 
+/** What an attention was, as it is read in a list: type, status, who and where, treatments, close. */
+export function EncounterSummary({ encounter }: { encounter: Encounter }) {
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">{describeEncounter(encounter)}</span>
+        <Badge variant={encounter.status === 'OPEN' ? 'warning' : 'secondary'}>
+          {encounter.status === 'OPEN' ? 'Abierta' : encounter.signedAt ? 'Firmada' : 'Cerrada'}
+        </Badge>
+        <span className="text-muted-foreground">
+          {[
+            encounter.professional &&
+              `${encounter.professional.firstName} ${encounter.professional.lastName}`,
+            encounter.specialty?.name,
+            encounter.branch?.name,
+            `${encounter.recordCount} ${encounter.recordCount === 1 ? 'registro' : 'registros'}`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
+      </div>
+      <p className="whitespace-pre-wrap">{encounter.reason}</p>
+      {(encounter.treatmentSessions?.length ?? 0) > 0 && (
+        <p className="text-muted-foreground">
+          Tratamientos: {encounter.treatmentSessions?.map((item) => item.treatment.name).join(', ')}
+        </p>
+      )}
+      {encounter.status === 'CLOSED' && (
+        <p className="text-xs text-muted-foreground">
+          {encounter.signedAt
+            ? `Firmada el ${formatDate(encounter.signedAt, 'dd/MM/yyyy HH:mm')}${
+                encounter.contentHash ? ` · huella ${encounter.contentHash.slice(3, 15)}` : ''
+              }`
+            : 'Cerrada antes de la firma digital: sus registros son definitivos.'}
+        </p>
+      )}
+      {encounter.summary && (
+        <p className="whitespace-pre-wrap text-muted-foreground">{encounter.summary}</p>
+      )}
+    </>
+  );
+}
+
 export interface EncounterPanelProps {
   patientId: string;
   encounters: Encounter[];
@@ -66,6 +112,26 @@ export interface EncounterPanelProps {
   initialAppointmentId?: string;
   /** 'treatments' starts from treatments alone; 'specialties' asks type and reason. */
   mode: EncounterPanelMode;
+  /**
+   * Lists the previous attentions below the one in course. Off where the clinical history tab
+   * already shows them: the chronology lives in one place.
+   */
+  showPrevious?: boolean;
+}
+
+const CLINICAL_NOTES_SECTION = 'core.clinical.notes';
+
+/**
+ * Whether the open attention already holds clinical notes, which the API counts as content that
+ * keeps it from being removed (ENCOUNTER_HAS_RECORDS). Only read when the user may see notes; when
+ * they cannot be read the answer is "no" and the API stays the last word.
+ */
+function useEncounterHasNotes(patientId: string, encounter?: Encounter): boolean {
+  const user = useAuthStore((state) => state.user);
+  const { isEnabled } = useSections();
+  const canRead = !!encounter && isEnabled(CLINICAL_NOTES_SECTION) && !!user && canAccessClinicalNotes(user);
+  const { data } = usePatientClinicalNotes(patientId, canRead);
+  return canRead && (data ?? []).some((note) => note.encounterId === encounter.id);
 }
 
 /** Starts, shows and closes the attention in course, and lists the previous ones. */
@@ -75,6 +141,7 @@ export function EncounterPanel({
   openEncounter,
   initialAppointmentId,
   mode,
+  showPrevious = true,
 }: EncounterPanelProps) {
   const [starting, setStarting] = useState(Boolean(initialAppointmentId));
   const [closing, setClosing] = useState(false);
@@ -82,7 +149,8 @@ export function EncounterPanel({
   const [adding, setAdding] = useState(false);
   const [markingNoShow, setMarkingNoShow] = useState(false);
   const { isEnabled } = useSections();
-  const previous = encounters.filter((encounter) => encounter.id !== openEncounter?.id);
+  const hasNotes = useEncounterHasNotes(patientId, openEncounter);
+  const previous = showPrevious ? encounters.filter((encounter) => encounter.id !== openEncounter?.id) : [];
   const sessions = openEncounter?.treatmentSessions ?? [];
   const unfinished = unfinishedSessions(sessions);
   const closeBlocked = unfinished.length > 0;
@@ -153,8 +221,9 @@ export function EncounterPanel({
                 </Button>
               )}
               {/* Whatever the mode: an empty encounter started by mistake (or before treatments had
-                  their own panel) has no other way out than closing and signing it. */}
-              {openEncounter.recordCount === 0 && sessions.length === 0 && (
+                  their own panel) has no other way out than closing and signing it. Notes count as
+                  content too: the API refuses to remove an attention that holds any. */}
+              {openEncounter.recordCount === 0 && sessions.length === 0 && !hasNotes && (
                 <Button variant="outline" onClick={() => setRemoving(true)}>
                   <Trash2 className="mr-2 h-4 w-4" />
                   Eliminar atención
@@ -186,41 +255,7 @@ export function EncounterPanel({
             <ul className="divide-y border-t">
               {previous.map((encounter) => (
                 <li key={encounter.id} className="space-y-1 px-3 py-2 text-sm">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{describeEncounter(encounter)}</span>
-                    <Badge variant={encounter.status === 'OPEN' ? 'warning' : 'secondary'}>
-                      {encounter.status === 'OPEN' ? 'Abierta' : encounter.signedAt ? 'Firmada' : 'Cerrada'}
-                    </Badge>
-                    <span className="text-muted-foreground">
-                      {[
-                        encounter.professional &&
-                          `${encounter.professional.firstName} ${encounter.professional.lastName}`,
-                        encounter.specialty?.name,
-                        encounter.branch?.name,
-                        `${encounter.recordCount} ${encounter.recordCount === 1 ? 'registro' : 'registros'}`,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
-                  </div>
-                  <p className="whitespace-pre-wrap">{encounter.reason}</p>
-                  {(encounter.treatmentSessions?.length ?? 0) > 0 && (
-                    <p className="text-muted-foreground">
-                      Tratamientos: {encounter.treatmentSessions?.map((item) => item.treatment.name).join(', ')}
-                    </p>
-                  )}
-                  {encounter.status === 'CLOSED' && (
-                    <p className="text-xs text-muted-foreground">
-                      {encounter.signedAt
-                        ? `Firmada el ${formatDate(encounter.signedAt, 'dd/MM/yyyy HH:mm')}${
-                            encounter.contentHash ? ` · huella ${encounter.contentHash.slice(3, 15)}` : ''
-                          }`
-                        : 'Cerrada antes de la firma digital: sus registros son definitivos.'}
-                    </p>
-                  )}
-                  {encounter.summary && (
-                    <p className="whitespace-pre-wrap text-muted-foreground">{encounter.summary}</p>
-                  )}
+                  <EncounterSummary encounter={encounter} />
                 </li>
               ))}
             </ul>
@@ -326,7 +361,8 @@ function StartEncounterForm({
         ...context,
       });
       onDone();
-      if (sessions.length === 1) router.push(`/treatment-sessions/${sessions[0].id}`);
+      // The session's back link returns to the tab this panel is on (it is named like its mode).
+      if (sessions.length === 1) router.push(withReturnTab(`/treatment-sessions/${sessions[0].id}`, mode));
     } catch {
       // The hook already reported the error; the form stays to retry.
     }

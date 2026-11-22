@@ -111,14 +111,45 @@ vi.mock('@/features/patients/clinical-records-tab', async (importOriginal) => ({
   ClinicalRecordsTab: ({
     startAppointmentId,
     onOpenTreatments,
+    onOpenHistory,
+    historyInTimeline,
+    canWriteNotes,
   }: {
     startAppointmentId?: string;
     onOpenTreatments: () => void;
+    onOpenHistory?: () => void;
+    historyInTimeline?: boolean;
+    canWriteNotes?: boolean;
   }) => (
-    <div data-testid="records-tab">
+    <div
+      data-testid="records-tab"
+      data-history-in-timeline={String(historyInTimeline)}
+      data-can-write-notes={String(canWriteNotes)}
+    >
       {startAppointmentId ?? 'no appointment'}
       <button type="button" onClick={onOpenTreatments}>
         Abrir Tratamientos
+      </button>
+      <button type="button" onClick={onOpenHistory}>
+        Abrir Historia
+      </button>
+    </div>
+  ),
+}));
+vi.mock('@/features/patients/clinical-history-tab', () => ({
+  ClinicalHistoryTab: ({
+    patientId,
+    showProcedures,
+    onOpenRecords,
+  }: {
+    patientId: string;
+    showProcedures?: boolean;
+    onOpenRecords?: () => void;
+  }) => (
+    <div data-testid="history-tab" data-procedures={String(showProcedures)}>
+      {patientId}
+      <button type="button" onClick={onOpenRecords}>
+        Abrir Registros
       </button>
     </div>
   ),
@@ -328,7 +359,8 @@ describe('patient detail procedures of the treatment sessions', () => {
   it('shows them in Historia Clínica when the clinic keeps clinical notes', () => {
     mocks.search = 'tab=clinical';
     const { unmount } = renderPage();
-    expect(procedures()).toHaveTextContent('patient-1');
+    expect(screen.getByTestId('history-tab')).toHaveAttribute('data-procedures', 'true');
+    expect(procedures()).not.toBeInTheDocument();
     unmount();
 
     mocks.search = 'tab=specialties';
@@ -348,14 +380,18 @@ describe('patient detail procedures of the treatment sessions', () => {
   });
 
   it.each([
-    ['tab=clinical', []],
-    ['tab=specialties', ['core.clinical.notes']],
-  ])('hides them on %s without the treatment sessions section', (search, disabled) => {
+    ['tab=clinical', [], 'history-tab'],
+    ['tab=specialties', ['core.clinical.notes'], 'records-tab'],
+  ])('hides them on %s without the treatment sessions section', (search, disabled, tab) => {
     mocks.search = search;
     mocks.disabledSections = [...disabled, 'core.treatments.sessions'];
     renderPage();
 
+    expect(screen.getByTestId(tab)).toBeInTheDocument();
     expect(procedures()).not.toBeInTheDocument();
+    if (tab === 'history-tab') {
+      expect(screen.getByTestId(tab)).toHaveAttribute('data-procedures', 'false');
+    }
   });
 
   it('hides them from an account whose clinical records permission was withdrawn', () => {
@@ -364,6 +400,90 @@ describe('patient detail procedures of the treatment sessions', () => {
     renderPage();
 
     expect(procedures()).not.toBeInTheDocument();
+    expect(screen.queryByTestId('history-tab')).not.toBeInTheDocument();
+  });
+});
+
+describe('patient detail clinical history and records', () => {
+  it('reads the history in Historia Clínica and sends the work to Registros clínicos and back', () => {
+    mocks.search = 'tab=clinical';
+    renderPage();
+
+    expect(screen.getByTestId('history-tab')).toHaveTextContent('patient-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Registros' }));
+    expect(screen.queryByTestId('history-tab')).not.toBeInTheDocument();
+    expect(screen.getByTestId('records-tab')).toHaveAttribute('data-history-in-timeline', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Historia' }));
+    expect(screen.getByTestId('history-tab')).toBeInTheDocument();
+  });
+
+  it('does not mount Historia Clínica from the URL while clinical notes are off', () => {
+    mocks.search = 'tab=clinical';
+    mocks.disabledSections = ['core.clinical.notes'];
+    renderPage();
+
+    expect(screen.queryByTestId('history-tab')).not.toBeInTheDocument();
+  });
+
+  it('tells Registros clínicos that the history keeps the chronology only when that tab exists', () => {
+    mocks.search = 'tab=specialties';
+    const { unmount } = renderPage();
+    expect(screen.getByTestId('records-tab')).toHaveAttribute('data-history-in-timeline', 'true');
+    unmount();
+
+    mocks.disabledSections = ['core.clinical.notes'];
+    renderPage();
+    expect(screen.getByTestId('records-tab')).toHaveAttribute('data-history-in-timeline', 'false');
+  });
+});
+
+describe('patient detail who may write clinical notes', () => {
+  const canWrite = () => screen.getByTestId('records-tab').getAttribute('data-can-write-notes');
+  const signInAs = (role: UserRole, professionalProfile?: Record<string, unknown>) =>
+    useAuthStore.setState({
+      user: { id: 'user-1', tenantId: 'tenant-1', role, professionalProfile } as unknown as User,
+    });
+
+  it.each([
+    ['the owner with an active professional profile', UserRole.MASTER, { isActive: true }],
+    ['a professional with an active profile', UserRole.PROFESIONAL, { isActive: true }],
+    [
+      'a professional of a health specialty',
+      UserRole.PROFESIONAL,
+      { isActive: true, specialty: { code: 'PSYCHOLOGY' } },
+    ],
+  ])('lets %s', (_label, role, professionalProfile) => {
+    mocks.search = 'tab=specialties';
+    signInAs(role, professionalProfile);
+    renderPage();
+
+    expect(canWrite()).toBe('true');
+  });
+
+  it('does not let a professional of a non clinical specialty (the API answers HEALTH_SPECIALTY_REQUIRED)', () => {
+    mocks.search = 'tab=specialties';
+    signInAs(UserRole.PROFESIONAL, { isActive: true, specialty: { code: 'AESTHETICS' } });
+    renderPage();
+
+    expect(canWrite()).toBe('false');
+  });
+
+  it('does not let an account whose create permission was withdrawn', () => {
+    mocks.search = 'tab=specialties';
+    permissions.withdrawn = ['clinical_records.create'];
+    signInAs(UserRole.PROFESIONAL, { isActive: true });
+    renderPage();
+
+    expect(canWrite()).toBe('false');
+  });
+
+  it('never mounts the records tab, and so cannot write, without an active professional profile', () => {
+    mocks.search = 'tab=specialties';
+    signInAs(UserRole.MASTER);
+    renderPage();
+
+    expect(screen.queryByTestId('records-tab')).not.toBeInTheDocument();
   });
 });
 

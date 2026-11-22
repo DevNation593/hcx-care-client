@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TreatmentSessionDetail } from '@/types/treatments';
-import { encounterBackHref, unfinishedSiblings } from './encounter-navigation';
+import { encounterBackHref, encounterBackLabel, unfinishedSiblings } from './encounter-navigation';
 
 describe('encounterBackHref', () => {
   it('goes to the specialties tab when the section is enabled', () => {
@@ -9,6 +9,23 @@ describe('encounterBackHref', () => {
 
   it('goes to the treatments tab otherwise', () => {
     expect(encounterBackHref('p1', false)).toBe('/patients/p1?tab=treatments');
+  });
+
+  it.each([true, false])('returns to the tab it was opened from, whatever the sections (%s)', (enabled) => {
+    expect(encounterBackHref('p1', enabled, 'clinical')).toBe('/patients/p1?tab=clinical');
+    expect(encounterBackHref('p1', enabled, 'treatments')).toBe('/patients/p1?tab=treatments');
+    expect(encounterBackHref('p1', enabled, 'specialties')).toBe('/patients/p1?tab=specialties');
+  });
+});
+
+describe('encounterBackLabel', () => {
+  it('names the clinical history when that is where it leads', () => {
+    expect(encounterBackLabel('clinical')).toBe('Volver a la historia clínica');
+  });
+
+  it('talks about the attention otherwise', () => {
+    expect(encounterBackLabel()).toBe('Volver a la atención');
+    expect(encounterBackLabel('treatments')).toBe('Volver a la atención');
   });
 });
 

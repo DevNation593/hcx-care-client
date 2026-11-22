@@ -1,9 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { AlertTriangle, FilePlus2, Pencil, Printer, Trash2 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { useState } from 'react';
+import { FilePlus2, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -17,14 +15,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  ClinicalModuleForm,
-  initialModuleValues,
-  RecordDataView,
-} from '@/features/clinical-forms/clinical-module-form';
+import { ClinicalModuleForm, initialModuleValues } from '@/features/clinical-forms/clinical-module-form';
 import { issuesByField, toRecordData, type FormValues } from '@/features/clinical-forms/form-values';
-import { describeModule } from '@/features/admin/specialties/module-labels';
-import { useClinicalModules } from '@/hooks/useClinicalModules';
 import { LEGACY_ORDER_MODULE_KEY } from '@/types/clinical-orders';
 import { ProcedureConsents } from './procedure-consents';
 import { usePatientEncounters } from '@/hooks/useEncounters';
@@ -36,25 +28,18 @@ import {
   useRemoveSpecialtyRecord,
 } from '@/hooks/useSpecialtyRecords';
 import { STALE_RECORD_CODES } from '@/lib/clinical-record-errors';
-import { cn, formatDate } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { ApiError, SpecialtyRecord } from '@/types';
-import type { ClinicalModuleDefinition, FormAlertLevel } from '@/types/clinical';
-import { describeEncounter, EncounterPanel } from './encounter-panel';
+import type { ClinicalModuleDefinition } from '@/types/clinical';
+import { EncounterNotes } from './encounter-notes';
+import { EncounterPanel } from './encounter-panel';
+import { RecordCard, useRecordDefinitions } from './record-card';
 import { TREATMENT_SESSIONS_SECTION } from './encounter-treatments';
 import { SignaturePasswordField, signaturePasswordError } from './signature-password-field';
 import { SpecialtyRecordEntryForm } from './specialty-record-entry-form';
 import { hasTemplates, TemplatePicker } from './template-picker';
-import type { Encounter } from '@/types/clinical';
 import { isHealthSpecialtyCode, usePatientTerms } from '@/hooks/usePatientTerms';
-
-export const ALERT_STYLES: Record<FormAlertLevel, string> = {
-  critical: 'border-red-300 bg-red-50 text-red-900',
-  warning: 'border-orange-300 bg-orange-50 text-orange-900',
-  info: 'border-sky-300 bg-sky-50 text-sky-900',
-};
-
-const definitionKey = (moduleKey: string, schemaVersion: number) => `${moduleKey}@${schemaVersion}`;
 
 function errorMessage(error: unknown): string | undefined {
   return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
@@ -66,15 +51,28 @@ export function ClinicalRecordsTab({
   patientId,
   startAppointmentId,
   onOpenTreatments,
+  historyInTimeline = false,
+  canWriteNotes = false,
+  onOpenHistory,
 }: {
   patientId: string;
   /** Arriving from the agenda to attend this appointment. */
   startAppointmentId?: string;
   /** Opens the Tratamientos tab: the page owns which tab is active, a link would only change the URL. */
   onOpenTreatments: () => void;
+  /**
+   * The clinic has the Historia clínica tab: it holds the chronology (previous attentions and
+   * records, notes, procedures), so this tab keeps only the work in course and does not list it.
+   * Without it (a clinic with no clinical notes) this tab still is the history.
+   */
+  historyInTimeline?: boolean;
+  /** The signed-in account may write clinical notes: an active health professional. */
+  canWriteNotes?: boolean;
+  /** Opens the Historia clínica tab. */
+  onOpenHistory?: () => void;
 }) {
   const { data: records = [], isLoading } = usePatientSpecialtyRecords(patientId);
-  const modulesQuery = useClinicalModules();
+  const { modulesQuery, definitionOf, nameOf } = useRecordDefinitions();
   const createRecord = useCreateSpecialtyRecord(patientId);
   const tenantId = useAuthStore((state) => state.tenant?.id ?? state.user?.tenantId ?? null);
   const userId = useAuthStore((state) => state.user?.id);
@@ -98,21 +96,6 @@ export function ClinicalRecordsTab({
   const [amending, setAmending] = useState<SpecialtyRecord | null>(null);
   const [removing, setRemoving] = useState<SpecialtyRecord | null>(null);
 
-  const definitions = useMemo(
-    () =>
-      new Map(
-        (modulesQuery.data ?? []).map((definition) => [
-          definitionKey(definition.moduleKey, definition.schemaVersion),
-          definition,
-        ]),
-      ),
-    [modulesQuery.data],
-  );
-  const definitionOf = (record: SpecialtyRecord) =>
-    definitions.get(definitionKey(record.moduleKey, record.schemaVersion ?? 1));
-  const nameOf = (record: SpecialtyRecord) =>
-    definitionOf(record)?.name ?? describeModule(record.moduleKey).name;
-
   const recordable = (modulesQuery.data ?? []).filter((definition) => definition.canRecord);
   // An addendum is written with the current version of the form the record used.
   const latestRecordable = (moduleKey: string) =>
@@ -126,7 +109,24 @@ export function ClinicalRecordsTab({
       : 'ready';
 
   const recordedModules = [...new Map(records.map((record) => [record.moduleKey, nameOf(record)]))];
-  const visible = moduleFilter ? records.filter((record) => record.moduleKey === moduleFilter) : records;
+  // With the history tab, only the records of the attention in course are worked on here.
+  const listed = historyInTimeline
+    ? records.filter((record) => !!openEncounter && record.encounterId === openEncounter.id)
+    : records;
+  const visible = moduleFilter ? listed.filter((record) => record.moduleKey === moduleFilter) : listed;
+  // A signed record is corrected by its author with an addendum, which is a new record: it is
+  // offered here, where records are written, since the history tab only reads.
+  const amendable = historyInTimeline
+    ? records.filter(
+        (record) =>
+          !!userId &&
+          record.professionalId === userId &&
+          record.signed === true &&
+          !record.amendedBy &&
+          !!latestRecordable(record.moduleKey),
+      )
+    : [];
+  const showNotes = canWriteNotes && isEnabled('core.clinical.notes');
 
   return (
     <div className="space-y-6">
@@ -149,11 +149,36 @@ export function ClinicalRecordsTab({
           openEncounter={openEncounter}
           initialAppointmentId={startAppointmentId}
           mode="specialties"
+          showPrevious={!historyInTimeline}
         />
       )}
 
       {healthProfile && (
         <ProcedureConsents patientId={patientId} openEncounterId={openEncounter?.id} />
+      )}
+
+      {showNotes && (
+        <EncounterNotes
+          patientId={patientId}
+          openEncounter={openEncounter}
+          startHint={
+            treatmentsOwnEncounter ? (
+              <>
+                Inicia un tratamiento en la pestaña{' '}
+                <button
+                  type="button"
+                  onClick={onOpenTreatments}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Tratamientos
+                </button>
+                .
+              </>
+            ) : (
+              'Pulsa «Iniciar atención» en el panel de arriba.'
+            )
+          }
+        />
       )}
 
       {!openEncounter && recordable.length > 0 && (
@@ -188,8 +213,10 @@ export function ClinicalRecordsTab({
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold">Historial de registros</h3>
-          {recordedModules.length > 1 && (
+          <h3 className="text-lg font-semibold">
+            {historyInTimeline ? 'Registros de esta atención' : 'Historial de registros'}
+          </h3>
+          {!historyInTimeline && recordedModules.length > 1 && (
             <div className="flex items-center gap-2">
               <Label htmlFor="record-filter" className="text-sm text-muted-foreground">
                 Mostrar
@@ -211,129 +238,116 @@ export function ClinicalRecordsTab({
           )}
         </div>
 
+        {historyInTimeline && (
+          <p className="text-sm text-muted-foreground">
+            Aquí solo están los registros de la atención en curso, para completarlos o corregirlos. El
+            historial completo se lee en{' '}
+            {onOpenHistory ? (
+              <button
+                type="button"
+                onClick={onOpenHistory}
+                className="font-medium text-primary hover:underline"
+              >
+                Historia clínica
+              </button>
+            ) : (
+              'Historia clínica'
+            )}
+            .
+          </p>
+        )}
+
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : visible.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              Aún no hay registros clínicos de este {terms.one}.
+              {historyInTimeline
+                ? openEncounter
+                  ? 'Aún no hay registros en esta atención.'
+                  : 'No hay una atención abierta.'
+                : `Aún no hay registros clínicos de este ${terms.one}.`}
             </CardContent>
           </Card>
         ) : (
           visible.map((record) => {
-            const definition = definitionOf(record);
             const isAuthor = !!userId && record.professionalId === userId;
-            // A signed record is final: its author corrects it with an addendum, once.
             const signed = record.signed === true;
-            const superseded = !!record.amendedBy;
-            const amendWith = signed && !superseded ? latestRecordable(record.moduleKey) : undefined;
+            const amendWith = signed && !record.amendedBy ? latestRecordable(record.moduleKey) : undefined;
             return (
-              <Card key={record.id} className={cn(superseded && 'opacity-75')}>
-                <CardContent className="space-y-3 pt-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium">{nameOf(record)}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {[
-                          record.professional &&
-                            `${record.professional.firstName} ${record.professional.lastName}`,
-                          record.specialty?.name,
-                          formatDate(record.recordDate, 'dd/MM/yyyy'),
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </p>
-                      {record.encounter && (
-                        <p className="text-xs text-muted-foreground">
-                          Atención: {describeEncounter(record.encounter as Pick<Encounter, 'encounterType' | 'startedAt'>)}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {record.amendsRecordId && <Badge>Adenda</Badge>}
-                      {signed && <Badge variant="secondary">Firmado</Badge>}
-                      {superseded ? (
-                        <Badge variant="outline">Corregido por adenda</Badge>
-                      ) : (
-                        (record.version ?? 1) > 1 && <Badge variant="outline">Corregido</Badge>
-                      )}
-                      <Link
-                        href={`/patients/${patientId}/records/${record.id}/print`}
-                        aria-label={`Imprimir ${nameOf(record)}`}
-                        className="inline-flex h-9 items-center justify-center rounded-md px-3 hover:bg-accent"
+              <RecordCard
+                key={record.id}
+                record={record}
+                name={nameOf(record)}
+                definition={definitionOf(record)}
+                from="specialties"
+                actions={
+                  <>
+                    {isAuthor && amendWith && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setAmending(record)}
+                        aria-label={`Corregir con adenda ${nameOf(record)}`}
                       >
-                        <Printer className="h-4 w-4" />
-                      </Link>
-                      {isAuthor && amendWith && (
+                        <FilePlus2 className="mr-1 h-4 w-4" />
+                        Agregar adenda
+                      </Button>
+                    )}
+                    {isAuthor && !signed && (
+                      <>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setAmending(record)}
-                          aria-label={`Corregir con adenda ${nameOf(record)}`}
+                          onClick={() => setCorrecting(record)}
+                          aria-label={`Corregir ${nameOf(record)}`}
                         >
-                          <FilePlus2 className="mr-1 h-4 w-4" />
-                          Agregar adenda
+                          <Pencil className="h-4 w-4" />
                         </Button>
-                      )}
-                      {isAuthor && !signed && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setCorrecting(record)}
-                            aria-label={`Corregir ${nameOf(record)}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setRemoving(record)}
-                            aria-label={`Eliminar ${nameOf(record)}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {record.alerts?.map((alert) => (
-                    <p
-                      key={alert.message}
-                      role="alert"
-                      className={cn(
-                        'flex items-start gap-2 rounded-md border px-3 py-2 text-sm',
-                        ALERT_STYLES[alert.level],
-                      )}
-                    >
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                      {alert.message}
-                    </p>
-                  ))}
-
-                  {record.amendsRecordId && record.amendmentReason && (
-                    <p className="rounded-md border border-input px-3 py-2 text-sm">
-                      <span className="font-medium">Motivo de la adenda:</span>{' '}
-                      {record.amendmentReason}
-                    </p>
-                  )}
-                  {superseded && record.amendedBy && (
-                    <p className="text-sm text-muted-foreground">
-                      Corregido por una adenda del{' '}
-                      {formatDate(record.amendedBy.createdAt, 'dd/MM/yyyy HH:mm')}. Se conserva tal
-                      como se firmó.
-                    </p>
-                  )}
-
-                  <RecordDataView definition={definition} data={record.data} />
-                  {record.notes && (
-                    <p className="whitespace-pre-wrap border-t pt-3 text-sm">{record.notes}</p>
-                  )}
-                </CardContent>
-              </Card>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setRemoving(record)}
+                          aria-label={`Eliminar ${nameOf(record)}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </>
+                }
+              />
             );
           })
+        )}
+
+        {amendable.length > 0 && (
+          <details className="rounded-md border border-input">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+              Corregir un registro firmado con una adenda ({amendable.length})
+            </summary>
+            <ul className="divide-y border-t">
+              {amendable.map((record) => (
+                <li
+                  key={record.id}
+                  className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                >
+                  <span>
+                    {nameOf(record)} · {formatDate(record.recordDate, 'dd/MM/yyyy')}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setAmending(record)}
+                    aria-label={`Corregir con adenda ${nameOf(record)}`}
+                  >
+                    <FilePlus2 className="mr-1 h-4 w-4" />
+                    Agregar adenda
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </div>
 

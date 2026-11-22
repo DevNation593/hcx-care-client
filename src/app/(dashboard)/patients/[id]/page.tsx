@@ -4,18 +4,17 @@ import { SectionGate } from '@/components/layout/section-gate';
 import { useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { usePatient, useUpdatePatient, useDeletePatient } from '@/hooks/usePatients';
-import { usePatientClinicalNotes, useCreateClinicalNote, useDeleteClinicalNote } from '@/hooks/useClinicalNotes';
 import { useAppointments } from '@/hooks/useAppointments';
 import { useTasks, useCreateTask, useUpdateTask } from '@/hooks/useTasks';
 import { usePatientSessionPlan, useCreateSessionPlan, useUpdateSessionPlan } from '@/hooks/useSessionPlans';
 import { useSections } from '@/hooks/useSections';
 import { useMyPermissions } from '@/hooks/usePermissions';
 import { useAuthStore } from '@/store/authStore';
+import { ClinicalHistoryTab } from '@/features/patients/clinical-history-tab';
 import { ClinicalRecordsTab } from '@/features/patients/clinical-records-tab';
 import { PatientClinicalAlerts } from '@/features/patients/patient-clinical-alerts';
 import { PatientFilesTab } from '@/features/patients/patient-files-tab';
 import { ClinicalOrdersTab } from '@/features/clinical-orders/clinical-orders-tab';
-import { usePatientEncounters } from '@/hooks/useEncounters';
 import { describeIdentification } from '@/features/patients/patient-identity';
 import { PatientTeamTab } from '@/features/patients/patient-team-tab';
 import { canAccessClinicalNotes, canDeletePatient, isMasterRole, isProfessionalRole } from '@/types/guards';
@@ -24,13 +23,13 @@ import { PatientBillingProfiles } from '@/features/billing/patient-billing-profi
 import { PatientTreatmentsTab } from '@/features/treatment-sessions/patient-treatments-tab';
 import { ProcedureHistory } from '@/features/treatment-sessions/procedure-history';
 import { FeatureLockedNotice, isFeatureLockedError } from '@/features/subscription/feature-locked-notice';
-import { formatDate, formatRelativeDate, getInitials, cn } from '@/lib/utils';
+import { parsePatientTab, type PatientTabId } from '@/lib/patient-tabs';
+import { formatDate, getInitials, cn } from '@/lib/utils';
 import {
   AppointmentStatus,
   TaskStatus,
   TaskPriority,
   type Appointment,
-  type ClinicalNote,
   type SectionKey,
   type Task,
 } from '@/types';
@@ -87,8 +86,6 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  Eye,
-  Lock,
   Users,
   Receipt,
   Syringe,
@@ -99,7 +96,7 @@ import { isHealthSpecialtyCode, usePatientTerms } from '@/hooks/usePatientTerms'
 // ==========================================
 // TAB TYPES
 // ==========================================
-type TabId = 'overview' | 'team' | 'clinical' | 'specialties' | 'orders' | 'treatments' | 'files' | 'appointments' | 'tasks' | 'session-plan' | 'billing';
+type TabId = PatientTabId;
 
 interface Tab {
   id: TabId;
@@ -150,9 +147,7 @@ function PatientDetailPageContent() {
   // The agenda links here to attend an appointment: ?tab=specialties&appointmentId=…
   const requestedTab = searchParams.get('tab');
   const startAppointmentId = searchParams.get('appointmentId') ?? undefined;
-  const [activeTab, setActiveTab] = useState<TabId>(
-    TABS.some((tab) => tab.id === requestedTab) ? (requestedTab as TabId) : 'overview',
-  );
+  const [activeTab, setActiveTab] = useState<TabId>(parsePatientTab(requestedTab) ?? 'overview');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const { data: patient, isLoading } = usePatient(patientId);
@@ -169,10 +164,17 @@ function PatientDetailPageContent() {
   // The procedures of the treatment sessions belong to the clinical history: in "Historia
   // Clínica" when the clinic has clinical notes (health only), otherwise in "Registros clínicos".
   const canSeeProcedures = canSeeClinical && isEnabled('core.treatments.sessions');
-  const proceduresInHistory = isEnabled('core.clinical.notes');
+  const historyTabVisible = canSeeClinical && isEnabled('core.clinical.notes');
+  // Notes are written by any professional with an active profile (the owner too), inside the
+  // attention in course; the API refuses a non clinical specialty (HEALTH_SPECIALTY_REQUIRED).
+  const canWriteNotes =
+    canSeeClinical &&
+    can('clinical_records.create') &&
+    isHealthSpecialtyCode(user?.professionalProfile?.specialty?.code);
   const visibleTabs = TABS.filter(
     (tab) =>
       (tab.id !== 'billing' || canSeeInvoices) &&
+      (tab.id !== 'clinical' || canSeeClinical) &&
       (tab.id !== 'specialties' || canSeeClinical) &&
       (tab.id !== 'orders' || canSeeHealthRecord) &&
       (tab.id !== 'treatments' || canSeeClinical) &&
@@ -251,10 +253,6 @@ function PatientDetailPageContent() {
       <div className="border-b">
         <nav className="flex space-x-4" aria-label="Tabs">
           {visibleTabs.map((tab) => {
-            // Hide clinical tabs for users without access
-            if (tab.id === 'clinical' && user && !canAccessClinicalNotes(user)) {
-              return null;
-            }
             const Icon = tab.icon;
             return (
               <button
@@ -279,10 +277,15 @@ function PatientDetailPageContent() {
       <div>
         {activeTab === 'overview' && <OverviewTab patient={patient} />}
         {activeTab === 'team' && <PatientTeamTab patientId={patientId} />}
-        {activeTab === 'clinical' && (
+        {/* The clinical history reads everything; attentions, records and notes are written in
+            "Registros clínicos" (and treatments in "Tratamientos"). */}
+        {activeTab === 'clinical' && historyTabVisible && (
           <ClinicalHistoryTab
             patientId={patientId}
-            showProcedures={canSeeProcedures && proceduresInHistory}
+            showProcedures={canSeeProcedures}
+            onOpenRecords={
+              visibleTabs.some((tab) => tab.id === 'specialties') ? () => setActiveTab('specialties') : undefined
+            }
           />
         )}
         {activeTab === 'specialties' && canSeeClinical && (
@@ -291,8 +294,12 @@ function PatientDetailPageContent() {
               patientId={patientId}
               startAppointmentId={startAppointmentId}
               onOpenTreatments={() => setActiveTab('treatments')}
+              historyInTimeline={historyTabVisible}
+              canWriteNotes={canWriteNotes}
+              onOpenHistory={() => setActiveTab('clinical')}
             />
-            {canSeeProcedures && !proceduresInHistory && <ProcedureHistory patientId={patientId} />}
+            {/* Without the history tab, this one is the history, procedures included. */}
+            {canSeeProcedures && !historyTabVisible && <ProcedureHistory patientId={patientId} />}
           </div>
         )}
         {/* Like the menu: a tab named in the URL is mounted only if it is one the user may see. */}
@@ -480,262 +487,6 @@ function OverviewTab({ patient }: { patient: any }) {
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-// ==========================================
-// CLINICAL HISTORY TAB
-// ==========================================
-function ClinicalHistoryTab({
-  patientId,
-  showProcedures = false,
-}: {
-  patientId: string;
-  /** The procedures of the treatment sessions, with their notes, when the clinic uses them. */
-  showProcedures?: boolean;
-}) {
-  const user = useAuthStore((state) => state.user);
-  const { data: notes, isLoading, error: notesError } = usePatientClinicalNotes(patientId);
-  const createNote = useCreateClinicalNote();
-  const deleteNote = useDeleteClinicalNote();
-  // A note written during an attention belongs to it.
-  const { data: encounters = [] } = usePatientEncounters(patientId);
-  const openEncounter = encounters.find(
-    (encounter) => encounter.status === 'OPEN' && encounter.professionalId === user?.id,
-  );
-
-  const [showNewNote, setShowNewNote] = useState(false);
-  const [viewNote, setViewNote] = useState<ClinicalNote | null>(null);
-  const [noteForm, setNoteForm] = useState({ diagnosis: '', content: '' });
-  const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
-  const [deleteReason, setDeleteReason] = useState('');
-
-  const closeDeleteDialog = () => {
-    setDeleteNoteId(null);
-    setDeleteReason('');
-  };
-
-  const handleCreateNote = () => {
-    createNote.mutate(
-      {
-        patientId,
-        content: noteForm.content.trim(),
-        diagnosis: noteForm.diagnosis.trim() || undefined,
-        ...(openEncounter ? { encounterId: openEncounter.id } : {}),
-      },
-      {
-        onSuccess: () => {
-          setShowNewNote(false);
-          setNoteForm({ diagnosis: '', content: '' });
-        },
-      }
-    );
-  };
-
-  const handleDeleteNote = () => {
-    if (!deleteNoteId || !deleteReason.trim()) return;
-    deleteNote.mutate(
-      { noteId: deleteNoteId, patientId, reason: deleteReason.trim() },
-      { onSuccess: closeDeleteDialog }
-    );
-  };
-
-  if (!user || !canAccessClinicalNotes(user)) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <Lock className="h-12 w-12 text-muted-foreground mb-4" />
-          <p className="text-lg font-medium">Acceso restringido</p>
-          <p className="text-sm text-muted-foreground">
-            Solo las cuentas con un perfil profesional activo pueden ver la historia clínica.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (isFeatureLockedError(notesError)) {
-    return <FeatureLockedNotice featureName="El módulo de notas clínicas" />;
-  }
-
-  // The API accepts new notes only from the PROFESIONAL role.
-  const canWriteNotes = isProfessionalRole(user.role);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Notas Clínicas</h3>
-        {canWriteNotes && (
-          <Button onClick={() => setShowNewNote(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nueva Nota
-          </Button>
-        )}
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 w-full" />
-          ))}
-        </div>
-      ) : notes && notes.length > 0 ? (
-        <div className="space-y-3">
-          {notes.map((note) => (
-            <Card key={note.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="pt-4">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium">{note.diagnosis || 'Nota clínica'}</h4>
-                    </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2">{note.content}</p>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                      <span>
-                        {note.psychologist
-                          ? `Dr. ${note.psychologist.firstName} ${note.psychologist.lastName}`
-                          : 'Profesional'}
-                      </span>
-                      <span>{formatRelativeDate(note.createdAt)}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => setViewNote(note)}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    {note.psychologistId === user.id && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteNoteId(note.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No hay notas clínicas registradas</p>
-            {canWriteNotes && (
-              <Button className="mt-4" variant="outline" onClick={() => setShowNewNote(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Crear primera nota
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {showProcedures && <ProcedureHistory patientId={patientId} />}
-
-      {/* New Note Dialog */}
-      <Dialog open={showNewNote} onOpenChange={setShowNewNote}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Nueva Nota Clínica</DialogTitle>
-            <DialogDescription>
-              Las notas clínicas son confidenciales y solo son visibles para profesionales.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="note-title">Diagnóstico (opcional)</Label>
-              <Input
-                id="note-title"
-                value={noteForm.diagnosis}
-                onChange={(e) => setNoteForm({ ...noteForm, diagnosis: e.target.value })}
-                placeholder="Ej: Trastorno de ansiedad generalizada"
-              />
-            </div>
-            <div>
-              <Label htmlFor="note-content">Contenido</Label>
-              <Textarea
-                id="note-content"
-                value={noteForm.content}
-                onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })}
-                placeholder="Escribe las notas de la sesión..."
-                rows={8}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewNote(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleCreateNote}
-              disabled={!noteForm.content || createNote.isPending}
-              loading={createNote.isPending}
-            >
-              Guardar Nota
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* View Note Dialog */}
-      <Dialog open={!!viewNote} onOpenChange={() => setViewNote(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {viewNote?.diagnosis || 'Nota clínica'}
-            </DialogTitle>
-            <DialogDescription>
-              {viewNote?.psychologist
-                ? `Dr. ${viewNote.psychologist.firstName} ${viewNote.psychologist.lastName}`
-                : 'Profesional'}{' '}
-              — {viewNote && formatDate(viewNote.createdAt)}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="whitespace-pre-wrap text-sm py-4">{viewNote?.content}</div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Note Dialog */}
-      <AlertDialog open={!!deleteNoteId} onOpenChange={(open) => !open && closeDeleteDialog()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar nota clínica?</AlertDialogTitle>
-            <AlertDialogDescription>
-              La nota dejará de mostrarse en la historia clínica. Se conserva en el registro de
-              auditoría junto con el motivo.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div>
-            <Label htmlFor="note-delete-reason">Motivo de la eliminación</Label>
-            <Textarea
-              id="note-delete-reason"
-              value={deleteReason}
-              onChange={(e) => setDeleteReason(e.target.value)}
-              placeholder="Ej: Nota registrada en el paciente equivocado"
-              maxLength={500}
-              rows={3}
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                // Keep the dialog open until the API confirms.
-                e.preventDefault();
-                handleDeleteNote();
-              }}
-              disabled={!deleteReason.trim() || deleteNote.isPending}
-              className="bg-destructive text-destructive-foreground"
-            >
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

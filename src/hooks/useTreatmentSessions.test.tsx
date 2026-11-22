@@ -262,6 +262,18 @@ describe('useCreateTreatmentSessions', () => {
     expect(toast.error).toHaveBeenCalledWith('La atención ya no está abierta');
   });
 
+  it('shows the message of a server error that says a migration is missing', async () => {
+    const message =
+      'No se puede agregar otro tratamiento a esta atención: al servidor le falta una actualización de la base de datos. Avisa al administrador del sistema.';
+    http.post.mockRejectedValue({ status: 503, code: 'DATABASE_MIGRATION_PENDING', message });
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useCreateTreatmentSessions('patient-1'), { wrapper });
+
+    await act(async () => { await result.current.mutateAsync({ treatmentIds: ['t-1'], encounterId: 'enc-1' }).catch(() => undefined); });
+
+    expect(toast.error).toHaveBeenCalledWith(message);
+  });
+
   it('shows no error toast when an encounter is already open, and refreshes it', async () => {
     http.post.mockRejectedValue({ status: 409, code: 'ENCOUNTER_ALREADY_OPEN', message: 'Ya hay una atención abierta' });
     const { client, wrapper } = setup();
