@@ -26,6 +26,24 @@ describe('buildSentryOptions', () => {
     expect(options?.beforeSend).toBe(scrubEvent);
   });
 
+  it('never samples and never sends a transaction, whatever the incoming trace says', () => {
+    const options = buildSentryOptions({ dsn: DSN, environment: 'production' });
+    const sampler = options?.tracesSampler as (context: unknown) => unknown;
+    const forged = { parentSampled: true, parentSampleRate: 1, name: 'GET /patients/x' };
+
+    expect(sampler(forged)).toBe(0);
+    expect(sampler({ ...forged, parentSampled: undefined })).toBe(0);
+    expect((options?.beforeSendTransaction as (e: unknown) => unknown)({ type: 'transaction' })).toBeNull();
+    expect(options?.tracesSampleRate).toBe(0);
+  });
+
+  it('never propagates sentry-trace or baggage to outgoing requests, with or without a rate', () => {
+    expect(buildSentryOptions({ dsn: DSN })?.tracePropagationTargets).toEqual([]);
+    expect(buildSentryOptions({ dsn: DSN, environment: 'production' })?.tracePropagationTargets).toEqual(
+      [],
+    );
+  });
+
   it('beforeBreadcrumb drops every ui.* category, http, fetch, xhr and console, keeps navigation', () => {
     const before = buildSentryOptions({ dsn: DSN })?.beforeBreadcrumb;
     expect(before).toBeDefined();
@@ -61,6 +79,39 @@ describe('buildSentryOptions', () => {
 });
 
 describe('scrubEvent', () => {
+  it('keeps no route, user or request in sdkProcessingMetadata: the SDK copies it to the envelope', () => {
+    const event = {
+      sdkProcessingMetadata: {
+        normalizedRequest: { url: 'https://x/patients/3f2b8c1e', headers: { cookie: 'c' } },
+        dynamicSamplingContext: {
+          trace_id: 'a'.repeat(32),
+          public_key: 'pk',
+          sampled: 'true',
+          transaction: '/patients/3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b',
+          user_segment: 'a@b.c',
+        },
+      },
+    } as unknown as ErrorEvent;
+
+    expect(scrubEvent(event)?.sdkProcessingMetadata).toEqual({
+      dynamicSamplingContext: { trace_id: 'a'.repeat(32), public_key: 'pk', sampled: 'true' },
+    });
+  });
+
+  it('removes sdkProcessingMetadata even when scrubbing fails', () => {
+    const event = {
+      sdkProcessingMetadata: { dynamicSamplingContext: { transaction: '/patients/1234' } },
+    } as unknown as ErrorEvent;
+    Object.defineProperty(event, 'request', {
+      get() {
+        throw new Error('boom');
+      },
+      configurable: true,
+    });
+
+    expect(scrubEvent(event)?.sdkProcessingMetadata).toBeUndefined();
+  });
+
   it('drops events whose original exception is an AxiosError', () => {
     const event = { message: 'Network Error' } as ErrorEvent;
 
