@@ -8,6 +8,10 @@ import { buildSentryOptions, scrubEvent } from './sentry-options';
 const DSN = 'https://public@o0.ingest.sentry.io/1';
 
 describe('buildSentryOptions', () => {
+  // The browser gate is covered below; these cases exercise the breadcrumb filtering itself.
+  beforeEach(() => setBrowserReportingAllowed(true));
+  afterEach(() => setBrowserReportingAllowed(false));
+
   it('returns null without dsn', () => {
     expect(buildSentryOptions({})).toBeNull();
     expect(buildSentryOptions({ dsn: '' })).toBeNull();
@@ -87,7 +91,25 @@ describe('scrubEvent browser gate', () => {
     expect(scrubEvent(event)?.request?.url).toBe('https://x/a');
   });
 
-  it('leaves beforeBreadcrumb unaffected by the gate', () => {
+  it('drops breadcrumbs in the browser while the gate is closed', () => {
+    const before = buildSentryOptions({ dsn: DSN })?.beforeBreadcrumb;
+    const navigation: Breadcrumb = { category: 'navigation', data: { from: '/a', to: '/dashboard/patients' } };
+
+    expect(before?.(navigation, undefined)).toBeNull();
+    expect(before?.({ category: 'custom', message: 'x' }, undefined)).toBeNull();
+  });
+
+  it('keeps filtering breadcrumbs as before once the gate is open', () => {
+    setBrowserReportingAllowed(true);
+    const before = buildSentryOptions({ dsn: DSN })?.beforeBreadcrumb;
+    const navigation: Breadcrumb = { category: 'navigation', data: { from: '/a?q=Ana', to: '/b' } };
+
+    expect(before?.(navigation, undefined)).toEqual({ category: 'navigation', data: { from: '/a', to: '/b' } });
+    expect(before?.({ category: 'ui.click', message: 'x' }, undefined)).toBeNull();
+  });
+
+  it('does not gate breadcrumbs on the server or edge (no window)', () => {
+    vi.stubGlobal('window', undefined);
     const before = buildSentryOptions({ dsn: DSN })?.beforeBreadcrumb;
     const navigation: Breadcrumb = { category: 'navigation', data: { from: '/a', to: '/b' } };
 

@@ -5,16 +5,40 @@ import { isBrowserReportingAllowed, setBrowserReportingAllowed } from '@/lib/mon
 import { resetConsent, writeConsent } from './consent';
 import { SentryBrowser } from './sentry-browser';
 
-vi.mock('@sentry/nextjs', () => ({ init: vi.fn(), getClient: vi.fn() }));
+const scopes = vi.hoisted(() => ({
+  isolation: { clearBreadcrumbs: vi.fn() },
+  current: { clearBreadcrumbs: vi.fn() },
+  global: { clearBreadcrumbs: vi.fn() },
+}));
+
+// The real SDK is exercised in sentry-browser.integration.test.tsx; here it is replaced to
+// observe how the component drives it.
+vi.mock('@sentry/nextjs', () => ({
+  init: vi.fn(),
+  getClient: vi.fn(),
+  makeFetchTransport: vi.fn(),
+  getIsolationScope: () => scopes.isolation,
+  getCurrentScope: () => scopes.current,
+  getGlobalScope: () => scopes.global,
+}));
 
 const DSN = 'https://key@o0.ingest.sentry.io/1';
+
+function clearedCount() {
+  return (
+    scopes.isolation.clearBreadcrumbs.mock.calls.length +
+    scopes.current.clearBreadcrumbs.mock.calls.length +
+    scopes.global.clearBreadcrumbs.mock.calls.length
+  );
+}
 
 beforeEach(() => {
   window.localStorage.clear();
   act(() => resetConsent());
   setBrowserReportingAllowed(false);
-  vi.mocked(Sentry.init).mockClear();
+  vi.mocked(Sentry.init).mockReset();
   vi.mocked(Sentry.getClient).mockReset();
+  for (const scope of Object.values(scopes)) scope.clearBreadcrumbs.mockClear();
 });
 afterEach(() => setBrowserReportingAllowed(false));
 
@@ -39,14 +63,22 @@ describe('SentryBrowser', () => {
     expect(isBrowserReportingAllowed()).toBe(false);
   });
 
-  it('initializes once with the scrubbing options when consent is accepted', () => {
+  it('initializes once with the browser-only gated options when consent is accepted', () => {
     act(() => writeConsent('accepted'));
     const { rerender } = render(<SentryBrowser dsn={DSN} environment="production" />);
     rerender(<SentryBrowser dsn={DSN} environment="production" />);
 
     expect(Sentry.init).toHaveBeenCalledTimes(1);
     expect(Sentry.init).toHaveBeenCalledWith(
-      expect.objectContaining({ dsn: DSN, environment: 'production', sendDefaultPii: false, tracesSampleRate: 0 }),
+      expect.objectContaining({
+        dsn: DSN,
+        environment: 'production',
+        sendDefaultPii: false,
+        tracesSampleRate: 0,
+        sendClientReports: false,
+        transport: expect.any(Function),
+        integrations: expect.any(Function),
+      }),
     );
     expect(isBrowserReportingAllowed()).toBe(true);
   });
@@ -92,5 +124,24 @@ describe('SentryBrowser', () => {
 
     expect(Sentry.init).toHaveBeenCalledTimes(1);
     expect(isBrowserReportingAllowed()).toBe(true);
+  });
+
+  it('clears stored breadcrumbs on every scope each time the gate opens', () => {
+    act(() => writeConsent('accepted'));
+    const { unmount } = render(<SentryBrowser dsn={DSN} />);
+    expect(scopes.isolation.clearBreadcrumbs).toHaveBeenCalledTimes(1);
+    expect(scopes.current.clearBreadcrumbs).toHaveBeenCalledTimes(1);
+    expect(scopes.global.clearBreadcrumbs).toHaveBeenCalledTimes(1);
+
+    unmount();
+    const afterFirst = clearedCount();
+    render(<SentryBrowser dsn={DSN} />);
+
+    expect(clearedCount()).toBeGreaterThan(afterFirst);
+  });
+
+  it('does not touch breadcrumbs when the gate stays closed', () => {
+    render(<SentryBrowser dsn={DSN} />);
+    expect(clearedCount()).toBe(0);
   });
 });

@@ -40,6 +40,9 @@ function isDroppedCategory(category: string | undefined): boolean {
 }
 
 function filterBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
+  // Browser only: while the gate is closed (outside the public pages) nothing is recorded, so
+  // dashboard navigation can never be attached to a later event.
+  if (typeof window !== 'undefined' && !isBrowserReportingAllowed()) return null;
   if (isDroppedCategory(breadcrumb.category)) return null;
   if (breadcrumb.category === 'navigation' && breadcrumb.data) {
     const data = { ...breadcrumb.data };

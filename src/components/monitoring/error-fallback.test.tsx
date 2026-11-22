@@ -31,6 +31,29 @@ describe('ErrorFallback', () => {
     expect(Sentry.captureException).toHaveBeenCalledWith(error);
   });
 
+  it('is a full-page <main> by default', () => {
+    const { container } = render(<ErrorFallback error={new Error('boom')} reset={vi.fn()} />);
+    expect(container.querySelector('main')).toHaveClass('min-h-screen');
+  });
+
+  it('embedded renders a <section> without <main> nor full-height, keeping copy, reporting and reset', () => {
+    const error = new Error('boom');
+    const reset = vi.fn();
+    const { container } = render(<ErrorFallback error={error} reset={reset} embedded />);
+
+    expect(container.querySelector('main')).toBeNull();
+    const section = container.querySelector('section');
+    expect(section).not.toBeNull();
+    expect(section).not.toHaveClass('min-h-screen');
+    expect(screen.getByRole('heading', { name: 'Algo salió mal' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Ocurrió un error inesperado. Puedes reintentar; si el problema continúa, contacta a soporte.'),
+    ).toBeInTheDocument();
+    expect(Sentry.captureException).toHaveBeenCalledWith(error);
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
   it("calls reset when 'Reintentar' is clicked", () => {
     const reset = vi.fn();
     render(<ErrorFallback error={new Error('boom')} reset={reset} />);
