@@ -54,6 +54,25 @@ describe('ErrorFallback', () => {
     expect(reset).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a custom report function instead of Sentry.captureException, once per error', () => {
+    const report = vi.fn();
+    const error = new Error('boom');
+    const { rerender } = render(<ErrorFallback error={error} reset={vi.fn()} report={report} />);
+    rerender(<ErrorFallback error={error} reset={vi.fn()} report={report} />);
+
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledWith(error);
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it('does not re-report on re-render when the default report is used', () => {
+    const error = new Error('boom');
+    const { rerender } = render(<ErrorFallback error={error} reset={vi.fn()} />);
+    rerender(<ErrorFallback error={error} reset={vi.fn()} />);
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+  });
+
   it("calls reset when 'Reintentar' is clicked", () => {
     const reset = vi.fn();
     render(<ErrorFallback error={new Error('boom')} reset={reset} />);

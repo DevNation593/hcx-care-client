@@ -16,6 +16,7 @@ const scopes = vi.hoisted(() => ({
 vi.mock('@sentry/nextjs', () => ({
   init: vi.fn(),
   getClient: vi.fn(),
+  captureException: vi.fn(),
   makeFetchTransport: vi.fn(),
   getIsolationScope: () => scopes.isolation,
   getCurrentScope: () => scopes.current,

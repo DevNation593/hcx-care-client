@@ -2,9 +2,10 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Sentry from '@sentry/nextjs';
 import MarketingError from './error';
+import { setBrowserReportingAllowed } from '@/lib/monitoring/browser-gate';
 import MarketingLayout from './layout';
 
-vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn() }));
+vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn(), getClient: vi.fn() }));
 vi.mock('@/features/marketing/consent/sentry-browser', () => ({
   SentryBrowser: () => <div data-testid="sentry-browser" />,
 }));
@@ -14,12 +15,21 @@ vi.mock('@/features/marketing/mobile-cta', () => ({ MobileCta: () => null }));
 vi.mock('@/features/marketing/site-footer', () => ({ SiteFooter: () => null }));
 vi.mock('@/features/marketing/site-header', () => ({ SiteHeader: () => null }));
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  setBrowserReportingAllowed(false);
+  vi.mocked(Sentry.getClient).mockReset();
+  vi.mocked(Sentry.captureException).mockClear();
+});
 
 describe('(marketing) error boundary', () => {
   it('renders the shared fallback embedded (no nested <main>) and reports the error', () => {
     const error = new Error('render boom');
     const reset = vi.fn();
+
+    // SDK ready: the boundary reports through reportMarketingError, which captures right away.
+    vi.mocked(Sentry.getClient).mockReturnValue({} as ReturnType<typeof Sentry.getClient>);
+    setBrowserReportingAllowed(true);
 
     const { container } = render(<MarketingError error={error} reset={reset} />);
 

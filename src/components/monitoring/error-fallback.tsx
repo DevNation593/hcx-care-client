@@ -4,22 +4,35 @@ import { useEffect } from 'react';
 import * as Sentry from '@sentry/nextjs';
 import { Button } from '@/components/ui/button';
 
+type RenderError = Error & { digest?: string };
+
+// Module-level so its identity is stable and the reporting effect does not re-run on re-renders.
+const captureWithSentry = (error: RenderError): void => {
+  Sentry.captureException(error);
+};
+
 /**
  * `embedded` renders a section for use inside a layout that already provides the page's
  * <main> (e.g. the (marketing) layout); by default it is a full-page <main>.
+ *
+ * `report` is how the error is reported. The default is a plain `Sentry.captureException`,
+ * which the browser reporting gate drops outside the public pages; only the (marketing)
+ * boundary overrides it (to also cover errors raised before Sentry is ready).
  */
 export function ErrorFallback({
   error,
   reset,
   embedded = false,
+  report = captureWithSentry,
 }: {
-  error: Error & { digest?: string };
+  error: RenderError;
   reset: () => void;
   embedded?: boolean;
+  report?: (error: RenderError) => void;
 }) {
   useEffect(() => {
-    Sentry.captureException(error);
-  }, [error]);
+    report(error);
+  }, [error, report]);
 
   const Container = embedded ? 'section' : 'main';
   const size = embedded ? 'py-24' : 'min-h-screen';
