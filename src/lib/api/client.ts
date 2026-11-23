@@ -1,5 +1,7 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, STORAGE_KEYS } from '@/lib/constants';
+import { markApiError } from '@/lib/monitoring/api-error-marker';
+import { isAccessTokenExpired } from './access-token';
 import { ApiError } from '@/types';
 import { MISSING_REQUIREMENT_LABELS, type MissingRequirement } from '@/types/treatments';
 import type { BillingCode, ClinicalBillingCode } from '@/types/cash';
@@ -33,20 +35,54 @@ function blobText(blob: Blob): Promise<string> {
   });
 }
 
+/**
+ * The web client identifies itself to the API with this header. The refresh token is an HttpOnly
+ * cookie that the browser sends on its own, and the API only accepts it from a request that
+ * carries the header: being a non-simple header it cannot be added by a cross-site form.
+ */
+const WEB_CLIENT_HEADERS = { 'X-Client': 'web' } as const;
+
+/** Name of the Web Lock that serialises the token refresh across the tabs of the browser. */
+const REFRESH_LOCK = 'hcx-refresh-session';
+
+/** Same limit as any other request. It also bounds the wait for the lock of another tab. */
+const REQUEST_TIMEOUT_MS = 30000;
+
+/**
+ * Only an answer of the API that refuses the refresh cookie ends the session. A network error,
+ * a timeout, a 5xx or a 429 says nothing about the session: it is kept and the next request
+ * tries again.
+ */
+function refusesSession(error: unknown): boolean {
+  const status = (error as AxiosError | null)?.response?.status;
+  return status === 401 || status === 403;
+}
+
+/** What the requests queued during a refresh are told once it ends. */
+type RefreshOutcome = { token: string } | { error: unknown };
+
+export type SessionRestoreResult = 'active' | 'expired' | 'unavailable';
+
 class ApiClient {
   private client: AxiosInstance;
   private isRefreshing = false;
-  private refreshSubscribers: Array<(token: string) => void> = [];
+  private refreshSubscribers: Array<(outcome: RefreshOutcome) => void> = [];
+  private refreshInFlight: Promise<string> | null = null;
 
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE_URL,
-      timeout: 30000,
+      timeout: REQUEST_TIMEOUT_MS,
+      // Sends and receives the refresh cookie on every call to the API.
+      withCredentials: true,
       headers: {
         'Content-Type': 'application/json',
+        ...WEB_CLIENT_HEADERS,
       },
     });
 
+    // Earlier versions kept the refresh token in localStorage, where a script can read it.
+    this.clearLegacyRefreshToken();
     this.setupInterceptors();
   }
 
@@ -80,7 +116,7 @@ class ApiClient {
 
         // Never try token refresh for auth endpoints (login/reset/etc.)
         if (error.response?.status === 401 && isAuthEndpoint) {
-          return Promise.reject(this.normalizeError(error));
+          return Promise.reject(markApiError(this.normalizeError(error)));
         }
 
         // A temporary password blocks every request but the change itself.
@@ -107,10 +143,17 @@ class ApiClient {
         if (error.response?.status === 401 && !originalRequest._retry) {
           if (this.isRefreshing) {
             // If already refreshing, queue this request
-            return new Promise((resolve) => {
-              this.refreshSubscribers.push((token: string) => {
+            return new Promise((resolve, reject) => {
+              this.refreshSubscribers.push((outcome) => {
+                if ('error' in outcome) {
+                  // The session ended: the request fails as the unauthorised one it was.
+                  // Otherwise the refresh could not be done and says why.
+                  const cause = refusesSession(outcome.error) ? error : (outcome.error as AxiosError);
+                  reject(markApiError(this.normalizeError(cause)));
+                  return;
+                }
                 if (originalRequest.headers) {
-                  originalRequest.headers.Authorization = `Bearer ${token}`;
+                  originalRequest.headers.Authorization = `Bearer ${outcome.token}`;
                 }
                 resolve(this.client(originalRequest));
               });
@@ -121,10 +164,9 @@ class ApiClient {
           this.isRefreshing = true;
 
           try {
-            const newToken = await this.refreshAccessToken();
+            const newToken = await this.refreshAccessToken(this.bearerOf(originalRequest));
             this.isRefreshing = false;
-            this.onRefreshed(newToken);
-            this.refreshSubscribers = [];
+            this.settleSubscribers({ token: newToken });
 
             if (originalRequest.headers) {
               originalRequest.headers.Authorization = `Bearer ${newToken}`;
@@ -132,40 +174,117 @@ class ApiClient {
             return this.client(originalRequest);
           } catch (refreshError) {
             this.isRefreshing = false;
-            this.refreshSubscribers = [];
+            // Queued requests are answered too, never left hanging.
+            this.settleSubscribers({ error: refreshError });
+
+            if (!refusesSession(refreshError)) {
+              // Network, timeout, 5xx or 429: the session may be fine. Keep it, fail this request
+              // with what happened and let the next one try the refresh again.
+              return Promise.reject(markApiError(this.normalizeError(refreshError as AxiosError)));
+            }
             this.clearAuthData();
-            
+
             // Redirect to login
             if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
               window.location.href = '/login';
             }
-            return Promise.reject(this.normalizeError(error));
+            return Promise.reject(markApiError(this.normalizeError(error)));
           }
         }
 
-        return Promise.reject(this.normalizeError(error));
+        return Promise.reject(markApiError(this.normalizeError(error)));
       }
     );
   }
 
-  private onRefreshed(token: string): void {
-    this.refreshSubscribers.forEach((callback) => callback(token));
+  private settleSubscribers(outcome: RefreshOutcome): void {
+    const subscribers = this.refreshSubscribers;
+    this.refreshSubscribers = [];
+    subscribers.forEach((callback) => callback(outcome));
   }
 
-  private async refreshAccessToken(): Promise<string> {
-    const refreshToken = this.getRefreshToken();
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
+  /** The access token a request was sent with. */
+  private bearerOf(request: InternalAxiosRequestConfig): string | null {
+    const header = request.headers?.Authorization;
+    return typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : null;
+  }
+
+  /**
+   * Gets a new access token with the refresh cookie (no body: the token is never readable from
+   * here). Concurrent calls share one request, because rotating the same cookie twice would be
+   * read by the API as a reused token and end the session.
+   *
+   * `staleToken` is the access token that was rejected (or found expired). If another tab
+   * already replaced it while this one waited its turn, that newer token is used instead of
+   * rotating the cookie again.
+   */
+  public refreshAccessToken(staleToken: string | null = this.getAccessToken()): Promise<string> {
+    this.refreshInFlight ??= this.refreshWithLock(staleToken).finally(() => {
+      this.refreshInFlight = null;
+    });
+    return this.refreshInFlight;
+  }
+
+  private async refreshWithLock(staleToken: string | null): Promise<string> {
+    // A newer valid access token than the stale one means another tab already refreshed.
+    const replacement = (): string | null => {
+      const current = this.getAccessToken();
+      return current && current !== staleToken && !isAccessTokenExpired(current) ? current : null;
+    };
+    const refresh = async (): Promise<string> => {
+      const replaced = replacement();
+      if (replaced) return replaced;
+
+      // A refresh that never answers must not hold the lock of every tab nor the start-up.
+      const response = await axios.post<{ accessToken: string }>(
+        `${API_BASE_URL}/auth/refresh`,
+        undefined,
+        { withCredentials: true, headers: WEB_CLIENT_HEADERS, timeout: REQUEST_TIMEOUT_MS },
+      );
+      this.setAccessToken(response.data.accessToken);
+      return response.data.accessToken;
+    };
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+    if (!locks) return refresh();
+
+    // The wait for the lock is bounded too: another tab may be stuck holding it.
+    const waiting = new AbortController();
+    const timer = setTimeout(() => waiting.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      return await locks.request(REFRESH_LOCK, { signal: waiting.signal }, () => {
+        clearTimeout(timer);
+        return refresh();
+      });
+    } catch (error) {
+      // The wait ran out: the tab that held the lock may have refreshed in the meantime, so its
+      // token is used instead of failing a session that is fine.
+      if (waiting.signal.aborted) {
+        const replaced = replacement();
+        if (replaced) return replaced;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
+  }
 
-    const response = await axios.post<{ accessToken: string; refreshToken: string }>(
-      `${API_BASE_URL}/auth/refresh`,
-      { refreshToken }
-    );
-
-    const { accessToken, refreshToken: newRefreshToken } = response.data;
-    this.setTokens(accessToken, newRefreshToken);
-    return accessToken;
+  /**
+   * Called when the app starts with a persisted user. If the access token is missing or
+   * expired, a new one is requested with the refresh cookie before anything else runs.
+   * `expired`: the API refused the cookie (401/403), so the session is over. `unavailable`: the
+   * API could not be reached, failed or timed out; the session is kept and the next request
+   * tries again.
+   */
+  public async restoreSession(): Promise<SessionRestoreResult> {
+    if (typeof window === 'undefined') return 'unavailable';
+    const token = this.getAccessToken();
+    if (token && !isAccessTokenExpired(token)) return 'active';
+    try {
+      await this.refreshAccessToken(token);
+      return 'active';
+    } catch (error) {
+      return refusesSession(error) ? 'expired' : 'unavailable';
+    }
   }
 
   /**
@@ -279,21 +398,23 @@ class ApiClient {
     return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
   }
 
-  private getRefreshToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-  }
-
-  public setTokens(accessToken: string, refreshToken: string): void {
+  /** The refresh token is not stored here: it only exists in the HttpOnly cookie. */
+  public setAccessToken(accessToken: string): void {
     if (typeof window === 'undefined') return;
     localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-    localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    this.clearLegacyRefreshToken();
+  }
+
+  /** Erases the refresh token that versions before the cookie left in localStorage. */
+  private clearLegacyRefreshToken(): void {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(STORAGE_KEYS.LEGACY_REFRESH_TOKEN);
   }
 
   public clearAuthData(): void {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+    this.clearLegacyRefreshToken();
     localStorage.removeItem(STORAGE_KEYS.USER);
     localStorage.removeItem(STORAGE_KEYS.TENANT);
     localStorage.removeItem('auth-storage');

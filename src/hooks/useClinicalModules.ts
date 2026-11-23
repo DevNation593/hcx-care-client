@@ -9,12 +9,12 @@ import type { ApiError } from '@/types';
 import type { FormDefinitionInput, FormDefinitionUpdate } from '@/types/clinical';
 
 /** Every version of the platform modules and of the clinic's own forms. */
-export function useClinicalModules() {
+export function useClinicalModules(enabled = true) {
   const tenantId = useTenantId();
   return useQuery({
     queryKey: QUERY_KEYS.CLINICAL_MODULES(tenantId ?? ''),
     queryFn: () => clinicalModulesApi.list(requireTenantId(tenantId)),
-    enabled: !!tenantId,
+    enabled: !!tenantId && enabled,
   });
 }
 

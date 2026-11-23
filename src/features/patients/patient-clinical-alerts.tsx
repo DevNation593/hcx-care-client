@@ -4,7 +4,7 @@ import { AlertTriangle } from 'lucide-react';
 import { usePatientClinicalAlerts } from '@/hooks/useSpecialtyRecords';
 import { cn, formatDate } from '@/lib/utils';
 import type { FormAlertLevel } from '@/types/clinical';
-import { ALERT_STYLES } from './clinical-records-tab';
+import { ALERT_STYLES } from './record-card';
 
 const LEVEL_ORDER: FormAlertLevel[] = ['critical', 'warning', 'info'];
 

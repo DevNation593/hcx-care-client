@@ -11,9 +11,11 @@ import { RecordDocument } from '@/features/patients/record-document';
 import { useClinicalModules } from '@/hooks/useClinicalModules';
 import { useSaveRecordDocument } from '@/hooks/useDocuments';
 import { usePatient } from '@/hooks/usePatients';
+import { useReturnTab } from '@/hooks/useReturnTab';
 import { usePatientSpecialtyRecord } from '@/hooks/useSpecialtyRecords';
 import { useAuthStore } from '@/store/authStore';
 import { getErrorMessage } from '@/lib/api/error-messages';
+import { patientTabHref } from '@/lib/patient-tabs';
 
 function RecordPrintContent() {
   const params = useParams();
@@ -22,6 +24,8 @@ function RecordPrintContent() {
   const recordId = params.recordId as string;
   const tenant = useAuthStore((state) => state.tenant);
   const [printedAt] = useState(() => new Date());
+  // Records are printed from the clinical history or from the records tab: back goes to that one.
+  const from = useReturnTab() ?? 'specialties';
 
   const patientQuery = usePatient(patientId);
   const recordQuery = usePatientSpecialtyRecord(patientId, recordId);
@@ -56,9 +60,9 @@ function RecordPrintContent() {
   return (
     <div className="space-y-4">
       <div className="mx-auto flex max-w-3xl items-center justify-between print:hidden">
-        <Button variant="ghost" onClick={() => router.push(`/patients/${patientId}`)}>
+        <Button variant="ghost" onClick={() => router.push(patientTabHref(patientId, from))}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Volver al paciente
+          {from === 'clinical' ? 'Volver a la historia clínica' : 'Volver a los registros clínicos'}
         </Button>
         <div className="flex flex-wrap items-center gap-2">
           {/* The copy kept in the history: rendered by the server, with the same code. */}

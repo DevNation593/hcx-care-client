@@ -79,7 +79,10 @@ describe('PatientTreatmentsTab', () => {
     expect(within(rows[0]).getByText('Consentimiento firmado')).toBeInTheDocument();
     expect(within(rows[1]).getByText('Peeling químico')).toBeInTheDocument();
     expect(within(rows[1]).getByText('Cerrada')).toBeInTheDocument();
-    expect(within(rows[0]).getByRole('link')).toHaveAttribute('href', '/treatment-sessions/s-2');
+    expect(within(rows[0]).getByRole('link')).toHaveAttribute(
+      'href',
+      '/treatment-sessions/s-2?from=treatments',
+    );
   });
 
   it('no longer has its own "Nueva atención" button', () => {

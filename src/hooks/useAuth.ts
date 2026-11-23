@@ -11,15 +11,16 @@ import { toast } from 'sonner';
 import { isPlatformAdmin } from '@/types/guards';
 import { postLoginRoute } from '@/lib/post-login-route';
 
-/** Opens the session the API granted: tokens, user, tenant, and the first page to show. */
+/** Opens the session the API granted: access token, user, tenant, and the first page to show. */
 function useOpenSession() {
   const setAuth = useAuthStore((state) => state.setAuth);
   const setUser = useAuthStore((state) => state.setUser);
   const router = useRouter();
 
   return async (response: AuthResponse) => {
-    const { accessToken, refreshToken, user } = response;
-    apiClient.setTokens(accessToken, refreshToken);
+    const { accessToken, user } = response;
+    // The refresh token arrives only as an HttpOnly cookie; the script never sees it.
+    apiClient.setAccessToken(accessToken);
     // Set user immediately so getTenantId() works
     setUser(user);
 

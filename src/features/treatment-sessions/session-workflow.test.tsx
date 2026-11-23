@@ -10,6 +10,10 @@ vi.mock('@/hooks/usePatientTerms', async (importOriginal) => {
   return { ...actual, usePatientTerms: () => actual.patientTerms(false) };
 });
 
+// The page reads `?from=` to know which tab of the patient it was opened from.
+const nav = vi.hoisted(() => ({ search: '' }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(nav.search) }));
+
 const sections = vi.hoisted(() => ({ enabled: new Set<string>() }));
 vi.mock('@/hooks/useSections', () => ({
   useSections: () => ({ isEnabled: (key: string) => sections.enabled.has(key) }),
@@ -109,6 +113,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.setState({ user: { id: 'pro' } as never });
   sections.enabled.clear();
+  nav.search = '';
   hooks.session = session();
   hooks.updatedAt = 1;
   hooks.presentConsent.mockResolvedValue(document);
@@ -641,6 +646,45 @@ describe('SessionWorkflow', () => {
       expect(screen.getByRole('link', { name: 'Volver al paciente' })).toHaveAttribute(
         'href',
         '/patients/patient-1?tab=specialties',
+      );
+    });
+
+    it('leads the header back to the clinical history when the session was opened from it', () => {
+      sections.enabled.add('core.clinical.specialties');
+      nav.search = 'from=clinical';
+      render(<SessionWorkflow id="session-1" />);
+
+      expect(screen.getByRole('link', { name: 'Volver a la historia clínica' })).toHaveAttribute(
+        'href',
+        '/patients/patient-1?tab=clinical',
+      );
+    });
+
+    it.each(['specialties', 'treatments'])('leads the header back to %s when opened from there', (tab) => {
+      sections.enabled.add('core.clinical.specialties');
+      nav.search = `from=${tab}`;
+      render(<SessionWorkflow id="session-1" />);
+
+      expect(screen.getByRole('link', { name: 'Volver a la atención' })).toHaveAttribute(
+        'href',
+        `/patients/patient-1?tab=${tab}`,
+      );
+    });
+
+    it.each([
+      ['an external URL', 'https://evil.example/phish'],
+      ['a protocol-relative URL', '//evil.example'],
+      ['a script', 'javascript:alert(1)'],
+      ['a path', '../../admin'],
+      ['an extra parameter', 'clinical&next=https://evil.example'],
+      ['a tab that does not exist', 'billing-secrets'],
+    ])('ignores %s in ?from= and keeps the default way back', (_label, from) => {
+      nav.search = new URLSearchParams({ from }).toString();
+      render(<SessionWorkflow id="session-1" />);
+
+      expect(screen.getByRole('link', { name: 'Volver al paciente' })).toHaveAttribute(
+        'href',
+        '/patients/patient-1?tab=treatments',
       );
     });
 

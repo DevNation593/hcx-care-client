@@ -290,7 +290,9 @@ export const API_ENDPOINTS = {
 
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'access_token',
-  REFRESH_TOKEN: 'refresh_token',
+  // No longer written: the refresh token lives in an HttpOnly cookie. Kept only to erase the
+  // value that earlier versions left in localStorage.
+  LEGACY_REFRESH_TOKEN: 'refresh_token',
   USER: 'user',
   TENANT: 'tenant',
   THEME: 'theme',
@@ -323,6 +325,10 @@ export const QUERY_KEYS = {
   // Patients
   PATIENTS: ['patients'],
   PATIENTS_SCOPED: (tenantId: string, filters?: unknown) => ['patients', 'tenant', tenantId, filters] as const,
+  // A page of the list. The `view` marker keeps it apart from the whole-list entry of the same
+  // filters, and the key keeps the shape invalidateScopedLists matches (index 3 is an object).
+  PATIENTS_PAGE_SCOPED: (tenantId: string, params: object) =>
+    ['patients', 'tenant', tenantId, { view: 'page', ...params }] as const,
   PATIENT_DETAIL: (id: string) => ['patients', id],
   PATIENT_DETAIL_SCOPED: (tenantId: string, patientId: string) => ['patients', 'tenant', tenantId, patientId] as const,
   PATIENT_TEAM: (tenantId: string, patientId: string) => ['patient-team', tenantId, patientId] as const,
@@ -381,6 +387,10 @@ export const QUERY_KEYS = {
   TASK_DETAIL: (id: string) => ['tasks', id],
   TASKS_MY: ['tasks', 'my'],
   TASKS_OVERDUE: ['tasks', 'overdue'],
+  // Scoped by tenant like PATIENTS_PAGE_SCOPED; every entry still starts with `tasks`, so the
+  // invalidations of the mutations (`['tasks']`) refresh them too.
+  TASKS_PAGE: (tenantId: string, params: object) => ['tasks', 'tenant', tenantId, 'page', params] as const,
+  TASKS_SUMMARY: (tenantId: string, params: object) => ['tasks', 'tenant', tenantId, 'summary', params] as const,
   
   // Notifications
   NOTIFICATIONS: ['notifications'],

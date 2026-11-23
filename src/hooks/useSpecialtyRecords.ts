@@ -8,11 +8,11 @@ import { toast } from 'sonner';
 import type { ApiError } from '@/types';
 import type { ClinicalRecordCorrection, ClinicalRecordInput } from '@/types/clinical';
 
-export function usePatientSpecialtyRecords(patientId: string) {
+export function usePatientSpecialtyRecords(patientId: string, enabled = true) {
   return useQuery({
     queryKey: QUERY_KEYS.PATIENT_SPECIALTY_RECORDS(patientId),
     queryFn: () => specialtyRecordsApi.list(patientId),
-    enabled: Boolean(patientId),
+    enabled: Boolean(patientId) && enabled,
   });
 }
 

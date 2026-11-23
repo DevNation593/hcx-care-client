@@ -321,6 +321,23 @@ describe('ProcedureStep complete as the last pending treatment', () => {
     expect(within(dialog).getByRole('button', { name: 'Completar y seguir en la atención' })).toBeInTheDocument();
   });
 
+  // jsdom does no layout: this pins the classes that let the three buttons wrap inside the modal.
+  // The layout itself was measured in a real browser (Edge) at 375 and 1280 px.
+  it('lets its three buttons wrap inside the modal instead of sticking out of it', async () => {
+    render(<Step session={lastPending()} />);
+
+    const dialog = await open();
+
+    const names = ['Volver', 'Completar y seguir en la atención', 'Completar y cerrar atención'];
+    for (const name of names) {
+      const classes = within(dialog).getByRole('button', { name }).className.split(' ');
+      expect(classes).toEqual(expect.arrayContaining(['w-full', 'sm:w-auto', 'whitespace-normal']));
+      expect(classes).not.toContain('whitespace-nowrap');
+    }
+    const footer = within(dialog).getByRole('button', { name: 'Volver' }).parentElement;
+    expect(footer?.className.split(' ')).toContain('sm:flex-wrap');
+  });
+
   it('also counts finished or cancelled siblings as nothing pending', async () => {
     render(
       <Step

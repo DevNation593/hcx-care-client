@@ -351,8 +351,10 @@ function MyComponent() {
 
 Características:
 - Instancia de Axios configurada
-- Interceptor de request: Añade token JWT
-- Interceptor de response: Manejo de errores y refresh token automático
+- Interceptor de request: Añade el access token JWT (`localStorage`)
+- Interceptor de response: Manejo de errores y renovación automática del access token
+- El refresh token **no** se guarda en el navegador legible por scripts: la API lo envía en la cookie `HttpOnly` `refresh_token`. El cliente usa `withCredentials: true` y la cabecera `X-Client: web` en todas las peticiones, y `/auth/refresh` se llama sin cuerpo. Las peticiones que fallan con 401 durante la renovación esperan en cola y se repiten con el token nuevo.
+- Al cargar, se borra la clave `refresh_token` que dejaban las versiones anteriores en `localStorage`. Si hay un usuario persistido y el access token falta o caducó, `authStore` renueva la sesión con la cookie antes de marcar `hasHydrated`; si la API responde 401 o 403 se limpia la sesión.
 - Métodos HTTP: `get`, `post`, `put`, `patch`, `delete`, `upload`
 
 ```typescript
@@ -714,6 +716,160 @@ NEXT_PUBLIC_ENABLE_DEBUG=true
 npm install -g web-push
 web-push generate-vapid-keys
 ```
+
+---
+
+## 📈 MONITOREO: ERRORES Y WEB VITALS (Sentry)
+
+El cliente usa `@sentry/nextjs` (fijado en `^10.x` a propósito: la v11 quitó `sendDefaultPii` y recoge usuario,
+cookies y cabeceras; no actualizar sin pasar a `dataCollection`). La configuración vive en `sentry.server.config.ts`, `sentry.edge.config.ts`
+y `src/lib/monitoring/`.
+
+**SEC-WEB-09 (el SDK del navegador solo en las páginas públicas y con consentimiento):** el navegador no se
+inicializa en `sentry.client.config.ts` (ese archivo no existe: `withSentryConfig` lo metería en todas las páginas).
+Lo inicializa `SentryBrowser` (`src/features/marketing/consent/sentry-browser.tsx`), montado en
+`src/app/(marketing)/layout.tsx`, solo si el visitante aceptó las cookies. Al navegar (sin recargar) a la app
+(dashboard, plataforma, autenticación) el SDK sigue cargado en memoria, pero una compuerta
+(`src/lib/monitoring/browser-gate.ts`) cierra el transporte, `beforeSend` y los breadcrumbs: no sale nada (ni
+errores, ni transacciones o Web Vitals, ni sesiones, ni informes de cliente). Por eso los errores del navegador
+en la app **no se reportan**; los del servidor y el edge sí, siempre. Los errores de renderizado de una página
+pública se capturan en `src/app/(marketing)/error.tsx`.
+
+### Errores
+
+`NEXT_PUBLIC_SENTRY_DSN` activa el reporte de errores del navegador y del servidor de Next. Sin DSN, Sentry no
+se inicializa. Los errores de Axios no se reportan (la API reporta sus 5xx); no hay replay ni `sendDefaultPii`, y se
+descartan los breadcrumbs de interfaz, consola y peticiones.
+
+**Rutas en los errores** (`scrubEvent` y `beforeBreadcrumb`, en `src/lib/monitoring/sentry-options.ts`; la
+parametrización vive en `sentry-route.ts`, compartida con las transacciones de Web Vitals y presente siempre en el
+bundle, porque es pequeña y no depende de nada): `event.request.url` conserva el origen y la ruta **parametrizada**
+(`https://app.example.com/verify/:param`, `/patients/:param/edit`), sin query ni fragmento; lo mismo para
+`event.transaction`, el tag `transaction` (con o sin método: `GET /patients/[id]`) y los campos `from`, `to` y `url` de
+los breadcrumbs que quedan (la navegación). Importa sobre todo en `/verify/<code>`: esa página es pública y con el
+código cualquiera consulta, sin sesión, las iniciales del paciente, el profesional y el consultorio, así que el
+código no debe llegar a Sentry. Las rutas dinámicas de `src/app` (`/verify/[code]`, `/patients/[id]`,
+`/patients/[id]/records/[recordId]/print`, `/cash/orders/[id]`, `/treatment-sessions/[id]`,
+`/platform/tenants/[tenantId]`) están declaradas en `DYNAMIC_ROUTES` de `sentry-route.ts`: su segmento dinámico se
+sustituye siempre por `:param`, aunque parezca una palabra (un código escrito en minúsculas); el resto de segmentos
+se parametriza por su forma (UUID, números, códigos con mayúsculas o guiones). **Al crear una ruta `[param]` nueva,
+añadirla a `DYNAMIC_ROUTES`**: `sentry-route.test.ts` recorre `src/app` y falla si falta. Si el filtrado falla, se
+descartan `request`, `transaction`, `tags` y `breadcrumbs` del evento.
+
+**De qué runtime sale cada cosa:** `buildSentryOptions` (`beforeSend: scrubEvent`, `beforeBreadcrumb`) lo usan el
+servidor, el edge y el navegador, así que todo lo anterior se aplica en los tres. En el navegador, `SentryBrowser`
+parte de esas mismas opciones y `applyBrowserReportingGate` solo les añade la compuerta del transporte (SEC-WEB-09), y
+`scrubEvent` y `beforeBreadcrumb` devuelven `null` mientras la compuerta esté cerrada. Consecuencia: `/verify/<code>`
+vive fuera del layout `(marketing)`, donde no hay `SentryBrowser`, así que un error del navegador en esa página no se
+envía; los que sí se envían son los del servidor y el edge (con `request.url` y `transaction` de `/verify/<code>`, ya
+parametrizados) y los de las páginas públicas del layout. El filtro de rutas queda como defensa por si la compuerta se
+abriese en otra página.
+
+Además, `filename` y `abs_path` de los frames de `exception.values[]` (también las causas encadenadas) y de
+`threads` se parametrizan cuando son una URL de página (`app:///verify/<code>?x=1`,
+`https://host/verify/<code>#f`): un script en línea de Next (`self.__next_f.push`) se atribuye a la URL del documento y
+el SDK pone ahí la `location.href` completa. Los archivos del build no se tocan (`/_next/...`, cualquier `*.js`, rutas
+de servidor, `webpack-internal:`), porque los source maps se buscan por ese nombre. `contexts.nextjs.request_path`
+(lo fija `onRequestError`, hoy sin usar) se parametriza igual. La URL de la API que responde sin sesión
+(`/public/documents/<code>`) también está en `DYNAMIC_ROUTES`; las demás URLs de la API solo las cubre la forma del
+valor (un id de la API en minúsculas pasaría), pero no llegan a Sentry: los breadcrumbs `http`, `fetch` y `xhr` se
+descartan y los errores de la API no se reportan desde la web.
+
+Pendiente o fuera de alcance de ese filtro (verificado en el código): los eventos de error conservan `user.id` (el id
+opaco del usuario, lo fija `SentryUserSync`) y el tag `tenantId`; no llevan `User-Agent` (se borran las cabeceras de la
+petición), pero `scrubEvent` no toca `contexts` salvo `nextjs.request_path` (los del SDK y los que Sentry derive); y el
+texto de un mensaje de error (`exception.values[].value`) o de un breadcrumb de otra categoría (`message`) no se
+reescribe: si la aplicación lanzase un error con una URL de `/verify/<code>` en el mensaje, saldría tal cual. El
+contexto `trace` de un error solo lleva `trace_id`, `span_id` y `parent_span_id` en el SDK instalado
+(`spanToTraceContext` de `@sentry/core`), sin URL ni atributos del span; se comprobó leyendo el código, no con un envío
+real.
+
+### Web Vitals de usuarios reales
+
+`NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` es la fracción de cargas de página y navegaciones que se miden, un número
+entre 0 y 1. **Por defecto 0 (apagado)**: sin la variable, vacía o con un valor inválido (texto, negativo, mayor que
+1, `10%`) el navegador se comporta exactamente como antes. Recomendación inicial: `0.05` a `0.1`. Requiere
+`NEXT_PUBLIC_SENTRY_DSN`. Solo se mide en las páginas públicas y tras aceptar las cookies (SEC-WEB-09): desde la app
+(dashboard, plataforma, autenticación) no se envía nada, salvo mientras la página sea pública y haya consentimiento
+aceptado. Matiz: la transacción de una navegación que sale de una página pública (hacia la app) puede llevar el
+nombre de una ruta parametrizada (`/patients/:param`), ya filtrado por la lista de permitidos de `scrubTransaction`,
+sin datos personales; no se envían medidas ni transacciones de la propia app.
+
+- **`NEXT_PUBLIC_*` se inyecta al compilar**: cambiar la variable (activarla, subirla o apagarla) exige volver a
+  construir y desplegar la web; no basta con editarla en Vercel. Para apagarlo: borrar la variable (o ponerla a `0`)
+  y redesplegar.
+- **Qué se mide:** LCP, FCP, CLS y TTFB como mediciones (`measurements`) de la transacción de carga de página
+  (`pageload`); cada navegación entre rutas genera su propia transacción (`navigation`) con su duración (LCP y TTFB
+  solo existen en la carga inicial). INP, como un span suelto por interacción. Cada transacción se llama con la ruta
+  **parametrizada** de Next: `/patients/:id`, no `/patients/<uuid>`.
+- **Qué NO se envía** (`scrubTransaction` y `scrubSpan`, en `src/lib/monitoring/sentry-tracing.ts`, reconstruyen
+  cada transacción y cada span desde una lista de campos permitidos; si el filtrado falla, la transacción se
+  descarta). Se instalan cuando la variable está definida. Sin ella (tasa 0) tampoco hay transacciones, y no porque
+  falte nada que filtrar: `buildSentryOptions`, que comparten navegador, servidor y edge, lleva siempre
+  `tracesSampler: () => 0` y `beforeSendTransaction: () => null`. Sin eso el SDK hereda la decisión de muestreo de
+  una traza entrante, y un `curl -H 'sentry-trace: <id>-<id>-1'` a la web (o una etiqueta
+  `<meta name="sentry-trace">` con `-1`) generaba una transacción sin filtrar, con la URL completa. Se comprobó con el
+  SDK real del servidor de `@sentry/nextjs`; en el edge no se pudo reproducir, y la misma opción lo deja cubierto:
+  - `request` (cabeceras, cookies, query string, cuerpo): solo queda el origen y la ruta parametrizada de la página;
+    nunca un id, la query ni el fragmento (`#`). Un valor que parezca un id (UUID, código, número) se sustituye por
+    `:param` aunque ninguna ruta lo haya parametrizado, y el segmento de cada ruta dinámica de la app
+    (`DYNAMIC_ROUTES`, ver «Errores») siempre; también las palabras en minúsculas unidas por dos o más
+    guiones (`abcd-efgh-jkmn-pqrs`, un código de verificación), salvo las páginas estáticas conocidas
+    (`casos-de-exito`, `tratamiento-de-datos`). Los segmentos dinámicos de Next (`:id`, `:slug*`, `[id]`,
+    `[...slug]`) se conservan.
+  - `user`, `tags`, `extra`, `breadcrumbs` y los contextos de dispositivo y navegador. Sin cabeceras, Sentry no ve el
+    `User-Agent`, así que la segmentación por navegador es más limitada.
+  - Spans de recursos y de llamadas a la API (llevan la URL completa, con ids y query): se descartan todos; solo
+    sobreviven los spans de fases de la carga (`browser.*`), con el nombre de su `op`.
+  - Elementos de la interfaz: el nombre del span de INP es el selector del elemento pulsado (puede incluir
+    `aria-label`, `title` o `name` con datos de pacientes), así que se sustituye por `ui.interaction.click`. Pero
+    ese nombre también viaja en la cabecera `trace` del envelope del span suelto (`trace.transaction`), que el SDK
+    calcula desde el span vivo y `beforeSendSpan` no toca (comprobado con el SDK real de Next en jsdom): la
+    integración `EnvelopeTraceScrub` reduce la cabecera `trace` de todo envelope a `trace_id`, `public_key`,
+    `sample_rate`, `sample_rand`, `sampled`, `release`, `environment` y `org_id`. Los clics
+    (`ui.action.click`, la opción `_experiments.enableInteractions`) no se instrumentan, ni tampoco las tareas largas.
+  - Atributos de LCP y CLS que nombran elementos o URLs (`lcp.element`, `lcp.url`, `cls.source.*`).
+- **Propagación de trazas:** decisión por defecto = **no propagar**, con cualquier tasa, también 0, y en navegador,
+  servidor y edge (`tracePropagationTargets: []` en `src/lib/monitoring/sentry-options.ts`; con el valor por defecto
+  del SDK se añadían las cabeceras a toda llamada saliente del servidor y al mismo origen en el navegador, aunque la
+  traza no estuviera muestreada). Con la tasa activa, además, `traceFetch`/`traceXHR` están desactivados. La web no añade `sentry-trace` ni `baggage` a ninguna petición, ni siquiera
+  a la API, y la traza del navegador no se enlaza con la del servidor. Motivos: (1) la API decide el muestreo por sí
+  misma con `Math.random()` y no hereda la decisión de la traza entrante (cualquier cliente podría forzar el 100 %
+  con esa cabecera o con `sentry-sample_rand=0` en el `baggage`), así que enlazar solo daría trazas a medias; (2) `traceFetch`/`traceXHR` son lo que crearía un span por llamada con la URL
+  completa, que se descartaría de todos modos. Con la configuración actual de CORS de la API (`main.ts`: sin
+  `allowedHeaders`, así que se reflejan las cabeceras pedidas en el preflight) no haría falta tocar CORS. Para activarlo
+  habría que: poner `traceFetch`/`traceXHR` a `true` y `tracePropagationTargets: [<origen de la API>]` en
+  `src/lib/monitoring/sentry-browser-options.ts`, hacer que el muestreador de la API respete la decisión entrante de
+  forma controlada, y comprobar el preflight real en un Preview.
+- **Servidor y edge de Next:** siempre a tasa 0 y sin transacciones, también con la variable definida. El
+  rastreo de Web Vitals vive solo en el navegador (`buildBrowserSentryOptions`, que únicamente usa
+  `SentryBrowser`); `sentry.server.config.ts` y `sentry.edge.config.ts` usan `buildSentryOptions`, con el
+  muestreador `() => 0`. En el navegador, con la variable definida, el muestreador decide con `Math.random() < tasa`
+  y devuelve un booleano: ni la decisión ni el `sample_rand` de una traza entrante (etiqueta `<meta>`) pueden subir
+  la fracción de páginas muestreadas, y `sample_rate` se reporta como 1 en las trazas muestreadas.
+- **Peso:** el SDK de Next ya incluye el código de tracing del navegador aunque no se use. Con la variable sin definir
+  en el build no se añade nada: `SentryBrowser` elige las opciones de Web Vitals con
+  `process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ? buildBrowserSentryOptions(...) : buildSentryOptions(...)`, y
+  `next.config.mjs` define la variable siempre (vacía si falta) para que esa condición sea constante y webpack
+  elimine la rama y el módulo `sentry-browser-options` con ella. Como el SDK del navegador ya no se inicializa en
+  `sentry.client.config.ts` sino en `SentryBrowser` (chunk `app/(marketing)/layout`), su código y el de Web Vitals
+  dejaron de estar en el JS compartido de todas las rutas. Medido con `next build` (`NEXT_PUBLIC_API_BASE_URL` y
+  `NEXT_PUBLIC_APP_URL` de prueba, DSN de prueba), «First Load JS shared by all»: **87.6 kB con solo el DSN y 87.6 kB
+  con el DSN y `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=0.1`** (antes, con la inicialización global, dev medía 164 kB y
+  168 kB). La eliminación de la rama se comprueba por la **ausencia** de la cadena `EnvelopeTraceScrub` en
+  `.next/static` (`grep -rl EnvelopeTraceScrub .next/static`): con la variable sin definir, 0 archivos; con
+  `0.1`, 1 archivo, el chunk `app/(marketing)/layout-*.js` (solo se carga en páginas públicas). No se volvió a medir qué
+  pasa si se quita el bloque `env` de `next.config.mjs` (dev midió entonces +4 kB: sin la definición la variable no se
+  inlina, la condición deja de ser constante y la rama sobrevive). No quitarlo; `sentry-bundle-gating.test.ts` lo vigila.
+- **Hallazgo previo, corregido por T4:** con `origin/dev` y `NEXT_PUBLIC_SENTRY_DSN` definido, el muestreo
+  forzado por `sentry-trace` ya era posible en el servidor de Next y en el navegador (por la etiqueta `<meta>`).
+  Solo ocurre si el DSN está definido: mergear T4, o al menos `tracesSampler` y `beforeSendTransaction` de
+  `buildSentryOptions`, antes de definirlo en producción.
+- **Sin smoke test real:** los tests usan el SDK real con un transporte en memoria (cliente de Next en jsdom,
+  servidor y edge), pero no se ha enviado nada a Sentry y no sustituyen a una verificación en un Preview con un DSN
+  de prueba, temporal y solo en esa rama, de una transacción **y** de un error, incluidas las cabeceras del
+  envelope. Recomendaciones del lado de Sentry: «Prevent storing of IP addresses», data scrubbing del servidor y
+  límites de cuota con *spike protection*.
 
 ---
 

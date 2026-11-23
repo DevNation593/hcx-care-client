@@ -49,7 +49,7 @@ describe('ProcedureHistory', () => {
     expect(within(rows[0]).getByText(/Sofía Ruiz/)).toBeInTheDocument();
     expect(within(rows[0]).getByRole('link', { name: /Ver atención/ })).toHaveAttribute(
       'href',
-      '/treatment-sessions/s-2',
+      '/treatment-sessions/s-2?from=specialties',
     );
     expect(within(rows[1]).getByText('Borrador en curso')).toBeInTheDocument();
     expect(within(rows[1]).getByText(/borrador hasta cerrar la atención/)).toBeInTheDocument();

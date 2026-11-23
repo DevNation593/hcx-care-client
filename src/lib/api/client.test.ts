@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
+import { isMarkedApiError } from '@/lib/monitoring/api-error-marker';
 import { statusMessage } from './error-messages';
 
 const interceptor = vi.hoisted(() => ({
   onRejected: (error: unknown): Promise<never> => Promise.reject(error),
   status: 409,
   url: '/onboarding/tenants',
+  rejection: null as unknown,
   responseData: {
     statusCode: 409, message: 'El correo electrónico ya está en uso',
     code: 'EMAIL_CONFLICT', field: 'adminEmail', details: { existing: true },
@@ -19,7 +21,7 @@ vi.mock('axios', () => ({
         request: { use: vi.fn() },
         response: { use: (_success: unknown, rejected: typeof interceptor.onRejected) => { interceptor.onRejected = rejected; } },
       },
-      post: () => interceptor.onRejected({
+      post: () => interceptor.onRejected(interceptor.rejection ?? {
         config: { url: interceptor.url },
         response: { status: interceptor.status, data: interceptor.responseData },
       }),
@@ -108,6 +110,21 @@ describe('ApiClient error normalization', () => {
     });
   });
 
+  it('shows the message of a 503 that tells a migration is missing, with its code', async () => {
+    interceptor.status = 503;
+    interceptor.responseData = {
+      statusCode: 503,
+      code: 'DATABASE_MIGRATION_PENDING',
+      message:
+        'No se puede agregar otro tratamiento a esta atención: al servidor le falta una actualización de la base de datos. Avisa al administrador del sistema.',
+    };
+    await expect(apiClient.post('/tenants/t/patients/p/treatment-sessions', {})).rejects.toMatchObject({
+      status: 503,
+      code: 'DATABASE_MIGRATION_PENDING',
+      message: expect.stringContaining('actualización de la base de datos'),
+    });
+  });
+
   it('keeps the generic message when a file error body is not JSON', async () => {
     interceptor.status = 500;
     interceptor.responseData = new Blob(['<html>Bad gateway</html>'], { type: 'text/html' });
@@ -175,6 +192,49 @@ describe('ApiClient error normalization', () => {
     interceptor.responseData = { statusCode: 403, error: 'Forbidden', message: 'Forbidden resource' };
     const error = await apiClient.post('/tasks', {}).catch((e) => e);
     expect(error).not.toHaveProperty('code');
+  });
+});
+
+describe('ApiClient rejections are marked for Sentry', () => {
+  afterEach(() => {
+    interceptor.rejection = null;
+  });
+
+  it('marks the rejection of an HTTP error response', async () => {
+    interceptor.status = 500;
+    interceptor.url = '/tenants/t1/patients';
+    interceptor.responseData = { statusCode: 500, message: 'boom' };
+    const error = await apiClient.post('/tenants/t1/patients', {}).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ status: 500 });
+    expect(isMarkedApiError(error)).toBe(true);
+    expect(Object.keys(error as object).sort()).toEqual(['message', 'status']);
+  });
+
+  it('marks the rejection of a network error', async () => {
+    interceptor.rejection = { config: { url: '/tenants/t1/patients' }, request: {} };
+    const error = await apiClient.post('/tenants/t1/patients', {}).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ code: 'NETWORK_ERROR' });
+    expect(isMarkedApiError(error)).toBe(true);
+  });
+
+  it('marks the rejection of a timeout', async () => {
+    interceptor.rejection = { config: { url: '/tenants/t1/patients' }, code: 'ECONNABORTED' };
+    const error = await apiClient.post('/tenants/t1/patients', {}).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ code: 'TIMEOUT' });
+    expect(isMarkedApiError(error)).toBe(true);
+  });
+
+  it('marks the rejection of a failed auth endpoint', async () => {
+    interceptor.status = 401;
+    interceptor.url = '/auth/login';
+    interceptor.responseData = { statusCode: 401, message: 'Credenciales invalidas' };
+    const error = await apiClient.post('/auth/login', {}).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ status: 401 });
+    expect(isMarkedApiError(error)).toBe(true);
   });
 });
 
