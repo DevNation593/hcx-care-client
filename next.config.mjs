@@ -10,7 +10,7 @@ const nextConfig = {
   },
   env: {
     // Always defined (empty when not set) so that `if (process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE)`
-    // in sentry.client.config.ts is a constant and the Web Vitals code leaves the bundle at rate 0.
+    // in SentryBrowser (src/features/marketing/consent/sentry-browser.tsx) is a constant and the Web Vitals code leaves the bundle at rate 0.
     NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE: process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ?? '',
   },
   images: {

@@ -529,13 +529,12 @@ export type UpdateSelfProfileInput = Partial<Pick<User, 'firstName' | 'lastName'
 
 export interface AuthTokens {
   accessToken: string;
-  refreshToken: string;
   expiresIn: number;
 }
 
+/** The refresh token is not part of it: the API sends it only in an HttpOnly cookie. */
 export interface AuthResponse {
   accessToken: string;
-  refreshToken: string;
   user: User;
 }
 
@@ -919,6 +918,20 @@ export interface PaginatedResponse<T> {
     total: number;
     totalPages: number;
   };
+}
+
+/** `meta` of the lists the API pages on the server (patients, tasks, appointments) when asked with `page`/`limit`. */
+export interface PageMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/** What those lists answer when the request carries `page` or `limit`; without them they answer a bare array. */
+export interface ListPage<T> {
+  data: T[];
+  meta: PageMeta;
 }
 
 export interface ApiError {

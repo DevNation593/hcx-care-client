@@ -1,7 +1,8 @@
 import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { Breadcrumb, ErrorEvent } from '@sentry/nextjs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setBrowserReportingAllowed } from './browser-gate';
 import { buildSentryOptions, scrubEvent } from './sentry-options';
 import {
   parametrizePath,
@@ -16,6 +17,11 @@ const CODE = 'ABCDEFGHJKMNPQRS';
 const CODE_LOWER = 'abcdefghjkmnpqrs';
 const PATIENT_ID = '3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b';
 const ORIGIN = 'https://app.example.com';
+
+// Since the browser SDK only runs on the public pages, `scrubEvent` and `beforeBreadcrumb` answer
+// null in jsdom unless the reporting gate is open: these tests are about what leaves when it is.
+beforeEach(() => setBrowserReportingAllowed(true));
+afterEach(() => setBrowserReportingAllowed(false));
 
 const SECRETS = [CODE, CODE_LOWER, PATIENT_ID, 'Ana', 'secret-fragment', 'x=1'];
 

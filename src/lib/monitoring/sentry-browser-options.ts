@@ -51,12 +51,15 @@ const envelopeTraceScrub: Integration = {
 };
 
 /**
- * Options of `sentry.client.config.ts` when `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` is set: the common
+ * Options of the browser SDK when `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` is set: the common
  * ones plus the browser tracing integration, the sampler and the scrubbers of transactions, spans and
  * envelope headers. `tracesSampleRate` is the raw text of the variable: invalid means 0.
  *
- * At rate 0 it returns exactly what `buildSentryOptions` returns: nothing changes in the browser. The
- * client config does not even import this module when the variable is not defined at build time, so
+ * At rate 0 it returns exactly what `buildSentryOptions` returns: nothing changes in the browser. Its only
+ * caller is `SentryBrowser` (src/features/marketing/consent/sentry-browser.tsx, the only browser init,
+ * mounted in the (marketing) layout), which then wraps the result in the reporting gate. There is no
+ * `sentry.client.config.ts`. `SentryBrowser`
+ * does not even use this module when the variable is not defined at build time, so
  * none of this code reaches the bundle.
  */
 export function buildBrowserSentryOptions(env: {

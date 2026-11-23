@@ -1,6 +1,7 @@
 import { site } from '@/content/site';
 import { CookieBanner } from '@/features/marketing/consent/cookie-banner';
 import { GoogleAnalytics } from '@/features/marketing/consent/google-analytics';
+import { SentryBrowser } from '@/features/marketing/consent/sentry-browser';
 import { MobileCta } from '@/features/marketing/mobile-cta';
 import { SiteFooter } from '@/features/marketing/site-footer';
 import { SiteHeader } from '@/features/marketing/site-header';
@@ -18,6 +19,10 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <MobileCta contact={site.contact} />
       <CookieBanner />
       <GoogleAnalytics measurementId={process.env.NEXT_PUBLIC_GA_ID} />
+      <SentryBrowser
+        dsn={process.env.NEXT_PUBLIC_SENTRY_DSN}
+        environment={process.env.NEXT_PUBLIC_VERCEL_ENV ?? process.env.NODE_ENV}
+      />
     </div>
   );
 }
