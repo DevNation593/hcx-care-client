@@ -746,8 +746,11 @@ descartan los breadcrumbs de interfaz, consola y peticiones.
 `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` es la fracción de cargas de página y navegaciones que se miden, un número
 entre 0 y 1. **Por defecto 0 (apagado)**: sin la variable, vacía o con un valor inválido (texto, negativo, mayor que
 1, `10%`) el navegador se comporta exactamente como antes. Recomendación inicial: `0.05` a `0.1`. Requiere
-`NEXT_PUBLIC_SENTRY_DSN`. Solo se mide en las páginas públicas y tras aceptar las cookies (SEC-WEB-09): en la app no se
-mide ni se envía nada.
+`NEXT_PUBLIC_SENTRY_DSN`. Solo se mide en las páginas públicas y tras aceptar las cookies (SEC-WEB-09): desde la app
+(dashboard, plataforma, autenticación) no se envía nada, salvo mientras la página sea pública y haya consentimiento
+aceptado. Matiz: la transacción de una navegación que sale de una página pública (hacia la app) puede llevar el
+nombre de una ruta parametrizada (`/patients/:param`), ya filtrado por la lista de permitidos de `scrubTransaction`,
+sin datos personales; no se envían medidas ni transacciones de la propia app.
 
 - **`NEXT_PUBLIC_*` se inyecta al compilar**: cambiar la variable (activarla, subirla o apagarla) exige volver a
   construir y desplegar la web; no basta con editarla en Vercel. Para apagarlo: borrar la variable (o ponerla a `0`)
@@ -804,12 +807,16 @@ mide ni se envía nada.
   en el build no se añade nada: `SentryBrowser` elige las opciones de Web Vitals con
   `process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ? buildBrowserSentryOptions(...) : buildSentryOptions(...)`, y
   `next.config.mjs` define la variable siempre (vacía si falta) para que esa condición sea constante y webpack
-  elimine la rama y el módulo `sentry-browser-options` con ella. Medido con `next build` y
-  `NEXT_PUBLIC_API_BASE_URL`/`NEXT_PUBLIC_APP_URL` de prueba, «First Load JS shared by all»: **164 kB antes, 164 kB
-  después con la variable sin definir** (mismo chunk compartido; el código de Web Vitals no está en ningún chunk),
-  168 kB con `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=0.1`, y 168 kB (con el código dentro del bundle) si se quita el
-  bloque `env` de `next.config.mjs`: sin la definición la variable no se inlina, la condición deja de ser constante
-  y la rama sobrevive. No quitarlo; `sentry-bundle-gating.test.ts` lo vigila.
+  elimine la rama y el módulo `sentry-browser-options` con ella. Como el SDK del navegador ya no se inicializa en
+  `sentry.client.config.ts` sino en `SentryBrowser` (chunk `app/(marketing)/layout`), su código y el de Web Vitals
+  dejaron de estar en el JS compartido de todas las rutas. Medido con `next build` (`NEXT_PUBLIC_API_BASE_URL` y
+  `NEXT_PUBLIC_APP_URL` de prueba, DSN de prueba), «First Load JS shared by all»: **87.6 kB con solo el DSN y 87.6 kB
+  con el DSN y `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=0.1`** (antes, con la inicialización global, dev medía 164 kB y
+  168 kB). La eliminación de la rama se comprueba por la **ausencia** de la cadena `EnvelopeTraceScrub` en
+  `.next/static` (`grep -rl EnvelopeTraceScrub .next/static`): con la variable sin definir, 0 archivos; con
+  `0.1`, 1 archivo, el chunk `app/(marketing)/layout-*.js` (solo se carga en páginas públicas). No se volvió a medir qué
+  pasa si se quita el bloque `env` de `next.config.mjs` (dev midió entonces +4 kB: sin la definición la variable no se
+  inlina, la condición deja de ser constante y la rama sobrevive). No quitarlo; `sentry-bundle-gating.test.ts` lo vigila.
 - **Hallazgo previo, corregido por T4:** con `origin/dev` y `NEXT_PUBLIC_SENTRY_DSN` definido, el muestreo
   forzado por `sentry-trace` ya era posible en el servidor de Next y en el navegador (por la etiqueta `<meta>`).
   Solo ocurre si el DSN está definido: mergear T4, o al menos `tracesSampler` y `beforeSendTransaction` de
