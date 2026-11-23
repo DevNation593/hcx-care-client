@@ -21,14 +21,14 @@ export function useClinicalNotes(params?: Parameters<typeof clinicalNotesApi.lis
   });
 }
 
-export function usePatientClinicalNotes(patientId: string) {
+export function usePatientClinicalNotes(patientId: string, enabled = true) {
   return useQuery({
     queryKey: QUERY_KEYS.PATIENT_CLINICAL_NOTES(patientId),
     queryFn: async () => {
       const response = await clinicalNotesApi.list({ patientId });
       return extractArray(response);
     },
-    enabled: !!patientId,
+    enabled: !!patientId && enabled,
     retry: retryUnlessLocked,
   });
 }

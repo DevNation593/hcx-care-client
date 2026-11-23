@@ -66,10 +66,11 @@ export function TwoFactorEnrollment({ onEnabled }: { onEnabled?: () => void }) {
   const start = useMutation({ mutationFn: () => authApi.setupMfa(password) });
   const confirm = useMutation({
     mutationFn: () => authApi.enableMfa(code),
-    onSuccess: ({ accessToken, refreshToken }) => {
+    onSuccess: ({ accessToken }) => {
       // Enabling ended every session opened with the password alone, this one included: keep the
-      // new one at once, so a reload before the codes are acknowledged stays signed in.
-      apiClient.setTokens(accessToken, refreshToken);
+      // new one at once, so a reload before the codes are acknowledged stays signed in. The new
+      // refresh token arrives as an HttpOnly cookie that replaces the old one.
+      apiClient.setAccessToken(accessToken);
       const { user, setUser } = useAuthStore.getState();
       if (user) setUser({ ...user, mfaEnabled: true, mfaEnrollmentRequired: false });
     },

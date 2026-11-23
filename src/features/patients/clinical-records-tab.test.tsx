@@ -17,6 +17,7 @@ const hooks = vi.hoisted(() => ({
   modules: [] as unknown[],
   alerts: [] as unknown[],
   encounters: [] as unknown[],
+  notes: [] as unknown[],
   enabled: new Set<string>(),
   create: vi.fn(),
   correct: vi.fn(),
@@ -39,6 +40,11 @@ vi.mock('@/hooks/useEncounters', () => ({
   useStartEncounter: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCloseEncounter: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRemoveEncounter: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+vi.mock('@/hooks/useClinicalNotes', () => ({
+  usePatientClinicalNotes: () => ({ data: hooks.notes, isLoading: false, error: null }),
+  useCreateClinicalNote: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteClinicalNote: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock('@/hooks/useBranches', () => ({ useBranches: () => ({ data: [] }) }));
 // The tab and the encounter panel read the enabled sections; this suite renders without a QueryClient.
@@ -115,6 +121,7 @@ beforeEach(() => {
   hooks.records = [record()];
   hooks.alerts = [];
   hooks.encounters = [];
+  hooks.notes = [];
   hooks.enabled = new Set();
   hooks.create.mockResolvedValue(undefined);
   hooks.correct.mockResolvedValue(undefined);
@@ -266,7 +273,7 @@ describe('ClinicalRecordsTab', () => {
       expect(screen.getByText('Atención: Control · 01/10/2026')).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Imprimir Signos vitales' })).toHaveAttribute(
         'href',
-        '/patients/patient-1/records/record-1/print',
+        '/patients/patient-1/records/record-1/print?from=specialties',
       );
     });
   });
@@ -462,6 +469,157 @@ describe('ClinicalRecordsTab', () => {
     render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} />);
 
     expect(screen.getByText('Aún no hay registros clínicos de este paciente.')).toBeInTheDocument();
+  });
+});
+
+describe('ClinicalRecordsTab next to the Historia clínica tab', () => {
+  const open = {
+    id: 'encounter-1',
+    professionalId: 'me',
+    status: 'OPEN',
+    encounterType: 'CONTROL',
+    reason: 'Control mensual de peso',
+    startedAt: '2026-10-03T15:00:00.000Z',
+    recordCount: 1,
+  };
+  const closed = {
+    id: 'encounter-0',
+    professionalId: 'me',
+    status: 'CLOSED',
+    encounterType: 'FIRST_VISIT',
+    reason: 'Primera consulta de septiembre',
+    startedAt: '2026-09-01T15:00:00.000Z',
+    signedAt: '2026-09-01T16:00:00.000Z',
+    recordCount: 2,
+  };
+  const inOpen = record({ id: 'in-open', encounterId: 'encounter-1', notes: 'De esta atención' });
+  const inClosed = record({
+    id: 'in-closed',
+    encounterId: 'encounter-0',
+    signed: true,
+    notes: 'De una atención anterior',
+  });
+  const renderBeside = (props: Partial<React.ComponentProps<typeof ClinicalRecordsTab>> = {}) =>
+    render(<ClinicalRecordsTab patientId="patient-1" onOpenTreatments={vi.fn()} historyInTimeline {...props} />);
+
+  beforeEach(() => {
+    hooks.encounters = [open, closed];
+    hooks.records = [inOpen, inClosed];
+  });
+
+  it('lists only the records of the attention in course, which it can still change', () => {
+    renderBeside();
+
+    expect(screen.getByRole('heading', { name: 'Registros de esta atención' })).toBeInTheDocument();
+    expect(screen.getByText('De esta atención')).toBeInTheDocument();
+    expect(screen.queryByText('De una atención anterior')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Corregir Signos vitales' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Eliminar Signos vitales' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Mostrar')).not.toBeInTheDocument();
+  });
+
+  it('does not list the previous attentions either: the chronology lives in the history', () => {
+    renderBeside();
+
+    expect(screen.queryByText(/Atenciones anteriores/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Primera consulta de septiembre')).not.toBeInTheDocument();
+  });
+
+  it('keeps the whole history when the clinic has no Historia clínica tab', () => {
+    renderBeside({ historyInTimeline: false });
+
+    expect(screen.getByRole('heading', { name: 'Historial de registros' })).toBeInTheDocument();
+    expect(screen.getByText('De esta atención')).toBeInTheDocument();
+    expect(screen.getByText('De una atención anterior')).toBeInTheDocument();
+    expect(screen.getByText(/Atenciones anteriores \(1\)/)).toBeInTheDocument();
+  });
+
+  it('points to the history for everything earlier', () => {
+    const onOpenHistory = vi.fn();
+    renderBeside({ onOpenHistory });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Historia clínica' }));
+    expect(onOpenHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('says so when there is no attention in course, and lists no record', () => {
+    hooks.encounters = [closed];
+    renderBeside();
+
+    expect(screen.getByText('No hay una atención abierta.')).toBeInTheDocument();
+    expect(screen.queryByText('De una atención anterior')).not.toBeInTheDocument();
+  });
+
+  it('still offers an addendum to a signed record of its author, since the history only reads', () => {
+    renderBeside();
+
+    const summary = screen.getByText(/Corregir un registro firmado con una adenda \(1\)/);
+    expect(summary).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Corregir con adenda Signos vitales' }));
+    expect(screen.getByRole('button', { name: 'Guardar adenda' })).toBeInTheDocument();
+  });
+
+  it('offers no addendum for a record of someone else, nor for one already corrected', () => {
+    hooks.records = [
+      inOpen,
+      record({ id: 'other', signed: true, professionalId: 'someone-else', encounterId: 'encounter-0' }),
+      record({
+        id: 'done',
+        signed: true,
+        encounterId: 'encounter-0',
+        amendedBy: { id: 'add', createdAt: '2026-10-04T10:00:00.000Z' },
+      }),
+    ];
+    renderBeside();
+
+    expect(screen.queryByText(/Corregir un registro firmado/)).not.toBeInTheDocument();
+  });
+
+  describe('the notes of the attention', () => {
+    beforeEach(() => {
+      hooks.enabled = new Set(['core.clinical.notes']);
+    });
+
+    it('are written here, inside the attention in course', () => {
+      renderBeside({ canWriteNotes: true });
+
+      expect(screen.getByText('Notas clínicas')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Nueva nota' })).toBeInTheDocument();
+    });
+
+    it('tell how to start an attention when there is none', () => {
+      hooks.encounters = [closed];
+      renderBeside({ canWriteNotes: true });
+
+      expect(screen.getByText(/Las notas se escriben dentro de una atención abierta/)).toBeInTheDocument();
+      expect(screen.getByText(/Pulsa «Iniciar atención» en el panel de arriba/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Nueva nota' })).not.toBeInTheDocument();
+    });
+
+    it('point to the Tratamientos tab when treatments own the attention', () => {
+      hooks.encounters = [closed];
+      hooks.enabled = new Set(['core.clinical.notes', 'core.treatments.sessions']);
+      const onOpenTreatments = vi.fn();
+      renderBeside({ canWriteNotes: true, onOpenTreatments });
+
+      expect(screen.getByText(/Inicia un tratamiento en la pestaña/)).toBeInTheDocument();
+      fireEvent.click(screen.getAllByRole('button', { name: 'Tratamientos' })[1]);
+      expect(onOpenTreatments).toHaveBeenCalledTimes(1);
+    });
+
+    it('are not offered to an account that may not write them', () => {
+      renderBeside({ canWriteNotes: false });
+
+      expect(screen.queryByText('Notas clínicas')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Nueva nota' })).not.toBeInTheDocument();
+    });
+
+    it('are not offered while the clinical notes section is off', () => {
+      hooks.enabled = new Set();
+      renderBeside({ canWriteNotes: true });
+
+      expect(screen.queryByText('Notas clínicas')).not.toBeInTheDocument();
+    });
   });
 });
 

@@ -1,11 +1,12 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { tasksApi, extractArray } from '@/lib/api/endpoints';
-import { QUERY_KEYS } from '@/lib/constants';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { tasksApi, extractArray, extractPage, type TaskPageParams } from '@/lib/api/endpoints';
+import { DEFAULT_PAGE_SIZE, QUERY_KEYS } from '@/lib/constants';
 import { Task, TaskStatus } from '@/types';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import { requireTenantId, useTenantId } from './useTenantScope';
 import { isFeatureLockedError } from '@/features/subscription/feature-locked-notice';
 
 const retryUnlessLocked = (failureCount: number, error: unknown) =>
@@ -19,6 +20,45 @@ export function useTasks(params?: Parameters<typeof tasksApi.list>[0]) {
       return extractArray(response);
     },
     retry: retryUnlessLocked,
+  });
+}
+
+/** One page of the task list, filtered and paged by the server; the previous page stays while the next one loads. */
+export function useTasksPage(params: {
+  search?: string;
+  status?: string;
+  priority?: string;
+  page: number;
+  limit?: number;
+}) {
+  const tenantId = useTenantId();
+  const request: TaskPageParams = {
+    search: params.search?.trim() || undefined,
+    status: params.status,
+    priority: params.priority,
+    page: params.page,
+    limit: params.limit ?? DEFAULT_PAGE_SIZE,
+  };
+  return useQuery({
+    queryKey: QUERY_KEYS.TASKS_PAGE(tenantId ?? '', request),
+    queryFn: async () =>
+      extractPage(await tasksApi.listPage(request, requireTenantId(tenantId)), request),
+    enabled: !!tenantId,
+    retry: retryUnlessLocked,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Counts per state under the same search and priority as the list; they do not depend on the page. */
+export function useTaskSummary(params: { search?: string; priority?: string }) {
+  const tenantId = useTenantId();
+  const request = { search: params.search?.trim() || undefined, priority: params.priority };
+  return useQuery({
+    queryKey: QUERY_KEYS.TASKS_SUMMARY(tenantId ?? '', request),
+    queryFn: () => tasksApi.summary(request, requireTenantId(tenantId)),
+    enabled: !!tenantId,
+    retry: retryUnlessLocked,
+    placeholderData: keepPreviousData,
   });
 }
 

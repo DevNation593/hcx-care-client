@@ -10,6 +10,7 @@ import { EncounterPanel } from '@/features/patients/encounter-panel';
 import { usePatientEncounters } from '@/hooks/useEncounters';
 import { useSections } from '@/hooks/useSections';
 import { usePatientTreatmentSessions } from '@/hooks/useTreatmentSessions';
+import { withReturnTab } from '@/lib/patient-tabs';
 import { formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import {
@@ -125,7 +126,7 @@ function SessionRow({ session }: { session: TreatmentSessionSummary }) {
   return (
     <li>
       <Link
-        href={`/treatment-sessions/${session.id}`}
+        href={withReturnTab(`/treatment-sessions/${session.id}`, 'treatments')}
         className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm hover:bg-accent"
       >
         <span className="font-medium">{session.treatment.name}</span>

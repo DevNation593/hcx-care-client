@@ -17,12 +17,24 @@ const hooks = vi.hoisted(() => ({
   sessionsOn: true,
   treatments: [] as unknown[],
   catalogCalls: [] as (boolean | undefined)[],
+  notes: [] as { id: string; encounterId: string | null }[],
+  notesEnabled: [] as (boolean | undefined)[],
+  enabledSections: new Set<string>(['core.clinical.notes']),
+}));
+vi.mock('@/hooks/useClinicalNotes', () => ({
+  usePatientClinicalNotes: (_patientId: string, enabled?: boolean) => {
+    hooks.notesEnabled.push(enabled);
+    return { data: enabled === false ? undefined : hooks.notes };
+  },
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: hooks.push }) }));
 vi.mock('@/hooks/useSections', () => ({
   useSections: () => ({
-    isEnabled: (key: string) => key !== 'core.treatments.sessions' || hooks.sessionsOn,
+    isEnabled: (key: string) =>
+      key === 'core.clinical.notes'
+        ? hooks.enabledSections.has(key)
+        : key !== 'core.treatments.sessions' || hooks.sessionsOn,
   }),
 }));
 vi.mock('@/hooks/useTreatments', () => ({
@@ -84,6 +96,9 @@ beforeEach(() => {
   hooks.sessionsOn = true;
   hooks.treatments = [];
   hooks.catalogCalls = [];
+  hooks.notes = [];
+  hooks.notesEnabled = [];
+  hooks.enabledSections = new Set(['core.clinical.notes']);
   hooks.create.mockResolvedValue([{ id: 's1' }]);
   hooks.noShow.mockResolvedValue([]);
   useAuthStore.setState({ user: { id: 'me', tenantId: 'tenant-1' } as never });
@@ -258,7 +273,8 @@ describe('EncounterPanel', () => {
       fireEvent.change(screen.getByLabelText(/Motivo de consulta/), { target: { value: 'Control' } });
       await act(async () => fireEvent.click(startButton()));
 
-      expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/s1');
+      // Back from the session returns to the tab that opened it.
+      expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/s1?from=specialties');
     });
 
     it('offers no treatments when the sessions section is off', () => {
@@ -293,7 +309,7 @@ describe('EncounterPanel', () => {
       await act(async () => fireEvent.click(startButton()));
 
       expect(hooks.create).toHaveBeenCalledWith({ treatmentIds: ['t2'] });
-      expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/s1');
+      expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/s1?from=treatments');
     });
 
     it('prevents the eleventh treatment and says why', () => {
@@ -481,7 +497,7 @@ describe('EncounterPanel', () => {
       expect(within(items[1]).getByText('Cerrada')).toBeInTheDocument();
       expect(within(items[0]).getByRole('link', { name: 'Continuar Toxina' })).toHaveAttribute(
         'href',
-        '/treatment-sessions/s1',
+        '/treatment-sessions/s1?from=specialties',
       );
     });
 
@@ -573,7 +589,7 @@ describe('EncounterPanel', () => {
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Añadir' })),
       );
 
-      expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/n1');
+      expect(hooks.push).toHaveBeenCalledWith('/treatment-sessions/n1?from=specialties');
     });
 
     it('counts the treatments already present against the limit of ten', () => {
@@ -792,6 +808,64 @@ describe('EncounterPanel', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('La contraseña no es correcta');
     expect(field).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Cerrar y firmar' })).toBeDisabled();
+  });
+
+  describe('removing an attention that has clinical notes', () => {
+    const professional = { id: 'me', tenantId: 'tenant-1', role: 'PROFESIONAL', professionalProfile: { isActive: true } };
+    const renderOpen = () => {
+      useAuthStore.setState({ user: professional as never });
+      const open = encounter();
+      render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="specialties" />);
+    };
+
+    it('does not offer to remove it once it has a note, which the API would refuse', () => {
+      hooks.notes = [{ id: 'note-1', encounterId: 'encounter-1' }];
+      renderOpen();
+
+      expect(screen.getByRole('button', { name: 'Cerrar atención' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Eliminar atención' })).not.toBeInTheDocument();
+    });
+
+    it('still offers it when the only notes belong to other attentions', () => {
+      hooks.notes = [{ id: 'note-1', encounterId: 'encounter-0' }, { id: 'note-2', encounterId: null }];
+      renderOpen();
+
+      expect(screen.getByRole('button', { name: 'Eliminar atención' })).toBeInTheDocument();
+    });
+
+    it('offers it again when the notes of the attention are deleted', () => {
+      hooks.notes = [{ id: 'note-1', encounterId: 'encounter-1' }];
+      useAuthStore.setState({ user: professional as never });
+      const open = encounter();
+      const view = () => (
+        <EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="specialties" />
+      );
+      const { rerender } = render(view());
+      expect(screen.queryByRole('button', { name: 'Eliminar atención' })).not.toBeInTheDocument();
+
+      hooks.notes = [];
+      rerender(view());
+      expect(screen.getByRole('button', { name: 'Eliminar atención' })).toBeInTheDocument();
+    });
+
+    it('does not read notes where the user or the clinic cannot see them, and keeps the button', () => {
+      hooks.notes = [{ id: 'note-1', encounterId: 'encounter-1' }];
+      useAuthStore.setState({ user: { ...professional, role: 'ASISTENTE' } as never });
+      const open = encounter();
+      const { unmount } = render(
+        <EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="specialties" />,
+      );
+      expect(hooks.notesEnabled.every((enabled) => enabled === false)).toBe(true);
+      expect(screen.getByRole('button', { name: 'Eliminar atención' })).toBeInTheDocument();
+      unmount();
+
+      hooks.notesEnabled = [];
+      hooks.enabledSections = new Set();
+      useAuthStore.setState({ user: professional as never });
+      render(<EncounterPanel patientId="patient-1" encounters={[open]} openEncounter={open} mode="specialties" />);
+      expect(hooks.notesEnabled.every((enabled) => enabled === false)).toBe(true);
+      expect(screen.getByRole('button', { name: 'Eliminar atención' })).toBeInTheDocument();
+    });
   });
 
   it('removes an empty encounter only with a reason', async () => {

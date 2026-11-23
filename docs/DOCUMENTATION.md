@@ -351,8 +351,10 @@ function MyComponent() {
 
 Características:
 - Instancia de Axios configurada
-- Interceptor de request: Añade token JWT
-- Interceptor de response: Manejo de errores y refresh token automático
+- Interceptor de request: Añade el access token JWT (`localStorage`)
+- Interceptor de response: Manejo de errores y renovación automática del access token
+- El refresh token **no** se guarda en el navegador legible por scripts: la API lo envía en la cookie `HttpOnly` `refresh_token`. El cliente usa `withCredentials: true` y la cabecera `X-Client: web` en todas las peticiones, y `/auth/refresh` se llama sin cuerpo. Las peticiones que fallan con 401 durante la renovación esperan en cola y se repiten con el token nuevo.
+- Al cargar, se borra la clave `refresh_token` que dejaban las versiones anteriores en `localStorage`. Si hay un usuario persistido y el access token falta o caducó, `authStore` renueva la sesión con la cookie antes de marcar `hasHydrated`; si la API responde 401 o 403 se limpia la sesión.
 - Métodos HTTP: `get`, `post`, `put`, `patch`, `delete`, `upload`
 
 ```typescript
@@ -714,6 +716,98 @@ NEXT_PUBLIC_ENABLE_DEBUG=true
 npm install -g web-push
 web-push generate-vapid-keys
 ```
+
+---
+
+## 📈 MONITOREO: ERRORES Y WEB VITALS (Sentry)
+
+El cliente usa `@sentry/nextjs` (fijado en `^10.x` a propósito: la v11 quitó `sendDefaultPii` y recoge usuario,
+cookies y cabeceras; no actualizar sin pasar a `dataCollection`). La configuración vive en `sentry.*.config.ts`
+y `src/lib/monitoring/`.
+
+### Errores
+
+`NEXT_PUBLIC_SENTRY_DSN` activa el reporte de errores del navegador y del servidor de Next. Sin DSN, Sentry no
+se inicializa. Los errores de Axios no se reportan (la API reporta sus 5xx); no hay replay ni `sendDefaultPii`, y se
+descartan los breadcrumbs de interfaz, consola y peticiones.
+
+### Web Vitals de usuarios reales
+
+`NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` es la fracción de cargas de página y navegaciones que se miden, un número
+entre 0 y 1. **Por defecto 0 (apagado)**: sin la variable, vacía o con un valor inválido (texto, negativo, mayor que
+1, `10%`) el navegador se comporta exactamente como antes. Recomendación inicial: `0.05` a `0.1`. Requiere
+`NEXT_PUBLIC_SENTRY_DSN`.
+
+- **`NEXT_PUBLIC_*` se inyecta al compilar**: cambiar la variable (activarla, subirla o apagarla) exige volver a
+  construir y desplegar la web; no basta con editarla en Vercel. Para apagarlo: borrar la variable (o ponerla a `0`)
+  y redesplegar.
+- **Qué se mide:** LCP, FCP, CLS y TTFB como mediciones (`measurements`) de la transacción de carga de página
+  (`pageload`); cada navegación entre rutas genera su propia transacción (`navigation`) con su duración (LCP y TTFB
+  solo existen en la carga inicial). INP, como un span suelto por interacción. Cada transacción se llama con la ruta
+  **parametrizada** de Next: `/patients/:id`, no `/patients/<uuid>`.
+- **Qué NO se envía** (`scrubTransaction` y `scrubSpan`, en `src/lib/monitoring/sentry-tracing.ts`, reconstruyen
+  cada transacción y cada span desde una lista de campos permitidos; si el filtrado falla, la transacción se
+  descarta). Se instalan cuando la variable está definida. Sin ella (tasa 0) tampoco hay transacciones, y no porque
+  falte nada que filtrar: `buildSentryOptions`, que comparten navegador, servidor y edge, lleva siempre
+  `tracesSampler: () => 0` y `beforeSendTransaction: () => null`. Sin eso el SDK hereda la decisión de muestreo de
+  una traza entrante, y un `curl -H 'sentry-trace: <id>-<id>-1'` a la web (o una etiqueta
+  `<meta name="sentry-trace">` con `-1`) generaba una transacción sin filtrar, con la URL completa. Se comprobó con el
+  SDK real del servidor de `@sentry/nextjs`; en el edge no se pudo reproducir, y la misma opción lo deja cubierto:
+  - `request` (cabeceras, cookies, query string, cuerpo): solo queda el origen y la ruta parametrizada de la página;
+    nunca un id, la query ni el fragmento (`#`). Un valor que parezca un id (UUID, código, número) se sustituye por
+    `:param` aunque ninguna ruta lo haya parametrizado; también las palabras en minúsculas unidas por dos o más
+    guiones (`abcd-efgh-jkmn-pqrs`, un código de verificación), salvo las páginas estáticas conocidas
+    (`casos-de-exito`, `tratamiento-de-datos`). Los segmentos dinámicos de Next (`:id`, `:slug*`, `[id]`,
+    `[...slug]`) se conservan.
+  - `user`, `tags`, `extra`, `breadcrumbs` y los contextos de dispositivo y navegador. Sin cabeceras, Sentry no ve el
+    `User-Agent`, así que la segmentación por navegador es más limitada.
+  - Spans de recursos y de llamadas a la API (llevan la URL completa, con ids y query): se descartan todos; solo
+    sobreviven los spans de fases de la carga (`browser.*`), con el nombre de su `op`.
+  - Elementos de la interfaz: el nombre del span de INP es el selector del elemento pulsado (puede incluir
+    `aria-label`, `title` o `name` con datos de pacientes), así que se sustituye por `ui.interaction.click`. Pero
+    ese nombre también viaja en la cabecera `trace` del envelope del span suelto (`trace.transaction`), que el SDK
+    calcula desde el span vivo y `beforeSendSpan` no toca (comprobado con el SDK real de Next en jsdom): la
+    integración `EnvelopeTraceScrub` reduce la cabecera `trace` de todo envelope a `trace_id`, `public_key`,
+    `sample_rate`, `sample_rand`, `sampled`, `release`, `environment` y `org_id`. Los clics
+    (`ui.action.click`, la opción `_experiments.enableInteractions`) no se instrumentan, ni tampoco las tareas largas.
+  - Atributos de LCP y CLS que nombran elementos o URLs (`lcp.element`, `lcp.url`, `cls.source.*`).
+- **Propagación de trazas:** decisión por defecto = **no propagar**, con cualquier tasa, también 0, y en navegador,
+  servidor y edge (`tracePropagationTargets: []` en `src/lib/monitoring/sentry-options.ts`; con el valor por defecto
+  del SDK se añadían las cabeceras a toda llamada saliente del servidor y al mismo origen en el navegador, aunque la
+  traza no estuviera muestreada). Con la tasa activa, además, `traceFetch`/`traceXHR` están desactivados. La web no añade `sentry-trace` ni `baggage` a ninguna petición, ni siquiera
+  a la API, y la traza del navegador no se enlaza con la del servidor. Motivos: (1) la API decide el muestreo por sí
+  misma con `Math.random()` y no hereda la decisión de la traza entrante (cualquier cliente podría forzar el 100 %
+  con esa cabecera o con `sentry-sample_rand=0` en el `baggage`), así que enlazar solo daría trazas a medias; (2) `traceFetch`/`traceXHR` son lo que crearía un span por llamada con la URL
+  completa, que se descartaría de todos modos. Con la configuración actual de CORS de la API (`main.ts`: sin
+  `allowedHeaders`, así que se reflejan las cabeceras pedidas en el preflight) no haría falta tocar CORS. Para activarlo
+  habría que: poner `traceFetch`/`traceXHR` a `true` y `tracePropagationTargets: [<origen de la API>]` en
+  `src/lib/monitoring/sentry-browser-options.ts`, hacer que el muestreador de la API respete la decisión entrante de
+  forma controlada, y comprobar el preflight real en un Preview.
+- **Servidor y edge de Next:** siempre a tasa 0 y sin transacciones, también con la variable definida. El
+  rastreo de Web Vitals vive solo en el navegador (`buildBrowserSentryOptions`, que únicamente usa
+  `sentry.client.config.ts`); `sentry.server.config.ts` y `sentry.edge.config.ts` usan `buildSentryOptions`, con el
+  muestreador `() => 0`. En el navegador, con la variable definida, el muestreador decide con `Math.random() < tasa`
+  y devuelve un booleano: ni la decisión ni el `sample_rand` de una traza entrante (etiqueta `<meta>`) pueden subir
+  la fracción de páginas muestreadas, y `sample_rate` se reporta como 1 en las trazas muestreadas.
+- **Peso:** el SDK de Next ya incluye el código de tracing del navegador aunque no se use. Con la variable sin definir
+  en el build no se añade nada: `sentry.client.config.ts` elige las opciones de Web Vitals con
+  `process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ? buildBrowserSentryOptions(...) : buildSentryOptions(...)`, y
+  `next.config.mjs` define la variable siempre (vacía si falta) para que esa condición sea constante y webpack
+  elimine la rama y el módulo `sentry-browser-options` con ella. Medido con `next build` y
+  `NEXT_PUBLIC_API_BASE_URL`/`NEXT_PUBLIC_APP_URL` de prueba, «First Load JS shared by all»: **164 kB antes, 164 kB
+  después con la variable sin definir** (mismo chunk compartido; el código de Web Vitals no está en ningún chunk),
+  168 kB con `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=0.1`, y 168 kB (con el código dentro del bundle) si se quita el
+  bloque `env` de `next.config.mjs`: sin la definición la variable no se inlina, la condición deja de ser constante
+  y la rama sobrevive. No quitarlo; `sentry-bundle-gating.test.ts` lo vigila.
+- **Hallazgo previo, corregido por T4:** con `origin/dev` y `NEXT_PUBLIC_SENTRY_DSN` definido, el muestreo
+  forzado por `sentry-trace` ya era posible en el servidor de Next y en el navegador (por la etiqueta `<meta>`).
+  Solo ocurre si el DSN está definido: mergear T4, o al menos `tracesSampler` y `beforeSendTransaction` de
+  `buildSentryOptions`, antes de definirlo en producción.
+- **Sin smoke test real:** los tests usan el SDK real con un transporte en memoria (cliente de Next en jsdom,
+  servidor y edge), pero no se ha enviado nada a Sentry y no sustituyen a una verificación en un Preview con un DSN
+  de prueba, temporal y solo en esa rama, de una transacción **y** de un error, incluidas las cabeceras del
+  envelope. Recomendaciones del lado de Sentry: «Prevent storing of IP addresses», data scrubbing del servidor y
+  límites de cuota con *spike protection*.
 
 ---
 

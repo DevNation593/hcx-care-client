@@ -28,7 +28,8 @@ import { buildSessionSteps, type SessionStep, type SessionStepId } from './sessi
 import { useNotesDraft } from './use-notes-draft';
 import { usePatientTerms } from '@/hooks/usePatientTerms';
 import { useSections } from '@/hooks/useSections';
-import { encounterBackHref } from './encounter-navigation';
+import { useReturnTab } from '@/hooks/useReturnTab';
+import { encounterBackHref, encounterBackLabel } from './encounter-navigation';
 
 // What a refusal or revocation did to the document, when the session's status does not say it.
 const CONSENT_OUTCOME_LABELS: Record<Exclude<ConsentOutcome, 'signed'>, string> = {
@@ -271,11 +272,13 @@ function SessionHeader({ session }: { session: TreatmentSessionDetail }) {
   const { patient, treatment } = session;
   const terms = usePatientTerms();
   const { isEnabled } = useSections();
+  // Back leads to the tab of the patient this page was opened from.
+  const from = useReturnTab();
   return (
     <div className="flex flex-wrap items-center gap-3">
       <Link
-        href={encounterBackHref(session.patientId, isEnabled('core.clinical.specialties'))}
-        aria-label={`Volver al ${terms.one}`}
+        href={encounterBackHref(session.patientId, isEnabled('core.clinical.specialties'), from)}
+        aria-label={from ? encounterBackLabel(from) : `Volver al ${terms.one}`}
         className="inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent"
       >
         <ArrowLeft className="h-5 w-5" />

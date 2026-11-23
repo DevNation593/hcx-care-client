@@ -92,6 +92,9 @@ export interface InvoiceRequest {
   requestedAt: string;
   finishedAt: string | null;
   events?: InvoiceEvent[];
+  /** Only in the list: YYYY-MM-DD the invoice carries and the customer's name, from its snapshot. */
+  issueDate?: string | null;
+  customerName?: string | null;
 }
 /** Durable acceptance only; protected SRI explanations are read through GET. */
 export type InvoiceReceipt = Omit<InvoiceRequest, 'lastError'> & { lastError: null };
@@ -100,6 +103,8 @@ export interface InvoiceFilters {
   branchId?: string;
   orderId?: string;
   patientId?: string;
+  /** Invoice number: whole, partial or the sequence alone; digits and hyphens only. */
+  q?: string;
   page?: number;
   pageSize?: number;
 }

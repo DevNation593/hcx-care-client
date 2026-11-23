@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({
   setupMfa: vi.fn(),
   enableMfa: vi.fn(),
   mfaStatus: vi.fn(),
-  setTokens: vi.fn(),
+  setAccessToken: vi.fn(),
   push: vi.fn(),
 }));
 
@@ -27,7 +27,7 @@ vi.mock('@/lib/api/endpoints', () => ({
   tenantsApi: { get: vi.fn().mockResolvedValue({ id: 'tenant-1' }) },
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: api.push, replace: api.push }) }));
-vi.mock('@/lib/api/client', () => ({ apiClient: { setTokens: api.setTokens } }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { setAccessToken: api.setAccessToken } }));
 
 const wrap = (node: React.ReactNode) => (
   <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
@@ -73,7 +73,6 @@ describe('TwoFactorEnrollment', () => {
     api.enableMfa.mockResolvedValue({
       recoveryCodes: ['aaaa-bbbb', 'cccc-dddd'],
       accessToken: 'new-access',
-      refreshToken: 'new-refresh',
       user: { ...professional, mfaEnabled: true, mfaEnrollmentRequired: false },
     });
     useAuthStore.setState({ user: professional as never, isAuthenticated: true });
@@ -94,7 +93,7 @@ describe('TwoFactorEnrollment', () => {
 
     expect(api.enableMfa).toHaveBeenCalledWith('123456');
     // Enabling ended the session opened with the password alone: the new one is kept at once.
-    expect(api.setTokens).toHaveBeenCalledWith('new-access', 'new-refresh');
+    expect(api.setAccessToken).toHaveBeenCalledWith('new-access');
     expect(useAuthStore.getState().user).toMatchObject({ mfaEnabled: true, mfaEnrollmentRequired: false });
     expect(screen.getByText('aaaa-bbbb')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ya guardé los códigos' }));
@@ -136,7 +135,6 @@ describe('LoginPage', () => {
     api.login.mockResolvedValue({ mfaRequired: true, mfaToken: 'challenge' });
     api.verifyMfa.mockResolvedValue({
       accessToken: 'a',
-      refreshToken: 'r',
       user: { id: 'u', role: UserRole.PROFESIONAL, tenantId: 'tenant-1' },
     });
     render(wrap(<LoginPage />));
