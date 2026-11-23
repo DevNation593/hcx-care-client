@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -14,9 +14,9 @@ const read = (file: string) => readFileSync(path.join(root, file), 'utf8');
  * not inlined, the condition stays dynamic and the module stays in the bundle.
  */
 describe('Web Vitals code stays out of the bundle when the rate is not defined', () => {
-  const config = read('sentry.client.config.ts');
+  const config = read('src/features/marketing/consent/sentry-browser.tsx');
 
-  it('sentry.client.config.ts picks the Web Vitals options on the literal process.env expression', () => {
+  it('SentryBrowser (the only browser init) picks the Web Vitals options on the literal process.env expression', () => {
     expect(config).toMatch(
       /process\.env\.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE\s*\?\s*buildBrowserSentryOptions\(/,
     );
@@ -34,5 +34,25 @@ describe('Web Vitals code stays out of the bundle when the rate is not defined',
 
     expect(shared).not.toMatch(/sentry-tracing|sentry-browser-options/);
     expect(shared).toMatch(/from '\.\/sentry-envelope'/);
+    // The route parametrization is a separate small module precisely so it can be shared.
+    expect(shared).toMatch(/from '\.\/sentry-route'/);
+  });
+});
+
+/**
+ * SEC-WEB-09: analytics and third-party scripts load only in (marketing), after cookie consent.
+ * `sentry.client.config.ts` (or `instrumentation-client.ts`) is injected into every page's bundle by
+ * `withSentryConfig`, so the browser SDK is initialized by `SentryBrowser` instead and neither file may exist.
+ */
+describe('there is no global browser initialization of Sentry', () => {
+  it.each(['sentry.client.config.ts', 'sentry.client.config.js', 'instrumentation-client.ts', 'src/instrumentation-client.ts'])(
+    '%s does not exist',
+    (file) => {
+      expect(existsSync(path.join(root, file))).toBe(false);
+    },
+  );
+
+  it('SentryBrowser is mounted in the (marketing) layout', () => {
+    expect(read('src/app/(marketing)/layout.tsx')).toMatch(/<SentryBrowser/);
   });
 });
