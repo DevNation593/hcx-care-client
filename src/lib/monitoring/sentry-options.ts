@@ -1,6 +1,11 @@
 import axios from 'axios';
 import { isMarkedApiError } from './api-error-marker';
 import { scrubSamplingMetadata } from './sentry-envelope';
+import {
+  parametrizedFrameFile,
+  parametrizedLocation,
+  parametrizedTransactionName,
+} from './sentry-route';
 import type { Breadcrumb, BrowserOptions, ErrorEvent, EventHint } from '@sentry/nextjs';
 
 /**
@@ -34,7 +39,7 @@ export function buildSentryOptions(env: {
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 0,
     sendDefaultPii: false,
-    beforeBreadcrumb: filterBreadcrumb,
+    beforeBreadcrumb: scrubBreadcrumb,
     beforeSend: scrubEvent,
   };
 }
@@ -50,22 +55,26 @@ function isDroppedCategory(category: string | undefined): boolean {
   return !!category && (category.startsWith('ui.') || DROPPED_BREADCRUMB_CATEGORIES.has(category));
 }
 
-function filterBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
-  if (isDroppedCategory(breadcrumb.category)) return null;
-  if (breadcrumb.category === 'navigation' && breadcrumb.data) {
-    const data = { ...breadcrumb.data };
-    for (const key of ['from', 'to'] as const) {
-      if (typeof data[key] === 'string') data[key] = stripQueryAndFragment(data[key]);
-    }
-    return { ...breadcrumb, data };
-  }
-  return breadcrumb;
-}
+/** Breadcrumb data that holds a page or request location. */
+const BREADCRUMB_LOCATION_KEYS = ['from', 'to', 'url'] as const;
 
-/** Query strings and fragments can carry search terms, names or tokens. */
-function stripQueryAndFragment(url: string): string {
-  const end = url.search(/[?#]/);
-  return end === -1 ? url : url.slice(0, end);
+/**
+ * Drops the breadcrumbs that can carry data and parametrizes the location of the rest: a navigation
+ * breadcrumb names the pages the user went through (`/verify/<code>`, `/patients/<id>`), so `from`,
+ * `to` and `url` keep the route (`/verify/:param`) and lose ids, codes, query string and fragment.
+ * What covers a value is the shape heuristic plus `DYNAMIC_ROUTES` (the pages of the app and
+ * `/public/documents/<code>`): an id of any other API URL written in lowercase letters would pass.
+ * Such URLs do not get here today, because the `http`, `fetch` and `xhr` breadcrumbs are dropped.
+ * Used as `beforeBreadcrumb` and again over `event.breadcrumbs` in `scrubEvent`.
+ */
+function scrubBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
+  if (isDroppedCategory(breadcrumb.category)) return null;
+  if (!breadcrumb.data) return breadcrumb;
+  const data = { ...breadcrumb.data };
+  for (const key of BREADCRUMB_LOCATION_KEYS) {
+    if (typeof data[key] === 'string') data[key] = parametrizedLocation(data[key]);
+  }
+  return { ...breadcrumb, data };
 }
 
 /**
@@ -82,29 +91,51 @@ export function scrubEvent(event: ErrorEvent, hint?: EventHint): ErrorEvent | nu
     if (axios.isAxiosError(original) || isMarkedApiError(original)) return null;
 
     scrubRequest(event);
+    scrubRoute(event);
     scrubUser(event);
     // `extra` holds the whole object when something that is not an Error is thrown.
     delete event.extra;
-    scrubFrameVariables(event);
+    scrubFrames(event);
     // The `trace` header of the envelope is copied from here: no route, no request, no scopes.
     scrubSamplingMetadata(event);
   } catch {
     delete event.request;
+    delete event.transaction;
+    delete event.breadcrumbs;
+    delete event.tags;
     delete event.user;
     delete event.extra;
     delete event.sdkProcessingMetadata;
     try {
-      scrubFrameVariables(event);
+      if (event.contexts) delete event.contexts.nextjs;
+    } catch {
+      delete event.contexts;
+    }
+    try {
+      scrubFrames(event);
     } catch {
       delete event.exception;
+      delete event.threads;
     }
   }
   return event;
 }
 
-function scrubFrameVariables(event: ErrorEvent): void {
-  for (const exception of event.exception?.values ?? []) {
-    for (const frame of exception.stacktrace?.frames ?? []) delete frame.vars;
+/**
+ * Every frame of every exception (chained ones are more entries of `values`) and of every thread:
+ * no variables, and the page URL of the frames that are not a file of the build parametrized.
+ */
+function scrubFrames(event: ErrorEvent): void {
+  const stacktraces = [
+    ...(event.exception?.values ?? []).map((exception) => exception.stacktrace),
+    ...(event.threads?.values ?? []).map((thread) => thread.stacktrace),
+  ];
+  for (const stacktrace of stacktraces) {
+    for (const frame of stacktrace?.frames ?? []) {
+      delete frame.vars;
+      if (typeof frame.filename === 'string') frame.filename = parametrizedFrameFile(frame.filename);
+      if (typeof frame.abs_path === 'string') frame.abs_path = parametrizedFrameFile(frame.abs_path);
+    }
   }
 }
 
@@ -116,7 +147,33 @@ function scrubRequest(event: ErrorEvent): void {
   delete request.cookies;
   delete request.headers;
   delete request.query_string;
-  if (typeof request.url === 'string') request.url = stripQueryAndFragment(request.url);
+  // Origin and parametrized route only: ids and codes in the path identify a patient or a document
+  // (`/verify/<code>` answers, without a session, who the patient and the professional are), and
+  // the query string and the fragment can carry search terms, names or tokens.
+  if (typeof request.url === 'string') request.url = parametrizedLocation(request.url);
+}
+
+/**
+ * The route the error happened on: `transaction` (and the `transaction` tag some SDKs copy from it),
+ * the path of the request of `onRequestError` and the breadcrumbs, which `beforeBreadcrumb` already filtered when they were recorded.
+ */
+function scrubRoute(event: ErrorEvent): void {
+  if (typeof event.transaction === 'string') {
+    event.transaction = parametrizedTransactionName(event.transaction);
+  }
+  if (typeof event.tags?.transaction === 'string') {
+    event.tags.transaction = parametrizedTransactionName(event.tags.transaction);
+  }
+  // Set by `captureRequestError` (the `onRequestError` hook of Next) with the path of the request.
+  const nextjs = event.contexts?.nextjs;
+  if (typeof nextjs?.request_path === 'string') {
+    nextjs.request_path = parametrizedLocation(nextjs.request_path);
+  }
+  if (event.breadcrumbs) {
+    event.breadcrumbs = event.breadcrumbs
+      .map(scrubBreadcrumb)
+      .filter((breadcrumb): breadcrumb is Breadcrumb => breadcrumb !== null);
+  }
 }
 
 function scrubUser(event: ErrorEvent): void {

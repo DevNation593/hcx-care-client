@@ -1,5 +1,9 @@
 import type { Event } from '@sentry/nextjs';
 import { pickAllowed, scrubSamplingMetadata } from './sentry-envelope';
+import { parametrizePath, parametrizedName, parametrizedUrl } from './sentry-route';
+
+// The parametrization is shared with the filter of error events (`sentry-options.ts`).
+export { parametrizePath };
 
 /**
  * Web Vitals of real users (LCP, INP, CLS, TTFB, FCP) through Sentry tracing.
@@ -24,67 +28,6 @@ export function parseTracesSampleRate(raw: string | undefined): number {
   if (!text || !RATE_PATTERN.test(text)) return 0;
   const rate = Number(text);
   return rate > 0 && rate <= 1 ? rate : 0;
-}
-
-const UNMATCHED = '<unmatched route>';
-
-/** A word of a static route (`patients`, `como-funciona`). */
-const STATIC_SEGMENT = /^[a-z][a-z-]*$/;
-/** A parameter of the route manifest (`:id`, `:slug*`) or of a Next route (`[id]`, `[...slug]`). */
-const PARAM_SEGMENT =
-  /^(?::[A-Za-z_][A-Za-z0-9_]*[*?]*|\[{1,2}(?:\.{3})?[A-Za-z_][A-Za-z0-9_]*\]{1,2})$/;
-/**
- * Lowercase words joined by two or more hyphens look like a verification code
- * (`abcd-efgh-jkmn-pqrs`), not like a route: they are parameters unless they are one of the few
- * static pages of the app with a name like that.
- */
-const CODE_LIKE_SEGMENT = /^[a-z0-9]+(?:-[a-z0-9]+){2,}$/;
-const KNOWN_LONG_ROUTES: ReadonlySet<string> = new Set(['casos-de-exito', 'tratamiento-de-datos']);
-
-function isRouteWord(segment: string): boolean {
-  if (!STATIC_SEGMENT.test(segment)) return false;
-  return !CODE_LIKE_SEGMENT.test(segment) || KNOWN_LONG_ROUTES.has(segment);
-}
-
-/**
- * Keeps the words of a route and replaces anything else (a UUID, a verification code, a number, an
- * encoded value) with `:param`, so a raw path that no route pattern matched cannot leak an id.
- * Query string and fragment are always removed.
- */
-export function parametrizePath(path: string): string {
-  const clean = path.split(/[?#]/)[0];
-  const segments = clean
-    .split('/')
-    .map((segment) =>
-      segment === '' || isRouteWord(segment) || PARAM_SEGMENT.test(segment) ? segment : ':param',
-    );
-  return segments.join('/') || '/';
-}
-
-function pathOf(nameOrUrl: string): string {
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(nameOrUrl)) return nameOrUrl;
-  try {
-    return new URL(nameOrUrl).pathname;
-  } catch {
-    return UNMATCHED;
-  }
-}
-
-function parametrizedName(name: string | undefined): string {
-  if (!name) return UNMATCHED;
-  const path = pathOf(name);
-  return path.startsWith('/') ? parametrizePath(path) : UNMATCHED;
-}
-
-/** `https://app.example.com/patients/abc?x=1#y` becomes `https://app.example.com/patients/:param`. */
-function parametrizedUrl(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  try {
-    const parsed = new URL(url);
-    return `${parsed.origin}${parametrizePath(parsed.pathname)}`;
-  } catch {
-    return undefined;
-  }
 }
 
 /**

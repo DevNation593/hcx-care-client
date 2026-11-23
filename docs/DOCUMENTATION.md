@@ -729,6 +729,40 @@ y `src/lib/monitoring/`.
 se inicializa. Los errores de Axios no se reportan (la API reporta sus 5xx); no hay replay ni `sendDefaultPii`, y se
 descartan los breadcrumbs de interfaz, consola y peticiones.
 
+**Rutas en los errores** (`scrubEvent` y `beforeBreadcrumb`, en `src/lib/monitoring/sentry-options.ts`; la
+parametrización vive en `sentry-route.ts`, compartida con las transacciones de Web Vitals y presente siempre en el
+bundle, porque es pequeña y no depende de nada): `event.request.url` conserva el origen y la ruta **parametrizada**
+(`https://app.example.com/verify/:param`, `/patients/:param/edit`), sin query ni fragmento; lo mismo para
+`event.transaction`, el tag `transaction` (con o sin método: `GET /patients/[id]`) y los campos `from`, `to` y `url` de
+los breadcrumbs que quedan (la navegación). Importa sobre todo en `/verify/<code>`: esa página es pública y con el
+código cualquiera consulta, sin sesión, las iniciales del paciente, el profesional y el consultorio, así que el
+código no debe llegar a Sentry. Las rutas dinámicas de `src/app` (`/verify/[code]`, `/patients/[id]`,
+`/patients/[id]/records/[recordId]/print`, `/cash/orders/[id]`, `/treatment-sessions/[id]`,
+`/platform/tenants/[tenantId]`) están declaradas en `DYNAMIC_ROUTES` de `sentry-route.ts`: su segmento dinámico se
+sustituye siempre por `:param`, aunque parezca una palabra (un código escrito en minúsculas); el resto de segmentos
+se parametriza por su forma (UUID, números, códigos con mayúsculas o guiones). **Al crear una ruta `[param]` nueva,
+añadirla a `DYNAMIC_ROUTES`**: `sentry-route.test.ts` recorre `src/app` y falla si falta. Si el filtrado falla, se
+descartan `request`, `transaction`, `tags` y `breadcrumbs` del evento.
+
+Además, `filename` y `abs_path` de los frames de `exception.values[]` (también las causas encadenadas) y de
+`threads` se parametrizan cuando son una URL de página (`app:///verify/<code>?x=1`,
+`https://host/verify/<code>#f`): un script en línea de Next (`self.__next_f.push`) se atribuye a la URL del documento y
+el SDK pone ahí la `location.href` completa. Los archivos del build no se tocan (`/_next/...`, cualquier `*.js`, rutas
+de servidor, `webpack-internal:`), porque los source maps se buscan por ese nombre. `contexts.nextjs.request_path`
+(lo fija `onRequestError`, hoy sin usar) se parametriza igual. La URL de la API que responde sin sesión
+(`/public/documents/<code>`) también está en `DYNAMIC_ROUTES`; las demás URLs de la API solo las cubre la forma del
+valor (un id de la API en minúsculas pasaría), pero no llegan a Sentry: los breadcrumbs `http`, `fetch` y `xhr` se
+descartan y los errores de la API no se reportan desde la web.
+
+Pendiente o fuera de alcance de ese filtro (verificado en el código): los eventos de error conservan `user.id` (el id
+opaco del usuario, lo fija `SentryUserSync`) y el tag `tenantId`; no llevan `User-Agent` (se borran las cabeceras de la
+petición), pero `scrubEvent` no toca `contexts` salvo `nextjs.request_path` (los del SDK y los que Sentry derive); y el
+texto de un mensaje de error (`exception.values[].value`) o de un breadcrumb de otra categoría (`message`) no se
+reescribe: si la aplicación lanzase un error con una URL de `/verify/<code>` en el mensaje, saldría tal cual. El
+contexto `trace` de un error solo lleva `trace_id`, `span_id` y `parent_span_id` en el SDK instalado
+(`spanToTraceContext` de `@sentry/core`), sin URL ni atributos del span; se comprobó leyendo el código, no con un envío
+real.
+
 ### Web Vitals de usuarios reales
 
 `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` es la fracción de cargas de página y navegaciones que se miden, un número
@@ -753,7 +787,8 @@ entre 0 y 1. **Por defecto 0 (apagado)**: sin la variable, vacía o con un valor
   SDK real del servidor de `@sentry/nextjs`; en el edge no se pudo reproducir, y la misma opción lo deja cubierto:
   - `request` (cabeceras, cookies, query string, cuerpo): solo queda el origen y la ruta parametrizada de la página;
     nunca un id, la query ni el fragmento (`#`). Un valor que parezca un id (UUID, código, número) se sustituye por
-    `:param` aunque ninguna ruta lo haya parametrizado; también las palabras en minúsculas unidas por dos o más
+    `:param` aunque ninguna ruta lo haya parametrizado, y el segmento de cada ruta dinámica de la app
+    (`DYNAMIC_ROUTES`, ver «Errores») siempre; también las palabras en minúsculas unidas por dos o más
     guiones (`abcd-efgh-jkmn-pqrs`, un código de verificación), salvo las páginas estáticas conocidas
     (`casos-de-exito`, `tratamiento-de-datos`). Los segmentos dinámicos de Next (`:id`, `:slug*`, `[id]`,
     `[...slug]`) se conservan.

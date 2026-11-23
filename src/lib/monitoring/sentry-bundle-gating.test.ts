@@ -34,5 +34,7 @@ describe('Web Vitals code stays out of the bundle when the rate is not defined',
 
     expect(shared).not.toMatch(/sentry-tracing|sentry-browser-options/);
     expect(shared).toMatch(/from '\.\/sentry-envelope'/);
+    // The route parametrization is a separate small module precisely so it can be shared.
+    expect(shared).toMatch(/from '\.\/sentry-route'/);
   });
 });

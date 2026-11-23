@@ -74,7 +74,7 @@ describe('buildSentryOptions', () => {
       undefined,
     );
 
-    expect(result?.data).toEqual({ from: '/patients', to: '/patients/1' });
+    expect(result?.data).toEqual({ from: '/patients', to: '/patients/:param' });
   });
 });
 
