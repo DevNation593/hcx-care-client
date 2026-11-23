@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { isMarkedApiError } from './api-error-marker';
+import { isBrowserReportingAllowed } from './browser-gate';
 import { scrubSamplingMetadata } from './sentry-envelope';
 import type { Breadcrumb, BrowserOptions, ErrorEvent, EventHint } from '@sentry/nextjs';
 
@@ -51,6 +52,9 @@ function isDroppedCategory(category: string | undefined): boolean {
 }
 
 function filterBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
+  // Browser only: while the gate is closed (outside the public pages) nothing is recorded, so
+  // dashboard navigation can never be attached to a later event.
+  if (typeof window !== 'undefined' && !isBrowserReportingAllowed()) return null;
   if (isDroppedCategory(breadcrumb.category)) return null;
   if (breadcrumb.category === 'navigation' && breadcrumb.data) {
     const data = { ...breadcrumb.data };
@@ -73,8 +77,12 @@ function stripQueryAndFragment(url: string): string {
  * event leaves the browser. Returns null to discard the event. Never throws:
  * if scrubbing itself fails, the sensitive parts are dropped instead of
  * sending the event untouched.
+ *
+ * In the browser nothing leaves unless the reporting gate is open (public pages with cookie
+ * consent, SEC-WEB-09). Server and edge have no `window` and are not gated.
  */
 export function scrubEvent(event: ErrorEvent, hint?: EventHint): ErrorEvent | null {
+  if (typeof window !== 'undefined' && !isBrowserReportingAllowed()) return null;
   try {
     // The API reports its own 5xx and 4xx are expected: reporting them here would duplicate.
     // The API client rejects with marked plain ApiError objects; AxiosError is kept as well.

@@ -1,11 +1,12 @@
 import path from 'node:path';
 import * as Sentry from '@sentry/nextjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setBrowserReportingAllowed } from './browser-gate';
 import { buildBrowserSentryOptions } from './sentry-browser-options';
 import { buildSentryOptions } from './sentry-options';
 
 // Under Node, `@sentry/nextjs` resolves to its server build. The client build is what runs in the
-// browser and what `sentry.client.config.ts` configures: the real one, with Next's own
+// browser and what `SentryBrowser` configures: the real one, with Next's own
 // `browserTracingIntegration`, in jsdom.
 vi.mock('@sentry/nextjs', async () => {
   const clientEntry = path.resolve(
@@ -69,7 +70,13 @@ function startInpSpan() {
 }
 
 describe('real client SDK of Next, in memory', () => {
+  // These tests are about what the SDK sends (and how it is scrubbed) when reporting is allowed. In the
+  // app the browser gate is open only on the public pages after consent (browser-gate.ts); the gated
+  // transport is covered in sentry-browser.tracing.integration.test.tsx.
+  beforeEach(() => setBrowserReportingAllowed(true));
+
   afterEach(async () => {
+    setBrowserReportingAllowed(false);
     document.head
       .querySelectorAll('meta[name="sentry-trace"], meta[name="baggage"]')
       .forEach((m) => m.remove());
@@ -199,7 +206,7 @@ describe('real client SDK of Next, in memory', () => {
     expect(itemsOf(sent, 'transaction')).toHaveLength(1);
   });
 
-  it('buildSentryOptions alone (rate 0 in browser, server and edge) is what sentry.client.config uses by default', () => {
+  it('buildSentryOptions alone (rate 0 in browser, server and edge) is what SentryBrowser uses when no rate is defined', () => {
     expect(buildSentryOptions({ dsn: DSN })?.tracesSampleRate).toBe(0);
   });
 });
